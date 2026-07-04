@@ -10,6 +10,7 @@ const CURRENCY_ADDRESSES = {
 
 let _rulesCache = null;
 let _rulesCacheTs = 0;
+const _tokenCache = new Map();
 
 async function getCachedRules() {
   const now = Date.now();
@@ -17,6 +18,22 @@ async function getCachedRules() {
   _rulesCache = await db.getAutoBuyRules();
   _rulesCacheTs = now;
   return _rulesCache;
+}
+
+function getTokenCached(chain, address) {
+  const key = `${chain}:${address}`;
+  const hit = _tokenCache.get(key);
+  if (!hit) return null;
+  _tokenCache.delete(key);
+  return hit;
+}
+
+function setTokenCache(chain, address, info, security) {
+  _tokenCache.set(`${chain}:${address}`, { info, security, ts: Date.now() });
+  if (_tokenCache.size > 500) {
+    const oldest = _tokenCache.entries().next().value;
+    if (oldest) _tokenCache.delete(oldest[0]);
+  }
 }
 
 export async function processSignal(sourceChannel, text, message, senderUsername) {
@@ -28,6 +45,10 @@ export async function processSignal(sourceChannel, text, message, senderUsername
 
   const allRules = await getCachedRules();
 
+  // Clean expired cache entries (lazy)
+  const now = Date.now();
+  for (const [k, v] of _tokenCache) if (now - v.ts > 30000) _tokenCache.delete(k);
+
   await Promise.allSettled(found.map(({ address, chain }) =>
     processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0)
   ));
@@ -35,12 +56,24 @@ export async function processSignal(sourceChannel, text, message, senderUsername
 
 async function processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0) {
   let tokenInfo, tokenSecurity;
+  const cached = getTokenCached(chain, address);
+  const isCacheHit = !!cached;
 
   try {
-    [tokenInfo, tokenSecurity] = await Promise.all([
-      getTokenInfo(chain, address),
-      getTokenSecurity(chain, address),
-    ]);
+    // Cache hit: use immediately, refresh in background
+    if (cached) {
+      tokenInfo = cached.info;
+      tokenSecurity = cached.security;
+      // background refresh
+      Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address)])
+        .then(([info, sec]) => setTokenCache(chain, address, info, sec))
+        .catch(() => {});
+    } else {
+      // Fetch info only (fast path). Security fetched async.
+      tokenInfo = await getTokenInfo(chain, address);
+      tokenSecurity = await getTokenSecurity(chain, address).catch(() => null);
+      setTokenCache(chain, address, tokenInfo, tokenSecurity);
+    }
   } catch (err) {
     console.error(`[Router] Fetch error ${address}:`, err.message);
     db.addScraperLog(sourceChannel, 'error', `Fetch error ${address}: ${err.message}`).catch(() => {});
@@ -174,11 +207,11 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
   const totalLamports = Math.floor(rule.buy_amount_sol * 1_000_000_000);
   const perWallet = Math.floor(totalLamports / wallets.length);
 
-  for (const wallet of wallets) {
+  const tBuy = Date.now();
+  await Promise.allSettled(wallets.map(async (wallet) => {
     try {
       console.log(`[Router] Swap ${perWallet} lamports -> ${address} (${wallet.address})`);
 
-      const tBuy = Date.now();
       const result = await executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, perWallet, {
         slippage: rule.slippage,
         antiMev: rule.anti_mev,
@@ -216,7 +249,7 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
       console.error(`[Router] Gagal auto-buy ${address} (${wallet.address}):`, err.message);
       db.addScraperLog(sourceChannel, 'error', `Auto-buy ${data.token_symbol || address} failed: ${err.message}`).catch(() => {});
     }
-  }
+  }));
 }
 
 async function pollOrder(orderId, chain, tradeId) {

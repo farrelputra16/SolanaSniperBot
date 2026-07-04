@@ -267,7 +267,7 @@ export function extractAddresses(text) {
   const evmMatches = text.match(EVM_ADDRESS_REGEX) || [];
 
   for (const addr of solMatches) {
-    if (addr.length >= 32 && addr.length <= 44) {
+    if (isValidSolAddress(addr)) {
       addresses.push({ address: addr, chain: 'sol' });
     }
   }
@@ -329,12 +329,31 @@ export async function getWalletActivity(chain, wallet, opts = {}) {
 }
 
 const BS58_ALPHA = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BS58_MAP = {};
+for (let i = 0; i < BS58_ALPHA.length; i++) BS58_MAP[BS58_ALPHA[i]] = i;
+
 function bs58Encode(buf) {
   let n = 0n;
   for (const b of buf) n = (n << 8n) + BigInt(b);
   const r = [];
   while (n > 0n) { r.unshift(BS58_ALPHA[Number(n % 58n)]); n /= 58n; }
   return r.join('') || '1';
+}
+
+function bs58Decode(s) {
+  let n = 0n;
+  for (const c of s) n = n * 58n + BigInt(BS58_MAP[c]);
+  const bytes = [];
+  while (n > 0n) { bytes.unshift(Number(n & 255n)); n >>= 8n; }
+  return Buffer.from(bytes);
+}
+
+function isValidSolAddress(addr) {
+  if (addr.length < 32 || addr.length > 44) return false;
+  try {
+    const decoded = bs58Decode(addr);
+    return decoded.length === 32;
+  } catch { return false; }
 }
 
 // ───── Wallet Generate ─────
