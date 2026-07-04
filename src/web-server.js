@@ -24,6 +24,7 @@ export function createWebServer() {
   app.use(express.static(join(__dirname, 'public')));
 
   app.use('/api', (req, res, next) => {
+    if (!config.server.password) return next();
     if (req.path === '/login' || req.path === '/login-check') return next();
     if (req.path === '/events') return next();
     const token = req.headers['x-auth-token'];
@@ -39,7 +40,6 @@ export function createWebServer() {
         return next();
       }
     }
-    // Allow telegram login routes
     if (req.path.startsWith('/telegram/') || req.path === '/login' || req.path === '/login-check') return next();
     res.status(401).json({ error: 'unauthorized' });
   });
