@@ -971,7 +971,9 @@ function tgLoginDone(){
 }
 
 function tgLoginError(msg){$('#loginError').textContent=msg;$('#loginError').style.display='block'}
-window.skipLogin=function(){
+window.skipLogin=async function(){
+  const r=await fetch('/api/guest-login',{method:'POST'}).then(x=>x.json()).catch(()=>null);
+  if(r?.token)localStorage.setItem('auth_token',r.token);
   $('#loginOverlay').style.display='none';
   renderPage('dashboard');
 };

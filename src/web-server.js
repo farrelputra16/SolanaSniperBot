@@ -40,7 +40,7 @@ export function createWebServer() {
         return next();
       }
     }
-    if (req.path.startsWith('/telegram/') || req.path === '/login' || req.path === '/login-check') return next();
+    if (req.path.startsWith('/telegram/') || req.path === '/login' || req.path === '/login-check' || req.path === '/guest-login') return next();
     res.status(401).json({ error: 'unauthorized' });
   });
 
@@ -55,6 +55,12 @@ export function createWebServer() {
 
   app.get('/api/login-check', (req, res) => {
     res.json({ required: !!config.server.password });
+  });
+
+  app.post('/api/guest-login', (req, res) => {
+    const token = crypto.randomUUID();
+    SESSIONS.set(token, Date.now() + 86400000);
+    res.json({ ok: true, token });
   });
 
   // ───── Real-time Events (SSE) ─────
