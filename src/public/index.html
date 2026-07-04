@@ -458,7 +458,7 @@ async function renderDashboard(){
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
   <div class="card"><div class="card-h"><h3>Signals</h3></div>
-    ${act.signals.length?`<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Latency</th><th>Time</th></tr></thead><tbody>${act.signals.map(s=>`<tr><td><span class="mono addr" title="${s.token_address}">${s.token_symbol||addrShort(s.token_address)}</span></td><td>${s.source_channel||'-'}</td><td>${fmtCur(s.market_cap)}</td><td class="text-sm">${s.latency_ms?s.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(s.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>`}
+    ${act.signals.length?`<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Latency</th><th>Time</th></tr></thead><tbody>${act.signals.map(s=>`<tr style="cursor:pointer" onclick="openTokenDetail('${s.token_address}',${s.market_cap||0})"><td><span class="mono addr" title="${s.token_address}">${s.token_symbol||addrShort(s.token_address)}</span></td><td>${s.source_channel||'-'}</td><td>${fmtCur(s.market_cap)}</td><td class="text-sm">${s.latency_ms?s.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(s.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>`}
   </div>
   <div class="card"><div class="card-h"><h3>Trades</h3></div>
     ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>Amt</th><th>P&L</th><th>Signal</th><th>Buy</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.signal_latency_ms?t.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${t.buy_latency_ms?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
@@ -782,6 +782,60 @@ window.switchPfTab=function(t){
   ['holdings','activity'].forEach(x=>document.getElementById('pf-'+x).classList.toggle('active',x===t));
 };
 
+// ═══ TOKEN DETAIL ───
+window.openTokenDetail=async function(address, caughtMc){
+  const d=await fetch('/api/token/detail?chain=sol&address='+address).then(r=>r.json()).catch(()=>null);
+  if(!d)return toast('Failed to fetch token data','err');
+  const info=d.info||{};
+  const sec=d.security||{};
+  const holders=d.holders||{};
+  const holdersList=holders.holders||holders.list||[];
+  const price=info.price?.price?parseFloat(info.price.price):(info.price?parseFloat(info.price):0);
+  const circ=info.circulating_supply?parseFloat(info.circulating_supply):0;
+  const mcNow=price*circ||info.market_cap||0;
+  const liq=info.liquidity?parseFloat(info.liquidity):0;
+  const vol=info.price?.volume_24h?parseFloat(info.price.volume_24h):0;
+  const rug=sec.rug_ratio!==undefined?parseFloat(sec.rug_ratio):-1;
+  const bun=sec.bundler_trader_amount_rate!==undefined?parseFloat(sec.bundler_trader_amount_rate):0;
+  const top10=sec.top_10_holder_rate!==undefined?parseFloat(sec.top_10_holder_rate):0;
+  const hp=sec.is_honeypot||'';
+  const dev=sec.creator_token_status||'';
+  const dex=sec.creator_address||'';
+  const smart=info.wallet_tags_stat?.smart_wallets||0;
+
+  openModal(`<h2 style="display:flex;align-items:center;gap:0.5rem"><span class="mono">${esc(info.symbol||'?')}</span><span class="text-sm text-muted" style="font-weight:400">${esc(info.name||'')}</span></h2>
+<p class="mono text-sm text-muted mb-12" style="word-break:break-all">${address}</p>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:1rem">
+  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Price</div><div style="font-weight:600">$${price?price.toFixed(8):'?'}</div></div>
+  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">MC Now</div><div style="font-weight:600;color:var(--green)">${mcNow?fmtCur(mcNow):'?'}</div></div>
+  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Catched at MC</div><div style="font-weight:600;color:var(--accent)">${caughtMc?fmtCur(caughtMc):'?'}</div></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem">
+  <div>
+    <div class="text-sm text-muted mb-8" style="font-weight:600">📊 Market</div>
+    <div style="display:grid;gap:0.3rem">${[
+      ['Liquidity','$'+liq.toFixed(0),liq>50000?'badge-g':liq>10000?'badge-y':'badge-r'],
+      ['Volume 24h','$'+vol.toFixed(0)],
+      ['Smart Money',String(smart),smart>=3?'badge-g':smart>0?'badge-y':'badge-gr'],
+      ['Holders',String(info.holder_count||holders.total||0)],
+    ].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.75rem"><span class="text-muted">${l}</span><span class="badge ${c||'badge-gr'}">${v}</span></div>`).join('')}</div>
+  </div>
+  <div>
+    <div class="text-sm text-muted mb-8" style="font-weight:600">🛡️ Security</div>
+    <div style="display:grid;gap:0.3rem">${[
+      ['Honeypot',hp==='yes'?'⚠️ Yes':'✅ No',hp==='yes'?'badge-r':'badge-g'],
+      ['Rug Ratio',rug>=0?(rug*100).toFixed(0)+'%':'?',rug>0.3?'badge-r':rug>0.1?'badge-y':'badge-g'],
+      ['Bundler Rate',(bun*100).toFixed(0)+'%',bun>0.3?'badge-r':bun>0.1?'badge-y':'badge-g'],
+      ['Top 10 Holders',(top10*100).toFixed(0)+'%',top10>0.5?'badge-r':top10>0.2?'badge-y':'badge-g'],
+      ['Dev Status',dev==='creator_close'?'✅ Closed':'📦 Holding',dev==='creator_close'?'badge-g':'badge-y'],
+    ].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.75rem"><span class="text-muted">${l}</span><span class="badge ${c||'badge-gr'}">${v}</span></div>`).join('')}</div>
+  </div>
+</div>
+${dex?`<div class="text-xs text-muted mb-8">Dev: <span class="mono" style="font-size:0.7rem">${dex}</span></div>`:''}
+${holdersList.length?`<div class="text-sm text-muted mb-8" style="font-weight:600">👥 Top Holders</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Address</th><th>%</th><th>Value</th></tr></thead><tbody>${holdersList.slice(0,10).map((h,i)=>`<tr><td>${i+1}</td><td><span class="mono addr">${h.address||h.owner||''}</span></td><td>${h.percent!==undefined?(h.percent*100).toFixed(2):h.amount_percentage?(h.amount_percentage*100).toFixed(2):'?'}%</td><td>$${h.usd_value?Number(h.usd_value).toFixed(0):'?'}</td></tr>`).join('')}</tbody></table></div>`:''}
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+};
+
 window.openGroupForm=async function(){
   const w=await api('/wallets');
   openModal(`<h2>Create Wallet Group</h2><div class="form-group"><label>Group Name</label><input id="f-gn" placeholder="My Group"/></div><div class="form-group"><label>Description</label><input id="f-gd" placeholder="Optional"/></div><div class="form-group"><label>Add Wallets</label><div style="display:flex;flex-wrap:wrap;gap:0.25rem">${w.map(w=>`<label class="cb" style="font-size:0.75rem"><input type="checkbox" class="gw" value="${w.id}"/> ${w.label||addrShort(w.address)}</label>`).join('')}</div></div>
@@ -936,6 +990,8 @@ function connectSSE(){
     const tbl = $('#page-dashboard .signal-tbl');
     if (tbl) {
       const tr = document.createElement('tr');
+      tr.style.cursor='pointer';
+      tr.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
       tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${esc(d.source_channel)}</td><td>${fmtCur(d.market_cap)}</td><td class="text-sm">${d.latency_ms?d.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(d.created_at)}</td>`;
       tbl.prepend(tr);
       if (tbl.children.length > 50) tbl.lastElementChild?.remove();

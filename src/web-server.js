@@ -331,6 +331,24 @@ export function createWebServer() {
   app.get('/api/scraper/status', async (req, res) => res.json(await db.getScraperStatus()));
   app.get('/api/scraper/logs', async (req, res) => res.json(await db.getScraperLogs(Math.min(parseInt(req.query.limit) || 200, 500))));
 
+  // ───── Token Detail (Info + Security + Holders) ─────
+  app.get('/api/token/detail', async (req, res) => {
+    const { chain, address } = req.query;
+    if (!address) return res.status(400).json({ error: 'address required' });
+    try {
+      const [info, security, holders] = await Promise.allSettled([
+        gmgn.getTokenInfo(chain || 'sol', address),
+        gmgn.getTokenSecurity(chain || 'sol', address),
+        gmgn.getTokenHolders(chain || 'sol', address, { limit: 10 }),
+      ]);
+      res.json({
+        info: info.status === 'fulfilled' ? (info.value?.data || info.value) : null,
+        security: security.status === 'fulfilled' ? (security.value?.data || security.value) : null,
+        holders: holders.status === 'fulfilled' ? (holders.value?.data || holders.value) : null,
+      });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
   // ───── Settings ─────
   app.get('/api/settings', async (req, res) => {
     const rows = await db.getAllSettings();
