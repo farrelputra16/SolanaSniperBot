@@ -212,9 +212,16 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
     try {
       console.log(`[Router] Swap ${perWallet} lamports -> ${address} (${wallet.address})`);
 
+      const conditionOrders = [];
+      if (rule.take_profit_percent) conditionOrders.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(rule.take_profit_percent), sell_ratio: '100' });
+      if (rule.stop_loss_percent) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(rule.stop_loss_percent)), sell_ratio: '100' });
+
       const result = await executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, perWallet, {
         slippage: rule.slippage,
         antiMev: rule.anti_mev,
+        priorityFee: rule.priority_fee || undefined,
+        tipFee: rule.tip_fee || undefined,
+        conditionOrders: conditionOrders.length > 0 ? conditionOrders : undefined,
       });
 
       const orderId = result.data?.order_id || result.order_id;

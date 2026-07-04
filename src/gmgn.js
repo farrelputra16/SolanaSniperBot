@@ -45,7 +45,7 @@ async function request(method, path, params = {}, body = null, signed = false) {
     return Object.entries(obj)
       .sort(([a], [b]) => a.localeCompare(b))
       .flatMap(([k, v]) => {
-        if (Array.isArray(v)) return v.sort().map((i) => `${encodeURIComponent(k)}=${encodeURIComponent(String(i))}`);
+        if (Array.isArray(v)) return [...v].sort().map((i) => `${encodeURIComponent(k)}=${encodeURIComponent(String(i))}`);
         return [`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`];
       })
       .join('&');
@@ -66,23 +66,42 @@ async function request(method, path, params = {}, body = null, signed = false) {
     headers['X-Signature'] = signMessage(message);
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
-  const json = await res.json();
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
 
-  if (!res.ok) {
-    const err = new Error(json.message || json.error || `HTTP ${res.status}`);
-    err.status = res.status;
-    err.code = json.code;
-    err.body = json;
+    let json;
+    try { json = await res.json(); } catch { json = {}; }
+
+    if (res.status === 429 && json) {
+      const resetAt = json.reset_at || Math.floor(Date.now() / 1000) + 30;
+      const wait = Math.max(1000, (resetAt - Math.floor(Date.now() / 1000)) * 1000);
+      await new Promise(r => setTimeout(r, Math.min(wait, 5000)));
+      return request(method, path, params, body, signed);
+    }
+
+    if (!res.ok) {
+      const err = new Error(json.message || json.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.code = json.code;
+      err.body = json;
+      throw err;
+    }
+
+    return json;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') throw new Error('GMGN request timed out');
     throw err;
   }
-
-  return json;
 }
 
 // ───── Market Data ─────
@@ -170,6 +189,9 @@ export async function executeSell(chain, from, tokenAddress, percent = 100, opts
     anti_mev: opts.antiMev !== undefined ? opts.antiMev : config.sniper.defaultAntiMev,
   };
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
+  if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
+  if (opts.tipFee) body.tip_fee = String(opts.tipFee);
+  if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
   return request('POST', '/v1/trade/swap', {}, body, true);
 }
 
@@ -202,6 +224,10 @@ export async function executeMultiSwap(chain, accounts, inputToken, outputToken,
     slippage: String(opts.slippage ?? config.sniper.defaultSlippage),
     anti_mev: opts.antiMev !== undefined ? opts.antiMev : config.sniper.defaultAntiMev,
   };
+  if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
+  if (opts.tipFee) body.tip_fee = String(opts.tipFee);
+  if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
+  if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
   return request('POST', '/v1/trade/multi_swap', {}, body, true);
 }
 
@@ -310,7 +336,7 @@ export async function getPortfolioInfo() {
 export async function getWalletHoldings(chain, wallet, opts = {}) {
   const params = { chain, wallet, limit: opts.limit || 50, order_by: opts.orderBy || 'usd_value', direction: opts.direction || 'desc' };
   if (opts.sellOut) params['sell_out'] = true;
-  return request('GET', '/v1/user/wallet_holdings', params);
+  return request('GET', '/v1/user/wallet_holdings', params, null, true);
 }
 
 export async function getWalletStats(chain, wallet, period = '7d') {

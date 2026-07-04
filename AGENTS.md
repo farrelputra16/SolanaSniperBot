@@ -34,7 +34,7 @@ Message → handleMessage() → processSignal()
 1. **Rules cache** — `getCachedRules()` in router.js, 5s TTL. Never query DB per signal.
 2. **Parallel addresses** — `Promise.allSettled()` across all CAs in one message.
 3. **Fire-and-forget** — `db.addScraperLog()` and `db.saveSignal()` NEVER awaited (`.catch(()=>{})`).
-4. **GMGN auth cache** — `_authCache` in gmgn.js, reuses timestamp+client_id within same second.
+4. **GMGN request resilience** — `request()` retries on 429 with reset-at header, 15s fetch timeout, abort controller.
 5. **Telegram keep-alive** — `startKeepAlive()` pings every 30s, prevents reconnect delay.
 6. **Wallet distribution** — `buy_amount_sol = total`, divided equally across wallets in group.
 7. **Order polling** — background, 15 attempts × 2s = 30s max, non-blocking.
