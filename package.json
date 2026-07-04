@@ -1,25 +1,27 @@
 {
-  "name": "sniper-bot",
+  "name": "scoop-scraper",
   "version": "1.0.0",
-  "description": "Solana Sniper Bot — GMGN-powered signal scraper, auto-buy, and web dashboard",
+  "description": "The Scoop Sc(rape)r — Telegram signal scraper, auto-buy, and web dashboard",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "setup-telegram": "node src/setup-telegram.js",
-    "test": "node --test src/test/*.test.js",
-    "test:watch": "node --test --watch src/test/*.test.js",
-    "test:coverage": "node --experimental-test-coverage --test src/test/*.test.js",
-    "prepush": "node --test src/test/*.test.js",
+"test": "node --test --test-concurrency=1 src/test/*.test.js",
+"test:watch": "node --test --watch src/test/*.test.js",
+"test:coverage": "node --experimental-test-coverage --test src/test/*.test.js",
+"prepush": "node --test --test-concurrency=1 src/test/*.test.js",
     "lint": "node -e \"console.log('No linter configured')\"",
     "typecheck": "node -e \"console.log('No typechecker configured')\"",
     "vercel-build": "npm install && echo 'Build complete'",
-    "postinstall": "node -e \"if (!process.env.CI) { try { fs.writeFileSync('.git/hooks/pre-push', fs.readFileSync('.husky/pre-push')); fs.chmodSync('.git/hooks/pre-push', 0o755); console.log('Pre-push hook installed'); } catch(e) { console.log('Pre-push hook skipped:', e.message); } }\""  }
-,
+    "postinstall": "node -e \"if (!process.env.CI) { try { fs.writeFileSync('.git/hooks/pre-push', fs.readFileSync('.husky/pre-push')); fs.chmodSync('.git/hooks/pre-push', 0o755); console.log('Pre-push hook installed'); } catch(e) { console.log('Pre-push hook skipped:', e.message); } }\""
+  },
   "dependencies": {
-    "sql.js": "^1.11.0",
+    "better-sqlite3": "^12.11.1",
     "express": "^4.21.0",
+    "mongodb": "^7.4.0",
+    "sql.js": "^1.11.0",
     "telegram": "^2.26.0"
   }
 }

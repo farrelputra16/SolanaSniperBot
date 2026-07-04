@@ -3,13 +3,13 @@ import { join } from 'path';
 import { config, validateConfig } from './config.js';
 import { initDatabase } from './database.js';
 import * as db from './database.js';
-import { onSignal, onForward, forwardToChat } from './telegram.js';
+import { onSignal } from './telegram.js';
 import { processSignal } from './router.js';
 import { createWebServer, startWebServer } from './web-server.js';
 
 async function main() {
   console.log('╔══════════════════════════════════════════╗');
-  console.log('║     Solana Sniper Bot v1.0                ║');
+  console.log('║     The Scoop Sc(rape)r v1.0                ║');
   console.log('╚══════════════════════════════════════════╝\n');
 
   const errors = validateConfig();
@@ -30,36 +30,34 @@ async function main() {
     await processSignal(sourceChannel, text, message, senderUsername);
   });
 
-  onForward(async (sourceChannel, message) => {
-    if (!message || !message.text) return;
-    const forwards = db.qall(`SELECT f.* FROM forwarding f
-      JOIN channels c ON c.id = f.channel_id
-      WHERE c.channel_username = ? AND f.active = 1`, [sourceChannel]);
-    for (const f of forwards) {
-      await forwardToChat(f.target_chat_id || f.target_chat_username, message.text);
-    }
-  });
-
-  // Resume active Telegram session if any
-  const activeSession = db.getActiveTelegramSession();
-  if (activeSession && activeSession.session_string) {
-    try {
-      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
-      await initTelegramWithSession(activeSession.api_id, activeSession.api_hash, activeSession.session_string);
-      console.log('   Telegram: ✅ Resumed session @' + (activeSession.name || 'Telegram'));
-      await startListeners();
-    } catch (err) {
-      console.warn('   Telegram: ⚠️  Failed to resume session: ' + err.message);
-      db.updateTelegramSession(activeSession.id, { status: 'error', error_message: err.message });
-    }
-  } else {
-    console.log('   Telegram: ⏸️  Not configured — set up via Dashboard > Telegram');
-  }
-
   const app = createWebServer();
   startWebServer(app);
 
-  console.log(`\n✅ Sniper Bot running!`);
+  // Auto-connect Telegram from saved session or .env
+  try {
+    const savedSession = await db.getSetting('telegram_session', '');
+    if (savedSession && config.telegram.apiId && config.telegram.apiHash) {
+      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+      await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, savedSession);
+      console.log('   Telegram: ✅ Connected via saved session');
+      await startListeners();
+    } else if (config.telegram.apiId && config.telegram.apiHash) {
+      const { initTelegram, startListeners } = await import('./telegram.js');
+      await initTelegram();
+      console.log('   Telegram: ✅ Connected via .env');
+      await startListeners();
+    } else {
+      console.warn('   Telegram: ⏸️  No session — login from dashboard');
+    }
+  } catch (err) {
+    if (err.message && err.message !== 'dashboard-only mode') {
+      console.warn('   Telegram: ⏸️  ' + err.message + ' — reconnect from dashboard');
+    }
+    // Clear corrupted session
+    try { await db.setSetting('telegram_session', ''); } catch {}
+  }
+
+  console.log(`\n✅ The Scoop Sc(rape)r running!`);
   console.log(`   Dashboard: http://${config.server.host}:${config.server.port}`);
   console.log('   Press Ctrl+C to stop\n');
 }

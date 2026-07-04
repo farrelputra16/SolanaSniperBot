@@ -42,7 +42,7 @@ export const config = {
   telegram: {
     apiId: parseInt(get('TELEGRAM_API_ID', '0')),
     apiHash: get('TELEGRAM_API_HASH', ''),
-    session: get('TELEGRAM_SESSION', 'session/sniper'),
+    session: get('TELEGRAM_SESSION', ''),
   },
   sniper: {
     defaultBuyAmount: parseFloat(get('DEFAULT_BUY_AMOUNT', '0.01')),
@@ -52,15 +52,16 @@ export const config = {
   server: {
     port: parseInt(get('PORT', '3000')),
     host: get('HOST', '0.0.0.0'),
+    password: get('DASHBOARD_PASSWORD', ''),
   },
 };
 
 export function validateConfig() {
   const errors = [];
-  if (!config.gmgn.apiKey) errors.push('GMGN_API_KEY tidak ditemukan');
-  if (!config.gmgn.privateKey) errors.push('GMGN_PRIVATE_KEY tidak ditemukan');
+  if (!config.gmgn.apiKey) errors.push('GMGN_API_KEY not found');
+  if (!config.gmgn.privateKey) errors.push('GMGN_PRIVATE_KEY not found');
   if (!config.telegram.apiId || !config.telegram.apiHash) {
-    errors.push('TELEGRAM_API_ID dan TELEGRAM_API_HASH belum diisi — dashboard-only mode');
+    errors.push('TELEGRAM_API_ID and TELEGRAM_API_HASH not set — dashboard-only mode');
   }
   return errors;
 }
@@ -68,8 +69,8 @@ export function validateConfig() {
 export async function promptApiCredentials() {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const q = (q) => new Promise((r) => rl.question(q, r));
-  const apiId = await q('Masukkan TELEGRAM_API_ID: ');
-  const apiHash = await q('Masukkan TELEGRAM_API_HASH: ');
+  const apiId = await q('Enter TELEGRAM_API_ID: ');
+  const apiHash = await q('Enter TELEGRAM_API_HASH: ');
   rl.close();
   return { apiId: parseInt(apiId), apiHash };
 }

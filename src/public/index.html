@@ -3,195 +3,322 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SniperBot</title>
+<title>The Scoop Sc(rape)r</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #070b14;
-  --surface: #0d1225;
-  --card: #141b2d;
-  --card-hover: #1a2338;
-  --border: #1e293b;
-  --border-light: #2a3a55;
-  --text: #e2e8f0;
-  --text2: #94a3b8;
-  --text3: #55657d;
-  --accent: #3b82f6;
-  --accent-hover: #60a5fa;
-  --accent-bg: rgba(59,130,246,0.1);
-  --green: #22c55e;
-  --green-bg: rgba(34,197,94,0.1);
-  --red: #ef4444;
-  --red-bg: rgba(239,68,68,0.1);
-  --yellow: #f59e0b;
-  --yellow-bg: rgba(245,158,11,0.1);
-  --cyan: #06b6d4;
-  --radius: 10px;
-  --radius-sm: 6px;
+  --bg: #050505;
+  --surface: #0a0a0f;
+  --card: #0e0e18;
+  --card2: #12121e;
+  --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(255,255,255,0.1);
+  --border-hairline: rgba(255,255,255,0.03);
+  --text: #ededf0;
+  --text2: #9d9db0;
+  --text3: #5d5d70;
+  --accent: #7c5cfc;
+  --accent-hover: #9b7eff;
+  --accent-bg: rgba(124,92,252,0.1);
+  --green: #34d399;
+  --green-bg: rgba(52,211,153,0.12);
+  --red: #f87171;
+  --red-bg: rgba(248,113,113,0.1);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251,191,36,0.1);
+  --cyan: #22d3ee;
+  --cyan-bg: rgba(34,211,238,0.1);
+  --radius-xl: 1.75rem;
+  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+  --radius-sm: 0.5rem;
+  --ease-spring: cubic-bezier(0.32,0.72,0,1);
+  --ease-out: cubic-bezier(0.16,1,0.3,1);
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-heading: 'Clash Display', 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
 }
-*{margin:0;padding:0;box-sizing:border-box}
-html{font-size:14px}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track:transparent::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-.sidebar{position:fixed;top:0;left:0;bottom:0;width:200px;background:var(--surface);border-right:1px solid var(--border);z-index:50;display:flex;flex-direction:column}
-.sidebar-header{padding:18px 16px 10px;border-bottom:1px solid var(--border)}
-.sidebar-header h1{font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-0.2px}
-.sidebar-header .sub{font-size:10px;color:var(--text3);margin-top:1px}
-.sidebar-nav{flex:1;padding:6px 8px;overflow-y:auto}
-.nav-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;font-size:12.5px;font-weight:500;transition:all .12s;margin-bottom:1px}
-.nav-item:hover{background:var(--card);color:var(--text)}
-.nav-item.active{background:var(--accent-bg);color:var(--accent);font-weight:600}
-.nav-item .ico{width:16px;text-align:center;font-size:13px}
-.nav-item .count{margin-left:auto;font-size:10px;background:var(--card);padding:1px 6px;border-radius:8px;color:var(--text3)}
-.nav-item.active .count{background:var(--accent-bg);color:var(--accent)}
-.sidebar-footer{padding:10px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text3)}
-.main{margin-left:200px;padding:20px 24px;max-width:1400px;min-height:100vh}
-.section{display:none;animation:fadeIn .15s ease}
-.section.active{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-.page-header{margin-bottom:20px}
-.page-header h2{font-size:18px;font-weight:700;letter-spacing:-0.2px}
-.page-header .sub{font-size:12px;color:var(--text3);margin-top:3px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px;transition:border-color .15s}
-.card:hover{border-color:var(--border-light)}
-.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.card-h h3{font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
-.stat .num{font-size:24px;font-weight:700;line-height:1.2}
-.stat .lbl{font-size:11px;color:var(--text3);margin-top:3px}
-.stat.accent .num{color:var(--accent)}.stat.green .num{color:var(--green)}.stat.red .num{color:var(--red)}.stat.yellow .num{color:var(--yellow)}.stat.cyan .num{color:var(--cyan)}
-.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:12.5px;font-weight:500;transition:all .12s;white-space:nowrap;font-family:inherit}
-.btn:hover{background:var(--card-hover);border-color:var(--border-light)}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden}
+::selection{background:var(--accent);color:#fff}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+a{color:var(--accent);text-decoration:none;transition:color 0.3s var(--ease-spring)}a:hover{color:var(--accent-hover)}
+
+/* ─── Background Orbs ─── */
+.bg-orbs{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.bg-orbs::before{content:'';position:absolute;width:800px;height:800px;top:-10%;left:-5%;background:radial-gradient(circle,rgba(124,92,252,0.06) 0%,transparent 70%);border-radius:50%;animation:orbFloat 20s ease-in-out infinite}
+.bg-orbs::after{content:'';position:absolute;width:600px;height:600px;bottom:-15%;right:-5%;background:radial-gradient(circle,rgba(52,211,153,0.04) 0%,transparent 70%);border-radius:50%;animation:orbFloat 25s ease-in-out infinite reverse}
+@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-20px) scale(1.05)}66%{transform:translate(-20px,15px) scale(0.95)}}
+
+/* ─── Noise Overlay ─── */
+.noise-overlay{position:fixed;inset:0;z-index:100;pointer-events:none;opacity:0.015;background-image:repeating-conic-gradient(#fff 0.0001%,transparent 0.0002%);mix-blend-mode:overlay}
+
+/* ─── Fluid Island Nav ─── */
+.fluid-nav{position:fixed;top:1.25rem;left:50%;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:0.25rem;padding:0.4rem 0.4rem 0.4rem 1rem;background:rgba(10,10,15,0.7);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);border:1px solid var(--border);border-radius:9999px;box-shadow:0 8px 40px rgba(0,0,0,0.5);transition:all 0.5s var(--ease-spring);max-width:calc(100vw - 2rem)}
+.fluid-nav-brand{display:flex;align-items:center;margin-right:0.25rem}
+.nav-logo{width:2.25rem;height:2.25rem;border-radius:9999px;object-fit:cover}
+
+.fluid-nav-items{display:flex;align-items:center;gap:0.125rem}
+.fluid-nav-items .nav-item{display:flex;align-items:center;gap:0.35rem;padding:0.35rem 0.7rem;border-radius:9999px;font-size:0.8rem;font-weight:500;color:var(--text3);cursor:pointer;transition:all 0.3s var(--ease-spring);white-space:nowrap;user-select:none}
+.fluid-nav-items .nav-item:hover{color:var(--text2);background:rgba(255,255,255,0.04)}
+.fluid-nav-items .nav-item.active{color:#fff;background:var(--accent);box-shadow:0 2px 12px rgba(124,92,252,0.25)}
+.fluid-nav-items .nav-item .count{font-size:0.65rem;padding:0.05rem 0.35rem;border-radius:9999px;background:rgba(255,255,255,0.08);color:var(--text3);font-weight:600;line-height:1.4}
+.fluid-nav-items .nav-item.active .count{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.8)}
+
+/* ─── Hamburger ─── */
+.hamburger{display:none;width:2.25rem;height:2.25rem;border:1px solid var(--border);border-radius:9999px;background:transparent;cursor:pointer;position:relative;flex-shrink:0;transition:all 0.3s var(--ease-spring)}
+.hamburger:hover{border-color:var(--border-hover)}
+.hamburger span{position:absolute;left:50%;transform:translateX(-50%);width:1rem;height:1.5px;background:var(--text3);border-radius:1px;transition:all 0.4s var(--ease-spring)}
+.hamburger span:nth-child(1){top:38%}
+.hamburger span:nth-child(2){top:58%}
+.hamburger.active span:nth-child(1){top:50%;transform:translateX(-50%) rotate(45deg);background:var(--text)}
+.hamburger.active span:nth-child(2){top:50%;transform:translateX(-50%) rotate(-45deg);background:var(--text)}
+
+/* ─── Nav Overlay (mobile fullscreen) ─── */
+.nav-overlay{position:fixed;inset:0;z-index:75;background:rgba(5,5,5,0.88);backdrop-filter:blur(48px);-webkit-backdrop-filter:blur(48px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.75rem;opacity:0;pointer-events:none;transition:all 0.6s var(--ease-spring)}
+.nav-overlay.open{opacity:1;pointer-events:all}
+.nav-overlay .nav-item{font-size:1.35rem;font-weight:600;font-family:var(--font-heading);color:var(--text3);cursor:pointer;transition:all 0.5s var(--ease-spring);transform:translateY(1.5rem);opacity:0;padding:0.5rem 1.5rem;border-radius:9999px}
+.nav-overlay.open .nav-item{transform:translateY(0);opacity:1}
+.nav-overlay .nav-item:hover{color:var(--text);background:rgba(255,255,255,0.04)}
+.nav-overlay .nav-item.active{color:#fff;background:var(--accent)}
+.nav-overlay .nav-item:nth-child(1){transition-delay:0.04s}
+.nav-overlay .nav-item:nth-child(2){transition-delay:0.08s}
+.nav-overlay .nav-item:nth-child(3){transition-delay:0.12s}
+.nav-overlay .nav-item:nth-child(4){transition-delay:0.16s}
+.nav-overlay .nav-item:nth-child(5){transition-delay:0.2s}
+.nav-overlay .nav-item:nth-child(6){transition-delay:0.24s}
+.nav-overlay .nav-item:nth-child(7){transition-delay:0.28s}
+.nav-overlay-footer{position:absolute;bottom:2rem;font-size:0.7rem;color:var(--text3);letter-spacing:0.05em}
+
+/* ─── Main Layout ─── */
+.main{padding:5.5rem 2rem 3rem;max-width:1400px;margin:0 auto;min-height:100dvh}
+
+/* ─── Page Header ─── */
+.page-header{margin-bottom:2rem;text-align:center}
+.page-header .eyebrow{display:inline-flex;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent);background:var(--accent-bg);margin-bottom:0.75rem}
+.page-header h2{font-family:var(--font-heading);font-size:2rem;font-weight:700;letter-spacing:-0.03em;line-height:1.15}
+.page-header .sub{font-size:0.85rem;color:var(--text3);margin-top:0.35rem;max-width:480px;margin-left:auto;margin-right:auto}
+
+/* ─── Cards (premium glass, single-layer) ─── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:1rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.04);transition:all 0.4s var(--ease-spring)}
+.card:hover{border-color:var(--border-hover);box-shadow:inset 0 1px 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.2)}
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.card-h h3{font-size:0.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em}
+
+/* ─── Double-Bezel Shell ─── */
+.shell{background:rgba(255,255,255,0.025);border:1px solid var(--border);padding:1.5px;border-radius:var(--radius-xl);transition:all 0.4s var(--ease-spring)}.shell:hover{border-color:var(--border-hover)}
+.core{background:var(--card);border-radius:calc(var(--radius-xl) - 0.375rem);padding:1.5rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.05)}
+
+/* ─── Stats Grid ─── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;margin-bottom:1.5rem}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;transition:all 0.4s var(--ease-spring);box-shadow:inset 0 1px 1px rgba(255,255,255,0.04)}
+.stat:hover{border-color:var(--border-hover);transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,0.25)}
+.stat .num{font-family:var(--font-heading);font-size:1.75rem;font-weight:700;line-height:1.1;letter-spacing:-0.03em}
+.stat .lbl{font-size:0.7rem;color:var(--text3);margin-top:0.3rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+.stat.accent .num{color:var(--accent)}
+.stat.green .num{color:var(--green)}
+.stat.red .num{color:var(--red)}
+.stat.yellow .num{color:var(--yellow)}
+.stat.cyan .num{color:var(--cyan)}
+
+/* ─── Buttons ─── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.6rem 1.2rem;border-radius:9999px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:0.85rem;font-weight:500;font-family:var(--font-sans);transition:all 0.3s var(--ease-spring);white-space:nowrap}
+.btn:hover{border-color:var(--border-hover);color:var(--text);background:rgba(255,255,255,0.03)}
+.btn:active{transform:scale(0.97)}
+.btn-sm{padding:0.4rem 0.9rem;font-size:0.8rem}
 .btn-p{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn-p:hover{background:var(--accent-hover)}
-.btn-g{background:var(--green);border-color:var(--green);color:#fff}
-.btn-g:hover{opacity:.85}
+.btn-p:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:#fff;box-shadow:0 4px 20px rgba(124,92,252,0.25)}
+.btn-g{background:var(--green);border-color:var(--green);color:#0a0a0f}
+.btn-g:hover{opacity:0.9;color:#0a0a0f;box-shadow:0 4px 20px rgba(52,211,153,0.2)}
 .btn-r{background:var(--red);border-color:var(--red);color:#fff}
-.btn-r:hover{opacity:.85}
-.btn-sm{padding:4px 10px;font-size:11.5px}
-.btn-ghost{background:transparent;border-color:transparent;color:var(--text2)}
-.btn-ghost:hover{background:var(--card-hover);color:var(--text)}
-.btn-group{display:flex;gap:5px}
-.table-wrap{overflow-x:auto;border-radius:var(--radius-sm)}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-thead th{text-align:left;padding:8px 10px;font-weight:600;color:var(--text3);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);white-space:nowrap}
-tbody td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
-tbody tr:last-child td{border-bottom:none}
-tbody tr:hover td{background:var(--card-hover)}
-.mono{font-family:'SF Mono','JetBrains Mono','Fira Code',monospace;font-size:11.5px}
-.addr{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
-.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.btn-r:hover{opacity:0.9;color:#fff;box-shadow:0 4px 20px rgba(248,113,113,0.2)}
+.btn-ghost{border-color:transparent;background:transparent;color:var(--text3)}
+.btn-ghost:hover{border-color:transparent;background:rgba(255,255,255,0.04);color:var(--text2)}
+.btn-group{display:flex;gap:0.5rem}
+
+/* ─── Button-in-Button Primary ─── */
+.btn-primary{display:inline-flex;align-items:center;gap:0.5rem;padding:0.6rem 0.6rem 0.6rem 1.25rem;border-radius:9999px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;font-family:var(--font-sans);transition:all 0.3s var(--ease-spring);white-space:nowrap}
+.btn-primary:hover{background:var(--accent-hover);box-shadow:0 4px 24px rgba(124,92,252,0.3)}
+.btn-primary:active{transform:scale(0.97)}
+.btn-primary .btn-icon{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:9999px;background:rgba(0,0,0,0.15);font-size:0.75rem;transition:all 0.3s var(--ease-spring)}
+.btn-primary:hover .btn-icon{transform:translateX(2px) scale(1.05)}
+
+/* ─── Badges ─── */
+.badge{display:inline-flex;align-items:center;gap:0.25rem;padding:0.15rem 0.5rem;border-radius:9999px;font-size:0.65rem;font-weight:600;white-space:nowrap;letter-spacing:0.01em}
 .badge-g{background:var(--green-bg);color:var(--green)}
 .badge-r{background:var(--red-bg);color:var(--red)}
 .badge-y{background:var(--yellow-bg);color:var(--yellow)}
 .badge-b{background:var(--accent-bg);color:var(--accent)}
-.badge-cy{background:rgba(6,182,212,0.1);color:var(--cyan)}
-.badge-gr{background:rgba(100,116,139,0.1);color:var(--text3)}
+.badge-cy{background:var(--cyan-bg);color:var(--cyan)}
+.badge-gr{background:rgba(100,116,139,0.08);color:var(--text3)}
 .badge-o{border:1px solid var(--border);background:transparent;color:var(--text2)}
-.toggle{position:relative;display:inline-block;width:32px;height:18px;flex-shrink:0;vertical-align:middle}
-.toggle input{opacity:0;width:0;height:0}
-.toggle .sl{position:absolute;cursor:pointer;inset:0;background:var(--border);transition:.2s;border-radius:18px}
-.toggle .sl:before{position:absolute;content:"";height:12px;width:12px;left:3px;bottom:3px;background:var(--text3);transition:.2s;border-radius:50%}
-.toggle input:checked+.sl{background:var(--accent)}
-.toggle input:checked+.sl:before{background:#fff;transform:translateX(14px)}
-.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
-.form-group{margin-bottom:2px}
-.form-group label{display:block;font-size:11px;color:var(--text3);margin-bottom:3px;font-weight:500}
-input,select,textarea{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 10px;color:var(--text);font-size:12.5px;width:100%;transition:border-color .12s;font-family:inherit}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.15)}
-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;padding-right:28px}
-.cb{display:flex;align-items:center;gap:6px;padding:4px 0}
-.cb input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);flex-shrink:0}
-.form-actions{margin-top:14px;display:flex;gap:8px;align-items:center;padding-top:14px;border-top:1px solid var(--border)}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:200;align-items:center;justify-content:center}
-.modal-overlay.active{display:flex}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:92%;max-width:640px;max-height:85vh;overflow-y:auto;box-shadow:0 25px 80px rgba(0,0,0,.6)}
-.modal h2{font-size:15px;font-weight:700;margin-bottom:14px}
-.modal-actions{margin-top:16px;display:flex;gap:8px;justify-content:flex-end;padding-top:14px;border-top:1px solid var(--border)}
-.tabs{display:flex;gap:2px;margin-bottom:14px;background:var(--bg);border-radius:var(--radius-sm);padding:3px;width:fit-content}
-.tab{padding:5px 14px;border-radius:4px;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;transition:.12s;border:none;background:none;font-family:inherit}
-.tab:hover{color:var(--text)}
-.tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+
+/* ─── Channel Cards ─── */
+.channel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:0.75rem;transition:all 0.4s var(--ease-spring);box-shadow:inset 0 1px 1px rgba(255,255,255,0.04)}
+.channel-card:hover{border-color:var(--border-hover);box-shadow:0 8px 32px rgba(0,0,0,0.2),inset 0 1px 1px rgba(255,255,255,0.06)}
+.channel-card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem}
+.channel-card .name{font-size:0.9rem;font-weight:600;font-family:var(--font-heading);display:flex;align-items:center;gap:0.5rem}
+.channel-card .chips{display:flex;flex-wrap:wrap;gap:0.3rem;font-size:0.7rem;margin-bottom:0.4rem}
+.channel-card .chip{background:rgba(255,255,255,0.035);padding:0.15rem 0.5rem;border-radius:9999px;color:var(--text2);border:1px solid var(--border)}
+.channel-card .chip.accent{background:var(--accent-bg);color:var(--accent);border-color:transparent}
+.channel-card .chip.green{background:var(--green-bg);color:var(--green);border-color:transparent}
+.channel-card .stats-row{display:flex;gap:1rem;font-size:0.75rem;color:var(--text3);margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--border)}
+.channel-card .actions{display:flex;gap:0.35rem;align-items:center}
+
+/* ─── Tables ─── */
+.table-wrap{overflow-x:auto;border-radius:var(--radius-md);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:0.8rem}
+thead th{text-align:left;padding:0.65rem 0.85rem;font-weight:600;color:var(--text3);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.015);white-space:nowrap}
+tbody td{padding:0.6rem 0.85rem;border-bottom:1px solid var(--border-hairline);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background 0.2s var(--ease-spring)}tbody tr:hover td{background:rgba(255,255,255,0.02)}
+
+/* ─── Forms ─── */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.75rem}
+.form-group{margin-bottom:0.25rem}
+.form-group label{display:block;font-size:0.7rem;color:var(--text3);margin-bottom:0.25rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+input,select,textarea{background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.55rem 0.75rem;color:var(--text);font-size:0.8rem;width:100%;transition:all 0.3s var(--ease-spring);font-family:var(--font-sans)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,252,0.1)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%239d9db0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:2rem}
+.cb{display:flex;align-items:center;gap:0.4rem;padding:0.25rem 0;font-size:0.8rem}
+.cb input[type=checkbox]{width:1rem;height:1rem;accent-color:var(--accent);flex-shrink:0;border-radius:3px}
+.form-actions{margin-top:1rem;display:flex;gap:0.5rem;align-items:center;padding-top:1rem;border-top:1px solid var(--border)}
+.form-actions:empty,.form-actions:has(.btn:only-child){border-top:none;padding-top:0}
+
+/* ─── Tabs ─── */
+.tabs{display:flex;gap:2px;margin-bottom:1rem;background:rgba(255,255,255,0.03);border-radius:9999px;padding:3px;width:fit-content}
+.tab{padding:0.35rem 1rem;border-radius:9999px;font-size:0.75rem;font-weight:500;color:var(--text3);cursor:pointer;transition:all 0.3s var(--ease-spring);border:none;background:none;font-family:var(--font-sans)}
+.tab:hover{color:var(--text2)}
+.tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 8px rgba(0,0,0,0.2)}
 .tab-content{display:none}.tab-content.active{display:block}
-.channel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;transition:border-color .12s}
-.channel-card:hover{border-color:var(--border-light)}
-.channel-card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.channel-card .name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
-.channel-card .chips{display:flex;flex-wrap:wrap;gap:5px;font-size:11px;margin-bottom:6px}
-.channel-card .chip{background:var(--bg);padding:2px 8px;border-radius:4px;color:var(--text2)}
-.channel-card .chip.accent{background:var(--accent-bg);color:var(--accent)}
-.channel-card .chip.green{background:var(--green-bg);color:var(--green)}
-.channel-card .stats-row{display:flex;gap:16px;font-size:11.5px;color:var(--text3);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
-.channel-card .stats-row span{display:flex;align-items:center;gap:4px}
-.channel-card .actions{display:flex;gap:5px;align-items:center}
-.pos-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.pos-detail-grid .item{padding:10px 12px;background:var(--bg);border-radius:var(--radius-sm);font-size:12.5px}
-.pos-detail-grid .item .lbl{color:var(--text3);font-size:11px;margin-bottom:2px}
-.pos-detail-grid .item .val{font-weight:600}
-.empty-state{text-align:center;padding:50px 20px;color:var(--text3)}
-.empty-state .ico{font-size:32px;margin-bottom:10px;opacity:.4}
-.empty-state h4{font-size:14px;color:var(--text2);margin-bottom:5px}
-.empty-state p{font-size:12.5px}
-.log-line{padding:4px 0;font-size:11.5px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:flex-start;font-family:'SF Mono','JetBrains Mono',monospace}
-.log-line:last-child{border-bottom:none}
-.log-time{color:var(--text3);flex-shrink:0;font-size:10.5px}
-.log-lv{flex-shrink:0;font-weight:600;font-size:9.5px;padding:1px 4px;border-radius:2px;text-transform:uppercase}
-.log-lv.info{color:var(--accent);background:var(--accent-bg)}
-.log-lv.error{color:var(--red);background:var(--red-bg)}
-.log-lv.warn{color:var(--yellow);background:var(--yellow-bg)}
-.login-overlay{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center}
-.login-box{width:100%;max-width:420px;padding:20px}
-.login-box h1{font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px}
-.login-box .sub{color:var(--text3);font-size:13px;margin-bottom:24px;line-height:1.5}
-.login-box .step{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.login-box .form-group{margin-bottom:12px}
-.login-box .login-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:600}
-.login-box .login-badge.ok{background:var(--green-bg);color:var(--green)}
-.login-box .login-badge.wait{background:var(--yellow-bg);color:var(--yellow)}
-.login-box .login-badge.err{background:var(--red-bg);color:var(--red)}
-.login-box .login-badge.info{background:var(--accent-bg);color:var(--accent)}
-.toast-container{position:fixed;top:12px;right:12px;z-index:300;display:flex;flex-direction:column;gap:6px}
-.toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:slideIn .15s ease;min-width:180px}
+
+/* ─── Toggle ─── */
+.toggle{position:relative;display:inline-block;width:2rem;height:1.125rem;flex-shrink:0;vertical-align:middle}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .sl{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,0.1);transition:all 0.3s var(--ease-spring);border-radius:9999px}
+.toggle .sl:before{position:absolute;content:"";height:0.75rem;width:0.75rem;left:0.1875rem;bottom:0.1875rem;background:var(--text3);transition:all 0.3s var(--ease-spring);border-radius:50%}
+.toggle input:checked+.sl{background:var(--accent)}
+.toggle input:checked+.sl:before{background:#fff;transform:translateX(0.875rem)}
+
+/* ─── Modal ─── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:1.75rem;width:92%;max-width:640px;max-height:85vh;overflow-y:auto;box-shadow:0 25px 80px rgba(0,0,0,0.5)}
+.modal h2{font-family:var(--font-heading);font-size:1.1rem;font-weight:700;margin-bottom:1rem;letter-spacing:-0.02em}
+.modal-actions{margin-top:1.25rem;display:flex;gap:0.5rem;justify-content:flex-end;padding-top:1rem;border-top:1px solid var(--border)}
+
+/* ─── Toast ─── */
+.toast-container{position:fixed;top:1rem;right:1rem;z-index:300;display:flex;flex-direction:column;gap:0.4rem;pointer-events:none}
+.toast{pointer-events:all;background:rgba(14,14,24,0.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-md);padding:0.7rem 1rem;font-size:0.8rem;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:toastIn 0.4s var(--ease-spring);min-width:180px;color:var(--text)}
 .toast.ok{border-left:3px solid var(--green)}
 .toast.err{border-left:3px solid var(--red)}
 .toast.info{border-left:3px solid var(--accent)}
-@keyframes slideIn{from{transform:translateX(80px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes toastIn{from{transform:translateX(80px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ─── Login Overlay ─── */
+
+
+/* ─── Position Detail Grid ─── */
+.pos-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem}
+.pos-detail-grid .item{padding:0.7rem 0.85rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:0.8rem}
+.pos-detail-grid .item .lbl{color:var(--text3);font-size:0.65rem;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:600}
+.pos-detail-grid .item .val{font-weight:600}
+
+/* ─── Log Viewer ─── */
+.log-line{padding:0.35rem 0;font-size:0.75rem;border-bottom:1px solid var(--border-hairline);display:flex;gap:0.5rem;align-items:flex-start;font-family:var(--font-mono)}
+.log-line:last-child{border-bottom:none}
+.log-time{color:var(--text3);flex-shrink:0;font-size:0.65rem}
+.log-lv{flex-shrink:0;font-weight:600;font-size:0.55rem;padding:0.05rem 0.35rem;border-radius:2px;text-transform:uppercase;letter-spacing:0.03em}
+.log-lv.info{color:var(--accent);background:var(--accent-bg)}
+.log-lv.error{color:var(--red);background:var(--red-bg)}
+.log-lv.warn{color:var(--yellow);background:var(--yellow-bg)}
+.log-lv.success{color:var(--green);background:var(--green-bg)}
+
+/* ─── Empty State ─── */
+.empty-state{text-align:center;padding:3rem 1.5rem;color:var(--text3)}
+.empty-state .ico{font-size:2rem;margin-bottom:0.75rem;opacity:0.3}
+.empty-state h4{font-size:0.85rem;color:var(--text2);margin-bottom:0.3rem;font-weight:600}
+.empty-state p{font-size:0.8rem}
+
+/* ─── Sections ─── */
+.section{display:none}
+.section.active{display:block}
+
+/* ─── Joined Channels Picker ─── */
+/* ─── Quick Connect ─── */
+
+
+
+
+/* ─── Utilities ─── */
+.mono{font-family:var(--font-mono);font-size:0.75rem}
+.addr{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+.text-muted{color:var(--text3)}
+.text-sm{font-size:0.75rem}
+.mr{margin-right:0.25rem}.mb-8{margin-bottom:0.5rem}.mb-12{margin-bottom:0.75rem}.mt-12{margin-top:0.75rem}.mt-8{margin-top:0.5rem}
+.flex{display:flex}.gap-6{gap:0.375rem}.gap-8{gap:0.5rem}.items-center{align-items:center}.w-full{width:100%}.wrap{flex-wrap:wrap}.hide{display:none!important}
+
+/* ─── Scroll Reveal ─── */
+.will-reveal{opacity:0;transform:translateY(1.5rem);filter:blur(6px);transition:all 0.8s var(--ease-spring)}
+.will-reveal.revealed{opacity:1;transform:translateY(0);filter:blur(0)}
+
+/* ─── Mobile ─── */
 @media(max-width:768px){
-  .sidebar{width:56px}
-  .sidebar-header h1,.sidebar-header .sub,.nav-item span{display:none}
-  .sidebar-header{padding:14px 0;text-align:center}
-  .nav-item{padding:10px;justify-content:center}
-  .nav-item .ico{font-size:15px}
-  .nav-item .count{display:none}
-  .main{margin-left:56px;padding:14px}
+  .fluid-nav{top:0.75rem;padding:0.35rem;gap:0.125rem;max-width:calc(100vw - 1rem)}
+  .fluid-nav-brand{font-size:0.75rem;padding-left:0.25rem}
+  .fluid-nav-items .nav-item{display:none}
+  .hamburger{display:block}
+  .main{padding:4.5rem 1rem 2rem}
+  .page-header h2{font-size:1.5rem}
   .stats{grid-template-columns:repeat(2,1fr)}
+  .card,.core{padding:1rem}
+  .form-grid{grid-template-columns:1fr}
   .pos-detail-grid{grid-template-columns:1fr}
+
+  .table-wrap{margin:0 -0.75rem;border-radius:0;border-left:none;border-right:none}
 }
-.mr{margin-right:4px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mt-12{margin-top:12px}.mt-8{margin-top:8px}.flex{display:flex}.gap-6{gap:6px}.gap-8{gap:8px}.items-center{align-items:center}.text-muted{color:var(--text3)}.text-sm{font-size:11.5px}.w-full{width:100%}.wrap{flex-wrap:wrap}.hide{display:none!important}
 </style>
 </head>
 <body>
 
-<div class="sidebar">
-  <div class="sidebar-header"><h1>⚡ Sniper</h1><div class="sub">gmgn scraper</div></div>
-  <nav class="sidebar-nav" id="nav">
-    <div class="nav-item active" data-p="dashboard"><span class="ico">📊</span><span>Dashboard</span></div>
-    <div class="nav-item" data-p="channels"><span class="ico">📡</span><span>Channels</span></div>
-    <div class="nav-item" data-p="positions"><span class="ico">💼</span><span>Positions</span></div>
-    <div class="nav-item" data-p="scraper"><span class="ico">🕵️</span><span>Scraper</span></div>
-    <div class="nav-item" data-p="telegram"><span class="ico">✈️</span><span>Telegram</span></div>
-    <div class="nav-item" data-p="wallets"><span class="ico">👛</span><span>Wallets</span></div>
-    <div class="nav-item" data-p="settings"><span class="ico">⚙️</span><span>Settings</span></div>
-  </nav>
-  <div class="sidebar-footer">⚡ v1.0</div>
-</div>
+<div class="bg-orbs"></div>
+<div class="noise-overlay"></div>
+
+<nav class="fluid-nav" id="fluidNav">
+  <div class="fluid-nav-brand"><img src="/logo.jpg" alt="SS" class="nav-logo"></div>
+  <div class="fluid-nav-items">
+    <div class="nav-item active" data-p="dashboard">Dashboard</div>
+    <div class="nav-item" data-p="channels">Channels<span class="count" id="navChanCount"></span></div>
+    <div class="nav-item" data-p="positions">Positions<span class="count" id="navPosCount"></span></div>
+    <div class="nav-item" data-p="scraper">Scraper</div>
+    <div class="nav-item" data-p="wallets">Wallets</div>
+    <div class="nav-item" data-p="settings">Settings</div>
+  </div>
+  <button class="hamburger" id="hamburger" aria-label="Menu">
+    <span></span><span></span>
+  </button>
+</nav>
+
+<nav class="nav-overlay" id="navOverlay">
+  <div class="nav-item active" data-p="dashboard">Dashboard</div>
+  <div class="nav-item" data-p="channels">Channels</div>
+  <div class="nav-item" data-p="positions">Positions</div>
+  <div class="nav-item" data-p="scraper">Scraper</div>
+  <div class="nav-item" data-p="wallets">Wallets</div>
+  <div class="nav-item" data-p="settings">Settings</div>
+  <div class="nav-overlay-footer">The Scoop Sc(rape)r v1.0</div>
+</nav>
 
 <div class="main">
   <div id="page-dashboard" class="section active"></div>
   <div id="page-channels" class="section"></div>
   <div id="page-positions" class="section"></div>
   <div id="page-scraper" class="section"></div>
-  <div id="page-telegram" class="section"></div>
+
   <div id="page-wallets" class="section"></div>
   <div id="page-settings" class="section"></div>
 </div>
@@ -199,41 +326,51 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 <div class="modal-overlay" id="modal"><div class="modal" id="modal-c"></div></div>
 <div class="toast-container" id="toast-c"></div>
 
-<div class="login-overlay" id="login-page">
-  <div class="login-box">
-    <h1>⚡ SniperBot</h1>
-    <div class="sub">Connect your Telegram account to start scraping signals. Each user uses their own credentials.</div>
-    <div id="login-status"></div>
-    <div id="login-step1">
-      <div class="step">Step 1 of 2 — API Credentials</div>
-      <p class="text-sm text-muted mb-12">Get these from <a href="https://my.telegram.org/apps" target="_blank" style="color:var(--accent)">my.telegram.org/apps</a></p>
-      <div class="form-grid" style="grid-template-columns:1fr 2fr">
-        <div class="form-group"><label>API ID</label><input id="lg-api-id" type="number" placeholder="123456"/></div>
-        <div class="form-group"><label>API Hash</label><input id="lg-api-hash" placeholder="your_api_hash"/></div>
-      </div>
-      <div class="form-group"><label>Phone Number</label><input id="lg-phone" placeholder="+628123456789"/></div>
-      <button class="btn btn-p w-full mt-12" id="lg-btn1" onclick="loginStep1()">Connect Telegram</button>
-    </div>
-    <div id="login-step2" class="hide">
-      <div class="step">Step 2 of 2 — Verification Code</div>
-      <p class="text-sm text-muted mb-12">Telegram sent an OTP code to your account. Enter it below.</p>
-      <div class="form-group"><label>OTP Code</label><input id="lg-otp" placeholder="12345" autocomplete="off"/></div>
-      <div class="form-actions" style="border:none;padding:0;margin-top:4px">
-        <button class="btn w-full" onclick="loginCancel()">Cancel</button>
-        <button class="btn btn-p w-full" id="lg-btn2" onclick="loginStep2()">Verify &amp; Enter</button>
-      </div>
-    </div>
+<div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1.25rem">
+  <img src="/logo.jpg" alt="SS" style="width:4rem;height:4rem;border-radius:9999px;object-fit:cover">
+  <h1 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em">SniperBot</h1>
+  <p class="text-sm text-muted" style="margin-top:-0.5rem">Connect your Telegram account</p>
+  <div id="tg-login-step1" style="width:340px;max-width:90vw;display:flex;flex-direction:column;gap:0.6rem">
+    <input id="tg-login-api-id" type="number" placeholder="API ID" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
+    <input id="tg-login-api-hash" placeholder="API Hash" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
+    <input id="tg-login-phone" placeholder="Phone +1234567890" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
+    <label class="cb" style="justify-content:center;margin:0"><input type="checkbox" id="tg-login-remember" checked/> Remember me</label>
+    <button class="btn btn-p" onclick="tgLoginSendCode()" style="padding:0.75rem;font-size:1rem;width:100%">Send Code</button>
   </div>
+  <div id="tg-login-step2" style="width:340px;max-width:90vw;display:none;flex-direction:column;gap:0.6rem">
+    <input id="tg-login-code" type="text" placeholder="OTP code" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')tgLoginVerifyCode()">
+    <div id="tg-login-2fa" style="display:none">
+      <input id="tg-login-password" type="password" placeholder="2FA password" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')tgLoginVerifyPassword()">
+    </div>
+    <button class="btn btn-p" id="tg-login-btn" onclick="tgLoginVerifyCode()" style="padding:0.75rem;font-size:1rem;width:100%">Verify</button>
+  </div>
+  <div id="tg-login-step3" style="display:none;flex-direction:column;align-items:center;gap:0.75rem">
+    <div class="badge badge-g" style="font-size:1.2rem;padding:0.75rem 2rem">✅ Connected</div>
+    <p class="text-sm text-muted" id="tg-login-done-msg"></p></div>
+<p style="margin-top:1rem;font-size:0.7rem;color:var(--text3);text-align:center;max-width:360px;line-height:1.4">🔒 All data stays local. API keys and session strings stored only on your device. Token data via GMGN API — no external database.</p>
+  </div>
+  <p id="loginError" class="text-sm" style="color:var(--red);display:none"></p>
 </div>
+
+
 
 <script>
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
-const api=async(p,o)=>{const r=await fetch('/api'+p,{headers:{'Content-Type':'application/json'},...o});if(!r.ok){let e;try{e=await r.json()}catch{e={error:r.statusText}}throw new Error(e.error||e.message||r.statusText)}return r.json()};
+const AUTH_TOKEN=localStorage.getItem('auth_token')||'';
+const api=async(p,o)=>{
+  const h={'Content-Type':'application/json'};
+  if(AUTH_TOKEN)h['x-auth-token']=AUTH_TOKEN;
+  const r=await fetch('/api'+p,{headers:h,...o});
+  if(r.status===401){localStorage.removeItem('auth_token');showLogin();throw new Error('Session expired')}
+  if(!r.ok){let e;try{e=await r.json()}catch{e={error:r.statusText}}throw new Error(e.error||e.message||r.statusText)}
+  return r.json()
+};
 function toast(m,t='info'){const c=$('#toast-c'),e=document.createElement('div');e.className='toast '+t;e.textContent=m;c.appendChild(e);setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),200)},2800)}
 function closeModal(){$('#modal').classList.remove('active')}
 function openModal(h){$('#modal-c').innerHTML=h;$('#modal').classList.add('active')}
 $('#modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
 
+// ─── Navigation ───
 let cp='dashboard';
 function showPage(n){
   cp=n;
@@ -241,17 +378,60 @@ function showPage(n){
   $$('.nav-item').forEach(a=>a.classList.remove('active'));
   const el=$('#page-'+n);
   if(el)el.classList.add('active');
-  const navItem=document.querySelector(`.nav-item[data-p="${n}"]`);
-  if(navItem)navItem.classList.add('active');
+  document.querySelectorAll(`.nav-item[data-p="${n}"]`).forEach(a=>a.classList.add('active'));
+  $('#navOverlay').classList.remove('open');
+  $('#hamburger').classList.remove('active');
   renderPage(n);
+  // Auto-refresh for real-time pages
+  if (_autoRefresh) clearInterval(_autoRefresh);
+  const autoPages = ['dashboard','positions','scraper'];
+  if (autoPages.includes(n)) {
+    _autoRefresh = setInterval(refreshCurrentPage, 1000);
+  }
 }
-document.querySelectorAll('.nav-item').forEach(a=>{a.addEventListener('click',()=>showPage(a.dataset.p))});
+document.querySelectorAll('.nav-item').forEach(a=>{
+  a.addEventListener('click',()=>showPage(a.dataset.p))
+});
 
+// ─── Hamburger ───
+$('#hamburger').addEventListener('click',()=>{
+  $('#hamburger').classList.toggle('active');
+  $('#navOverlay').classList.toggle('open');
+});
+// Close overlay on resize to desktop
+window.addEventListener('resize',()=>{
+  if(window.innerWidth>768){
+    $('#navOverlay').classList.remove('open');
+    $('#hamburger').classList.remove('active');
+  }
+});
+
+// ─── Scrol Reveal ───
+const revealObserver=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      entry.target.classList.add('revealed');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+},{threshold:0.05,rootMargin:'0px 0px -30px 0px'});
+
+function observeReveals(){
+  document.querySelectorAll('.card,.stat,.channel-card,.page-header,.shell,.modal .form-grid').forEach(el=>{
+    if(!el.classList.contains('revealed')&&!el.classList.contains('will-reveal')){
+      el.classList.add('will-reveal');
+      revealObserver.observe(el);
+    }
+  });
+}
+
+// ─── Page Renderer ───
 async function renderPage(n){
   const el=$('#page-'+n);if(!el)return;
   try{
-    const fns={dashboard:renderDashboard,channels:renderChannels,positions:renderPositions,scraper:renderScraper,telegram:renderTelegram,wallets:renderWallets,settings:renderSettings};
+    const fns={dashboard:renderDashboard,channels:renderChannels,positions:renderPositions,scraper:renderScraper,wallets:renderWallets,settings:renderSettings};
     el.innerHTML=await fns[n]();
+    observeReveals();
   }catch(err){el.innerHTML=`<div class="empty-state"><h4>Error</h4><p>${esc(err.message)}</p></div>`}
 }
 
@@ -260,14 +440,14 @@ const fmtShort=ts=>ts?new Date(ts*1e3).toLocaleTimeString():'-';
 const fmtCur=v=>{if(!v)return'$0';if(v>=1e6)return'$'+(v/1e6).toFixed(2)+'M';if(v>=1e3)return'$'+(v/1e3).toFixed(1)+'K';return'$'+Number(v).toLocaleString()};
 const addrShort=a=>a?a.slice(0,5)+'..'+a.slice(-3):'-';
 const ago=ts=>{if(!ts)return'-';const s=Math.floor(Date.now()/1e3)-ts;if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';return Math.floor(s/86400)+'d'};
-const esc=s=>s?String(s).replace(/[&<>"']/g,c=>$({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]):'';
+const esc=s=>s?String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]):'';
 function sb(s){const m={open:['badge-b','Open'],closed:['badge-g','Closed'],failed:['badge-r','Failed'],pending:['badge-y','Pending'],confirmed:['badge-g','Done'],active:['badge-g','Active'],cancelled:['badge-gr','Cancelled']};const[c,l]=m[s]||['badge-gr',s||'?'];return`<span class="badge ${c}">${l}</span>`}
 function pnlBadge(p,pct){if(p==null)return'-';const pos=p>=0;return`<span class="badge ${pos?'badge-g':'badge-r'}">${pos?'+':''}$${Number(p).toFixed(4)}${pct!=null?' ('+(pos?'+':'')+pct.toFixed(2)+'%)':''}</span>`}
 
 // ═══ DASHBOARD ═══
 async function renderDashboard(){
   const[st,act]=await Promise.all([api('/status'),api('/activity')]);
-  return`<div class="page-header"><h2>Dashboard</h2></div>
+  return`<div class="page-header"><span class="eyebrow">Overview</span><h2>Dashboard</h2><div class="sub">Real-time signal and trade activity</div></div>
 <div class="stats">
   <div class="stat accent"><div class="num">${st.channelCount}</div><div class="lbl">Channels</div></div>
   <div class="stat ${st.openTrades>0?'green':''}"><div class="num">${st.openTrades}</div><div class="lbl">Open Positions</div></div>
@@ -276,19 +456,19 @@ async function renderDashboard(){
   <div class="stat cyan"><div class="num">${st.activeOrders}</div><div class="lbl">Active Orders</div></div>
   <div class="stat"><div class="num">${Math.floor(st.uptime/3600)}h${Math.floor((st.uptime%3600)/60)}m</div><div class="lbl">Uptime</div></div>
 </div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
   <div class="card"><div class="card-h"><h3>Signals</h3></div>
-    ${act.signals.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Time</th></tr></thead><tbody>${act.signals.map(s=>`<tr><td><span class="mono addr" title="${s.token_address}">${s.token_symbol||addrShort(s.token_address)}</span></td><td>${s.source_channel||'-'}</td><td>${fmtCur(s.market_cap)}</td><td class="text-muted text-sm">${fmtShort(s.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:30px"><p>No signals yet</p></div>`}
+    ${act.signals.length?`<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Latency</th><th>Time</th></tr></thead><tbody>${act.signals.map(s=>`<tr><td><span class="mono addr" title="${s.token_address}">${s.token_symbol||addrShort(s.token_address)}</span></td><td>${s.source_channel||'-'}</td><td>${fmtCur(s.market_cap)}</td><td class="text-sm">${s.latency_ms?s.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(s.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>`}
   </div>
   <div class="card"><div class="card-h"><h3>Trades</h3></div>
-    ${act.trades.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amt</th><th>P&L</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:30px"><p>No trades yet</p></div>`}
+    ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>Amt</th><th>P&L</th><th>Signal</th><th>Buy</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.signal_latency_ms?t.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${t.buy_latency_ms?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
   </div>
 </div>`;}
 
-// ═══ CHANNELS (Scraper Setup — MAIN PAGE) ═══
+// ═══ CHANNELS ───
 async function renderChannels(){
   const channels=await api('/channels');
-  return`<div class="page-header"><h2>Channels</h2><div class="sub">Add channels and configure scraper rules — TP/SL, fees, filters, multi-wallet</div></div>
+  return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules — TP/SL, fees, filters, multi-wallet</div></div>
 <div class="card"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add Channel</button></div>
 ${channels.length?channels.map(c=>renderChannelCard(c)).join(''):`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
 </div>`;}
@@ -301,7 +481,7 @@ function renderChannelCard(c){
   if(r.min_market_cap!=null)chips.push(`MC≥${fmtCur(r.min_market_cap)}`);
   if(r.max_market_cap!=null)chips.push(`MC≤${fmtCur(r.max_market_cap)}`);
   if(r.min_liquidity!=null)chips.push(`Liq≥${fmtCur(r.min_liquidity)}`);
-  if(r.take_profit_percent)chips.push(`SL:${r.take_profit_percent}%`);
+  if(r.take_profit_percent)chips.push(`TP:${r.take_profit_percent}%`);
   if(r.stop_loss_percent)chips.push(`SL:${r.stop_loss_percent}%`);
   if(tpStr)chips.push(tpStr);
   if(r.auto_buy)chips.push(`💰${r.buy_amount_sol||0.01}SOL`);
@@ -313,7 +493,7 @@ function renderChannelCard(c){
     <div class="name">
       <label class="toggle"><input type="checkbox" ${c.active?'checked':''} onchange="togCh(${c.id})"><span class="sl"></span></label>
       ${c.display_name||c.channel_username}
-      <span class="badge badge-o text-sm" style="font-size:10px">${c.channel_username}</span>
+      <span class="badge badge-o" style="font-size:0.65rem">${c.channel_username}</span>
     </div>
     <div class="actions">
       <button class="btn btn-sm btn-ghost" onclick="openChannelForm(${c.id})">✏️</button>
@@ -335,6 +515,7 @@ window.openChannelForm=async function(id){
   let groups=[];
   const[allGroups,wallets]=await Promise.all([api('/wallet-groups'),api('/wallets')]);
   groups=allGroups;
+  const allWallets=wallets;
   if(id){const d=await api('/channels/'+id);ch=d;if(!ch.rule)ch.rule={};}
   const r=ch.rule||{};
   let tps=[];
@@ -343,17 +524,17 @@ window.openChannelForm=async function(id){
 
   openModal(`<h2>${isEdit?'Edit':'Add'} Channel</h2>
 <div class="form-grid">
-  <div class="form-group"><label>Username</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="@channel"/></div>
+  <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="@channel or https://t.me/..."/></div>
   <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/></div>
 </div>
-<h3 style="font-size:13px;margin:14px 0 10px;color:var(--text2)">🔍 Filters</h3>
+<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">🔍 Filters</h3>
 <div class="form-grid">
   <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Max Market Cap ($)</label><input id="f-max-mc" type="number" value="${r.max_market_cap||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Min Liquidity ($)</label><input id="f-min-liq" type="number" value="${r.min_liquidity||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Max Liquidity ($)</label><input id="f-max-liq" type="number" value="${r.max_liquidity||''}" placeholder="Any"/></div>
 </div>
-<h3 style="font-size:13px;margin:14px 0 10px;color:var(--text2)">⚡ Execution</h3>
+<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">⚡ Execution</h3>
 <div class="form-grid">
   <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-buy" type="number" step="0.001" value="${r.buy_amount_sol||0.01}"/></div>
   <div class="form-group"><label>Slippage (%)</label><input id="f-slip" type="number" value="${r.slippage||30}"/></div>
@@ -361,16 +542,17 @@ window.openChannelForm=async function(id){
   <div class="form-group"><label>Tip Fee (lamports)</label><input id="f-tip" type="number" value="${r.tip_fee||''}" placeholder="Auto"/></div>
 </div>
 <label class="cb"><input type="checkbox" id="f-anti" ${(r.anti_mev||true)?'checked':''}/> Anti-MEV</label>
-<h3 style="font-size:13px;margin:14px 0 10px;color:var(--text2)">📈 Take Profit Levels</h3>
+<label class="cb mt-8"><input type="checkbox" id="f-track" ${r.track_only?'checked':''}/> 🧪 Track Only (experimental — log signals only, no auto-buy)</label>
+<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">📈 Take Profit Levels</h3>
 <div id="tp-levels-container">${tps.map((tp,i)=>renderTPLevel(i,tp.percent,tp.sell_ratio)).join('')}</div>
-<div class="form-actions" style="padding-top:8px;border:none;margin-top:4px">
+<div class="form-actions" style="padding-top:0.5rem;border:none;margin-top:0.25rem">
   <button class="btn btn-sm" onclick="addTPLevel()">+ Add TP Level</button>
 </div>
-<h3 style="font-size:13px;margin:14px 0 10px;color:var(--text2)">🛑 Stop Loss</h3>
+<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">🛑 Stop Loss</h3>
 <div class="form-group"><label>Stop Loss (%)</label><input id="f-sl" type="number" value="${r.stop_loss_percent||''}" placeholder="Disabled"/></div>
-<h3 style="font-size:13px;margin:14px 0 10px;color:var(--text2)">👥 Multi-Wallet</h3>
+<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">👥 Buy Wallet</h3>
 <div class="form-grid">
-  <div class="form-group"><label>Wallet Group (for batch buys)</label><select id="f-wg"><option value="0">— Single Wallet —</option>${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</select></div>
+  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">— Active Wallet —</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select></div>
 </div>
 <label class="cb"><input type="checkbox" id="f-auto" ${r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'"/> ✅ Enable Auto-Buy</label>
 <div id="autobuy-fields" style="display:${r.auto_buy?'block':'none'}" class="mt-8">
@@ -381,23 +563,23 @@ window.openChannelForm=async function(id){
 
 function renderTPLevel(idx,percent,ratio){
   return`<div class="flex gap-6 items-center mb-8 wrap">
-  <div style="flex:1;min-width:80px"><input type="number" class="tp-pct" value="${percent||''}" placeholder="% gain" style="font-size:12px"/></div>
+  <div style="flex:1;min-width:80px"><input type="number" class="tp-pct" value="${percent||''}" placeholder="% gain" style="font-size:0.75rem"/></div>
   <span class="text-muted text-sm">→ sell</span>
-  <div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" value="${ratio||''}" placeholder="%" style="font-size:12px"/></div>
+  <div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" value="${ratio||''}" placeholder="%" style="font-size:0.75rem"/></div>
   <button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">✕</button>
 </div>`;}
 
 window.addTPLevel=function(){
   const c=$('#tp-levels-container');
   const d=document.createElement('div');d.className='flex gap-6 items-center mb-8 wrap';
-  d.innerHTML=`<div style="flex:1;min-width:80px"><input type="number" class="tp-pct" placeholder="% gain" style="font-size:12px"/></div><span class="text-muted text-sm">→ sell</span><div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" placeholder="%" style="font-size:12px"/></div><button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">✕</button>`;
+  d.innerHTML=`<div style="flex:1;min-width:80px"><input type="number" class="tp-pct" placeholder="% gain" style="font-size:0.75rem"/></div><span class="text-muted text-sm">→ sell</span><div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" placeholder="%" style="font-size:0.75rem"/></div><button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">✕</button>`;
   c.appendChild(d);
 };
 
 window.submitChannelForm=async function(id){
   const isNew=id===null||id==='null';
   if(isNew){
-    const u=$('#f-ch').value.trim().replace('@','');if(!u)return toast('Username required','err');
+    let u=$('#f-ch').value.trim().replace(/https?:\/\/t\.me\//,'').replace('@','');if(!u)return toast('Channel required','err');
     const r2=await api('/channels',{method:'POST',body:JSON.stringify({username:u,display_name:$('#f-ch-name').value.trim()})});
     id=r2.id||(await api('/channels?limit=1')).find(c=>c.channel_username===u)?.id;
     if(!id)return toast('Failed to create channel','err');
@@ -425,22 +607,23 @@ window.submitChannelForm=async function(id){
     tp_levels:tps,
     wallet_group_id:parseInt($('#f-wg').value)||0,
     auto_buy:$('#f-auto').checked,
+    track_only:$('#f-track').checked,
   })});
   closeModal();toast(isNew?'Channel added ✅':'Channel updated ✅','ok');renderPage('channels');
 };
 
-// ═══ POSITIONS (with detail analysis) ═══
+// ═══ POSITIONS ───
 async function renderPositions(){
   const[open,all]=await Promise.all([api('/positions'),api('/positions/all')]);
   const closed=all.filter(t=>t.status==='closed');
-  return`<div class="page-header"><h2>Positions</h2><div class="sub">Manage open trades, view position details, sell or set TP/SL</div></div>
+  return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view position details, sell or set TP/SL</div></div>
 <div class="card">
   <div class="tabs"><div class="tab active" data-tab="pos-open">Open (${open.length})</div><div class="tab" data-tab="pos-closed">Closed (${closed.length})</div></div>
   <div id="pos-open" class="tab-content active">
-    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>MC</th><th>TP/SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">$${t.buy_price_usd?Number(t.buy_price_usd).toFixed(8):'?'}</td><td class="text-sm">${t.take_profit_percent?'TP '+t.take_profit_percent+'%':'-'}/${t.stop_loss_percent?'SL '+t.stop_loss_percent+'%':'-'}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:30px"><p>No open positions</p></div>`}
+    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>MC</th><th>TP/SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">$${t.buy_price_usd?Number(t.buy_price_usd).toFixed(8):'?'}</td><td class="text-sm">${t.take_profit_percent?'TP '+t.take_profit_percent+'%':'-'}/${t.stop_loss_percent?'SL '+t.stop_loss_percent+'%':'-'}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No open positions</p></div>`}
   </div>
   <div id="pos-closed" class="tab-content">
-    ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&L</th><th>ROI</th><th>Closed</th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:30px"><p>No closed positions</p></div>`}
+    ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&L</th><th>ROI</th><th>Closed</th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No closed positions</p></div>`}
   </div>
 </div>`;}
 
@@ -464,7 +647,7 @@ window.viewPosition=async function(id){
   <div class="item"><div class="lbl">Status</div><div class="val">${sb(t.buy_status)}</div></div>
   <div class="item"><div class="lbl">Created</div><div class="val text-sm">${fmtTime(t.created_at)}</div></div>
 </div>
-${t.strategy_orders?.length?`<h3 style="font-size:13px;margin-top:14px;color:var(--text2);margin-bottom:6px">Strategy Orders</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Target</th><th>Status</th></tr></thead><tbody>${t.strategy_orders.map(o=>`<tr><td>${o.sub_order_type||o.order_type}</td><td class="mono">$${o.check_price?Number(o.check_price).toFixed(8):'?'}</td><td>${sb(o.status)}</td></tr>`).join('')}</tbody></table></div>`:''}
+${t.strategy_orders?.length?`<h3 style="font-size:0.8rem;margin-top:1rem;color:var(--text2);font-weight:600;margin-bottom:0.4rem">Strategy Orders</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Target</th><th>Status</th></tr></thead><tbody>${t.strategy_orders.map(o=>`<tr><td>${o.sub_order_type||o.order_type}</td><td class="mono">$${o.check_price?Number(o.check_price).toFixed(8):'?'}</td><td>${sb(o.status)}</td></tr>`).join('')}</tbody></table></div>`:''}
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button>${t.status==='open'?`<button class="btn btn-g" onclick="closeModal();openSell(${id})">Sell</button>`:''}</div>`);
 };
 
@@ -498,245 +681,110 @@ window.execSell=async function(tradeId){
   }
 };
 
-// ═══ SCRAPER ═══
+// ═══ SCRAPER ───
 async function renderScraper(){
   const[status,logs]=await Promise.all([api('/scraper/status'),api('/scraper/logs?limit=300')]);
-  return`<div class="page-header"><h2>Scraper</h2><div class="sub">Monitor scraper status and activity logs</div></div>
-<div class="stats">${status.length?status.map(s=>`<div class="stat ${s.active?(s.error_count>0?'yellow':'green'):'red'}"><div class="num" style="font-size:18px">${s.signal_count||0}</div><div class="lbl">${s.display_name||s.channel_username}<br><span class="text-muted" style="font-size:10px">${s.active?(s.error_count>0?'⚠️ '+s.error_count+' errors':'🟢 active'):'⏸ paused'}</span></div></div>`):`<div class="stat"><div class="num" style="font-size:18px">—</div><div class="lbl">No channels</div></div>`}</div>
+  return`<div class="page-header"><span class="eyebrow">Monitoring</span><h2>Scraper</h2><div class="sub">Monitor scraper status and activity logs</div></div>
+<div class="stats">${status.length?status.map(s=>`<div class="stat ${s.active?(s.error_count>0?'yellow':'green'):'red'}"><div class="num" style="font-size:1.25rem">${s.signal_count||0}</div><div class="lbl">${s.display_name||s.channel_username}<br><span class="text-muted" style="font-size:0.6rem">${s.active?(s.error_count>0?'⚠️ '+s.error_count+' errors':'🟢 active'):'⏸ paused'}</span></div></div>`):`<div class="stat"><div class="num" style="font-size:1.25rem">—</div><div class="lbl">No channels</div></div>`}</div>
 <div class="card"><div class="card-h"><h3>Activity</h3></div>
   ${logs.length?`<div style="max-height:350px;overflow-y:auto">${logs.map(l=>`<div class="log-line"><span class="log-time">${fmtShort(l.created_at)}</span><span class="log-lv ${l.level}">${l.level}</span><span class="log-msg">${l.channel_username?'['+esc(l.channel_username)+'] ':''}${esc(l.message)}</span></div>`).join('')}</div>`:`<div class="empty-state"><p>No activity</p></div>`}
 </div>`;}
 
-// ═══ TELEGRAM (Self-service setup) ═══
-async function renderTelegram(){
-  const sessions=await api('/telegram/sessions');
-  return`<div class="page-header"><h2>Telegram</h2><div class="sub">Set up your own Telegram account for signal scraping. API ID/Hash from my.telegram.org/apps</div></div>
-<div class="card"><div class="card-h"><h3>${sessions.length} Session${sessions.length!==1?'s':''}</h3><button class="btn btn-p btn-sm" onclick="openTelegramSetup()">+ New Session</button></div>
-${sessions.length?sessions.map(s=>renderTelegramSession(s)).join(''):
-`<div class="empty-state"><div class="ico">✈️</div><h4>No Telegram sessions</h4><p>Add your Telegram account to start listening on channels.</p><button class="btn btn-p mt-12" onclick="openTelegramSetup()">+ New Session</button></div>`}
-</div>`;}
 
-function renderTelegramSession(s){
-  const st=s.status;
-  const stMap={pending:'badge-y Pending',connecting:'badge-b Connecting','needs_otp':'badge-y Needs OTP',active:'badge-g Active',error:'badge-r Error',inactive:'badge-gr Inactive'};
-  const[c,l]=(stMap[st]||'badge-gr '+st).split(' ');
-  const isActive=st==='active';
-  const hasSession=!!s.session_string && s.session_string!=='';
-  return`<div class="channel-card">
-  <div class="top">
-    <div class="name">${esc(s.name||'Telegram')} <span class="badge ${c}">${l}</span></div>
-    <div class="actions">
-      ${hasSession&&!isActive?`<button class="btn btn-sm btn-g" onclick="activateSession(${s.id})">▶ Activate</button>`:''}
-      <button class="btn btn-sm btn-r" onclick="delSession(${s.id})">✕</button>
-    </div>
-  </div>
-  <div class="chips">
-    <span class="chip">ID: ${s.api_id}</span>
-    <span class="chip">Hash: ${s.api_hash}</span>
-    ${s.phone?`<span class="chip">${esc(s.phone)}</span>`:''}
-    ${s.created_at?`<span class="chip">${fmtTime(s.created_at)}</span>`:''}
-  </div>
-  ${s.error_message?`<div class="text-sm" style="color:var(--red);margin-top:4px">❌ ${esc(s.error_message)}</div>`:''}
-</div>`;}
 
-window.openTelegramSetup=function(){
-  openModal(`<h2>New Telegram Session</h2>
-<p class="text-sm text-muted mb-12">Get your API ID and Hash from <a href="https://my.telegram.org/apps" target="_blank" style="color:var(--accent)">my.telegram.org/apps</a></p>
-<div class="form-grid">
-  <div class="form-group"><label>Session Name</label><input id="tg-name" value="My Account" placeholder="My Telegram"/></div>
-  <div class="form-group"><label>API ID</label><input id="tg-api-id" type="number" placeholder="123456"/></div>
-  <div class="form-group"><label>API Hash</label><input id="tg-api-hash" placeholder="your_api_hash"/></div>
-  <div class="form-group"><label>Phone Number</label><input id="tg-phone" placeholder="+628123456789"/></div>
-</div>
-<div id="tg-otp-area" class="hide">
-  <div class="form-group"><label>OTP Code from Telegram</label><input id="tg-otp" placeholder="12345"/></div>
-</div>
-<div class="modal-actions">
-  <button class="btn" onclick="closeModal()">Cancel</button>
-  <button class="btn btn-p" id="tg-submit-btn" onclick="submitTelegramSetup()">Connect</button>
-</div>`);
-};
-
-let tgSessionId=null;
-let tgPoll=null;
-function stopTgPoll(){if(tgPoll){clearInterval(tgPoll);tgPoll=null}}
-function startTgPoll(sessionId){
-  stopTgPoll();
-  tgPoll=setInterval(async()=>{
-    try{
-      const s=await api('/telegram/sessions/'+sessionId);
-      if(s.status==='active'){stopTgPoll();closeModal();toast('Telegram connected! ✅','ok');renderPage('telegram')}
-      else if(s.status==='needs_otp'){
-        $('#tg-otp-area').classList.remove('hide');
-        const btn=$('#tg-submit-btn');
-        btn.textContent='Submit OTP';btn.disabled=false;
-        toast('OTP sent! Enter code below.','info');
-      }
-      else if(s.status==='error'){stopTgPoll();closeModal();toast('Error: '+(s.error_message||'Connection failed'),'err');renderPage('telegram')}
-    }catch(err){/* ignore polling errors */}
-  },1500);
-}
-
-window.submitTelegramSetup=async function(){
-  const btn=$('#tg-submit-btn');
-  if(btn.textContent==='Submit OTP'){
-    const code=$('#tg-otp').value.trim();
-    if(!code)return toast('Enter OTP code','err');
-    try{
-      await api('/telegram/sessions/'+tgSessionId+'/otp',{method:'POST',body:JSON.stringify({code})});
-      toast('OTP submitted! Connecting...','info');
-      btn.textContent='Connecting...';btn.disabled=true;
-      startTgPoll(tgSessionId);
-    }catch(err){toast(err.message,'err')}
-    return;
-  }
-
-  const name=$('#tg-name').value.trim()||'My Account';
-  const apiId=$('#tg-api-id').value.trim();
-  const apiHash=$('#tg-api-hash').value.trim();
-  const phone=$('#tg-phone').value.trim();
-  if(!apiId||!apiHash||!phone)return toast('API ID, Hash, and Phone required','err');
-
-  try{
-    btn.textContent='Connecting...';btn.disabled=true;
-    const r=await api('/telegram/sessions',{method:'POST',body:JSON.stringify({name,api_id:parseInt(apiId),api_hash:apiHash,phone})});
-    tgSessionId=r.id;
-    toast('Connecting to Telegram...','info');
-    startTgPoll(r.id);
-  }catch(err){
-    btn.textContent='Connect';btn.disabled=false;
-    toast(err.message,'err');
-  }
-};
-
-window.activateSession=async function(id){
-  try{
-    await api('/telegram/sessions/'+id+'/activate',{method:'POST'});
-    toast('Telegram activated ✅','ok');
-    renderPage('telegram');
-  }catch(err){toast(err.message,'err')}
-};
-
-window.delSession=async function(id){
-  if(!confirm('Delete this Telegram session?'))return;
-  await api('/telegram/sessions/'+id,{method:'DELETE'});
-  toast('Deleted','info');
-  renderPage('telegram');
-};
-
-// ═══ WALLETS (Import/Export) ═══
+// ═══ WALLETS ───
 async function renderWallets(){
-  const[wallets,groups]=await Promise.all([api('/wallets'),api('/wallet-groups')]);
-  return`<div class="page-header"><h2>Wallets</h2><div class="sub">Import and export wallets for the scraper. Group wallets for multi-wallet buying.</div></div>
-<div class="card"><div class="card-h"><h3>${wallets.length} Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openImportWallet()">📥 Import</button><button class="btn btn-sm btn-p" onclick="openAddWallet()">+ Add</button></div></div>
-  ${wallets.length?`<div class="table-wrap"><table><thead><tr><th>Address</th><th>Label</th><th>Status</th><th></th></tr></thead><tbody>${wallets.map(w=>`<tr><td><span class="mono addr" title="${w.address}">${w.address}</span></td><td>${w.label||'-'}</td><td>${w.active?'<span class="badge badge-g">Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW(${w.id})">Activate</button>'}</td><td><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy">📋</button><button class="btn btn-sm btn-r" onclick="delW(${w.id})">✕</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">👛</div><h4>No wallets</h4><p>Import or add wallets for the scraper to use.</p></div>`}
+  const[data,groups]=await Promise.all([api('/wallets/portfolio'),api('/wallet-groups')]);
+  const wallets=data.wallets||[];
+  return`<div class="page-header"><span class="eyebrow">Buy Wallets</span><h2>Wallets</h2><div class="sub">Import or generate wallets for auto-buy execution. Set active wallet or group in channel rules.</div></div>
+<div class="card"><div class="card-h"><h3>${wallets.length} Buy Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openGenerateWallet()">✨ Generate</button><button class="btn btn-sm btn-p" onclick="openImportBuyWallet()">+ Import</button></div></div>
+  ${wallets.length?`<div class="table-wrap"><table><thead><tr><th>Wallet</th><th>Balance</th><th>Status</th><th></th></tr></thead><tbody>${wallets.map(w=>`<tr><td><div class="mono addr" style="max-width:220px" title="${w.address}">${w.address}</div><div class="text-muted text-sm">${w.label||'Buy Wallet'}</div></td><td>${w.balance?`<span class="badge badge-g">${w.balance} SOL</span>`:'<span class="text-muted text-sm">—</span>'}</td><td>${w.active?'<span class="badge badge-g">Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW(${w.id})">Activate</button>'}</td><td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio(${w.id})">Portfolio</button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')">📋</button><button class="btn btn-sm btn-r" onclick="delW(${w.id})">✕</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">👛</div><h4>No buy wallets</h4><p>Import wallets to enable auto-buy on filtered signals.</p></div>`}
 </div>
 <div class="card"><div class="card-h"><h3>Wallet Groups</h3><button class="btn btn-sm" onclick="openGroupForm()">+ Group</button></div>
-  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:8px">${groups.map(g=>`<span class="badge badge-o" style="cursor:pointer" onclick="viewGroup(${g.id})">${esc(g.name)} (${g.member_count||0})</span>`).join('')}</div>`:`<div class="text-muted text-sm">No groups. Groups enable multi-wallet buy on a single channel.</div>`}
+  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.5rem">${groups.map(g=>`<span class="badge badge-o" style="cursor:pointer" onclick="viewGroup(${g.id})">${esc(g.name)} (${g.member_count||0})</span>`).join('')}</div>`:`<div class="text-muted text-sm">No groups — each channel rule buys from a single wallet or spread across a group.</div>`}
 </div>`;}
 
-window.openAddWallet=function(){
-  openModal(`<h2>Add Wallet</h2><div class="form-group"><label>Address</label><input id="f-wa" placeholder="Solana address"/></div><div class="form-group"><label>Label</label><input id="f-wl" placeholder="Main wallet"/></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitWallet()">Add</button></div>`);
-};
-window.submitWallet=async function(){const a=$('#f-wa').value.trim(),l=$('#f-wl').value.trim();if(!a)return toast('Address required','err');await api('/wallets',{method:'POST',body:JSON.stringify({address:a,label:l})});closeModal();toast('Added','ok');renderPage('wallets')};
 window.actW=async function(id){await api('/wallets/'+id+'/activate',{method:'POST'});toast('Activated','ok');renderPage('wallets')};
-window.delW=async function(id){if(!confirm('Remove?'))return;await api('/wallets/'+id,{method:'DELETE'});toast('Removed','info');renderPage('wallets')};
+window.delW=async function(id){if(!confirm('Remove this buy wallet?'))return;await api('/wallets/'+id,{method:'DELETE'});toast('Removed','info');renderPage('wallets')};
 window.copyAddr=function(a){navigator.clipboard.writeText(a);toast('Copied!','info')};
 
-window.openImportWallet=function(){
-  openModal(`<h2>Import Wallets</h2>
-<p class="text-sm text-muted mb-12">Paste wallet addresses below. One per line, with optional label after a comma.</p>
-<div class="tabs" style="margin-bottom:8px">
-  <div class="tab active" data-import-tab="csv" onclick="switchImportFormat('csv')">CSV</div>
-  <div class="tab" data-import-tab="raw" onclick="switchImportFormat('raw')">Plain</div>
-</div>
-<div id="import-csv" class="tab-content active">
-  <div class="form-group">
-    <label>Addresses <span class="text-muted" style="font-weight:400">— address,label per line</span></label>
-    <textarea id="f-import" rows="8" placeholder="e.g.&#10;Abc123...xyz,Main Wallet&#10;Def456...uvw,Trading Bot&#10;Ghi789...rst" style="font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
-  </div>
-</div>
-<div id="import-raw" class="tab-content">
-  <div class="form-group">
-    <label>Raw Addresses <span class="text-muted" style="font-weight:400">— one address per line, no labels</span></label>
-    <textarea id="f-import-raw" rows="8" placeholder="Paste raw addresses here&#10;one per line&#10;no commas needed" style="font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
-  </div>
-</div>
-<div id="import-preview" class="hide" style="background:var(--bg);border-radius:var(--radius-sm);padding:10px;margin-top:8px">
-  <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Preview</div>
-  <div id="import-preview-list" style="font-size:11.5px;max-height:100px;overflow-y:auto;font-family:'SF Mono','JetBrains Mono',monospace"></div>
-  <div style="font-size:11px;color:var(--text2);margin-top:4px" id="import-preview-count"></div>
-</div>
-<div class="modal-actions" style="justify-content:space-between;align-items:center">
-  <div class="flex gap-6 items-center">
-    <label class="cb" style="font-size:11.5px;margin:0"><input type="checkbox" id="f-import-clear"/> Clear existing before import</label>
-  </div>
-  <div class="flex gap-6">
-    <button class="btn" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-p" onclick="submitImport()" id="import-btn">Import</button>
-  </div>
-</div>`);
-  document.getElementById('f-import').addEventListener('input', updateImportPreview);
-  document.getElementById('f-import-raw').addEventListener('input', updateImportPreview);
+window.openGenerateWallet=async function(){
+  const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
+  if(!r)return toast('Failed to generate wallet','err');
+  openModal(`<h2>✨ Wallet Generated</h2>
+<p class="text-sm text-muted mb-12">New wallet created. Save the private key — it will only be shown once.</p>
+<div class="form-group"><label>Address</label><input value="${r.address}" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer"/></div>
+<div class="form-group"><label>Private Key <span style="color:var(--red)">(save this!)</span></label><textarea rows="2" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;color:var(--yellow)">${r.privateKey}</textarea></div>
+<div class="form-group"><label>Label</label><input id="f-gl" placeholder="Generated Wallet"/></div>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitGeneratedWallet('${r.address}','${r.privateKey}')">Save Wallet</button></div>`);
+};
+window.submitGeneratedWallet=async function(addr,pk){
+  const lbl=$('#f-gl').value.trim()||'Generated Wallet';
+  await api('/wallets',{method:'POST',body:JSON.stringify({address:addr,label:lbl,private_key:pk})});
+  closeModal();toast('Wallet saved ✅','ok');renderPage('wallets');
 };
 
-window.switchImportFormat=function(fmt){
-  $$('[data-import-tab]').forEach(t=>t.classList.toggle('active',t.dataset.importTab===fmt));
-  ['csv','raw'].forEach(f=>document.getElementById('import-'+f).classList.toggle('active',f===fmt));
-  updateImportPreview();
+window.openImportBuyWallet=function(){
+  openModal(`<h2>Import Buy Wallet</h2>
+<p class="text-sm text-muted mb-12">Paste private key from Phantom, Solflare, or GMGN.</p>
+<div class="form-group"><label>Private Key</label><textarea id="f-pk" rows="2" style="font-family:var(--font-mono);font-size:0.75rem;resize:vertical"></textarea></div>
+<div class="form-group"><label>Label</label><input id="f-wl" placeholder="Main Wallet"/></div>
+<div class="form-group"><label>Address</label><input id="f-wa" placeholder="Auto-filled from private key if known"/></div>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitBuyWallet()">Import</button></div>`);
 };
 
-function parseImportText(){
-  const activeTab=$$('[data-import-tab].active')[0]?.dataset.importTab||'csv';
-  const raw=activeTab==='csv'?$('#f-import').value:$('#f-import-raw').value;
-  const lines=raw.split('\n').map(s=>s.trim()).filter(Boolean);
-  if(activeTab==='csv'){
-    return lines.map(line=>{
-      const parts=line.split(',').map(s=>s.trim());
-      return{address:parts[0],label:parts.slice(1).join(', ')||''};
-    });
-  }
-  return lines.map(a=>({address:a,label:''}));
-}
+window.submitBuyWallet=async function(){
+  const pk=$('#f-pk').value.trim();
+  const addr=$('#f-wa').value.trim();
+  const lbl=$('#f-wl').value.trim();
+  if(!pk)return toast('Private key required to sign buys','err');
+  await api('/wallets',{method:'POST',body:JSON.stringify({address:addr||'pending',label:lbl||'Buy Wallet',private_key:pk})});
+  closeModal();toast('Buy wallet imported ✅','ok');renderPage('wallets')
+};
 
-function updateImportPreview(){
-  const wallets=parseImportText();
-  const preview=$('#import-preview');
-  const list=$('#import-preview-list');
-  const count=$('#import-preview-count');
-  if(!preview||wallets.length===0){if(preview)preview.classList.add('hide');return}
-  preview.classList.remove('hide');
-  const isValidAddr=w=>/^[A-Za-z0-9]{32,44}$/.test(w.address);
-  const valid=wallets.filter(isValidAddr);
-  const invalid=wallets.filter(w=>!isValidAddr(w));
-  list.innerHTML=wallets.slice(0,5).map(w=>{
-    const ok=isValidAddr(w);
-    return`<div style="color:${ok?'var(--green)':'var(--red)'};padding:1px 0">${ok?'✅':'❌'} ${w.address.slice(0,8)}...${w.address.slice(-4)}${w.label?' <span style="color:var(--text3)">→ '+esc(w.label)+'</span>':''}</div>`;
-  }).join('');
-  if(wallets.length>5)list.innerHTML+=`<div style="color:var(--text3)">...and ${wallets.length-5} more</div>`;
-  count.innerHTML=(valid.length>0?`<span style="color:var(--green)">${valid.length} valid</span>`:'')+(invalid.length>0?` <span style="color:var(--red)">${invalid.length} invalid</span>`:'')+` <span style="color:var(--text2)">· ${wallets.length} total</span>`;
-}
-
-window.submitImport=async function(){
-  const wallets=parseImportText();
-  const isValidAddr=w=>/^[A-Za-z0-9]{32,44}$/.test(w.address);
-  const valid=wallets.filter(isValidAddr);
-  if(valid.length===0)return toast('No valid Solana addresses found — check format (32-44 chars, alphanumeric)','err');
-  if($('#f-import-clear').checked){
-    // clear all existing wallets first
-    const existing=await api('/wallets');
-    for(const w of existing)await api('/wallets/'+w.id,{method:'DELETE'});
-  }
-  await api('/wallets/import',{method:'POST',body:JSON.stringify({wallets:valid})});
-  const invalidCount=wallets.length-valid.length;
-  closeModal();
-  toast(`Imported ${valid.length} wallet${valid.length!==1?'s':''} ✅${invalidCount?` (${invalidCount} skipped)`:''}`,'ok');
-  renderPage('wallets');
+window.viewPortfolio=async function(id){
+  const w=(await api('/wallets/portfolio')).wallets.find(x=>x.id===id);
+  if(!w)return toast('Wallet not found','err');
+  const pf=await api(`/wallets/${id}/portfolio`).catch(()=>null);
+  const balance=w.balance||'0';
+  const stats=pf?.stats;
+  const holdings=pf?.holdings?.holdings||[];
+  const activities=pf?.activity?.activities||[];
+  const realized = stats?.realized_profit ? Number(stats.realized_profit).toFixed(2) : '—';
+  const winrate = stats?.winrate ? Number(stats.winrate*100).toFixed(0)+'%' : '—';
+  openModal(`<h2>Portfolio · ${w.label||'Buy Wallet'}</h2>
+<p class="text-sm text-muted mb-8 mono" style="word-break:break-all">${w.address}</p>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:1rem">
+  <div style="padding:0.7rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Balance</div><div style="font-weight:700;font-size:1.1rem">${balance} SOL</div></div>
+  <div style="padding:0.7rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">P&L (7d)</div><div style="font-size:1.1rem"><span class="badge ${stats?.realized_profit>=0?'badge-g':'badge-r'}">${realized}</span></div></div>
+  <div style="padding:0.7rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Win Rate</div><div style="font-size:1.1rem;font-weight:700">${winrate}</div></div>
+</div>
+<div class="tabs" style="margin-bottom:0.75rem">
+  <div class="tab active" data-tab="pf-holdings" onclick="switchPfTab('holdings')">Holdings${holdings.length?' ('+holdings.length+')':''}</div>
+  <div class="tab" data-tab="pf-activity" onclick="switchPfTab('activity')">Activity</div>
+</div>
+<div id="pf-holdings" class="tab-content active">
+${holdings.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Balance</th><th>Value</th><th>P&L</th></tr></thead><tbody>${holdings.slice(0,20).map(h=>{
+  const tok=h.token||{}; const profit=h.total_profit||0;
+  return`<tr><td><span class="mono text-sm">${tok.symbol||addrShort(tok.address||'')}</span></td><td>${Number(h.balance||0).toFixed(4)}</td><td>$${Number(h.usd_value||0).toFixed(2)}</td><td>${profit?`<span class="badge ${profit>=0?'badge-g':'badge-r'}">${profit>=0?'+':''}$${profit.toFixed(2)}</span>`:'-'}</td></tr>`;
+}).join('')}</tbody></table></div>`:'<div class="text-muted text-sm" style="padding:1rem 0">No holdings.</div>'}
+</div>
+<div id="pf-activity" class="tab-content">
+${activities.length?`<div style="max-height:300px;overflow-y:auto">${activities.slice(0,30).map(a=>{
+  const t=a.token||{}; const ts=a.timestamp?new Date(a.timestamp*1e3).toLocaleString():'';
+  return`<div class="log-line"><span class="log-time">${ts}</span><span class="log-lv ${a.type==='buy'?'success':'error'}">${a.type}</span><span>${t.symbol||addrShort(t.address)} ${Number(a.token_amount||0).toFixed(4)} @ $${Number(a.price_usd||0).toFixed(8)}</span></div>`;
+}).join('')}</div>`:'<div class="text-muted text-sm" style="padding:1rem 0">No recent activity.</div>'}
+</div>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+};
+window.switchPfTab=function(t){
+  $$('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab==='pf-'+t));
+  ['holdings','activity'].forEach(x=>document.getElementById('pf-'+x).classList.toggle('active',x===t));
 };
 
 window.openGroupForm=async function(){
   const w=await api('/wallets');
-  openModal(`<h2>Create Wallet Group</h2><div class="form-group"><label>Group Name</label><input id="f-gn" placeholder="My Group"/></div><div class="form-group"><label>Description</label><input id="f-gd" placeholder="Optional"/></div><div class="form-group"><label>Add Wallets</label><div style="display:flex;flex-wrap:wrap;gap:4px">${w.map(w=>`<label class="cb" style="font-size:11.5px"><input type="checkbox" class="gw" value="${w.id}"/> ${w.label||addrShort(w.address)}</label>`).join('')}</div></div>
+  openModal(`<h2>Create Wallet Group</h2><div class="form-group"><label>Group Name</label><input id="f-gn" placeholder="My Group"/></div><div class="form-group"><label>Description</label><input id="f-gd" placeholder="Optional"/></div><div class="form-group"><label>Add Wallets</label><div style="display:flex;flex-wrap:wrap;gap:0.25rem">${w.map(w=>`<label class="cb" style="font-size:0.75rem"><input type="checkbox" class="gw" value="${w.id}"/> ${w.label||addrShort(w.address)}</label>`).join('')}</div></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitGroup()">Create</button></div>`);
 };
 window.submitGroup=async function(){
@@ -753,11 +801,11 @@ window.viewGroup=async function(id){
   <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
 };
 
-// ═══ SETTINGS ═══
+// ═══ SETTINGS ───
 async function renderSettings(){
-  const[settings,setup]=await Promise.all([api('/settings'),api('/setup')]);
-  return`<div class="page-header"><h2>Settings</h2></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  const[settings,setup,tg]=await Promise.all([api('/settings'),api('/setup'),api('/telegram/status')]);
+  return`<div class="page-header"><span class="eyebrow">Configuration</span><h2>Settings</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
   <div class="card"><div class="card-h"><h3>⚙️ Config</h3></div>
     <div class="form-grid">
       <div class="form-group"><label>Default Buy (SOL)</label><input id="s-buy" value="${settings.default_buy_amount||'0.01'}" type="number" step=".001"/></div>
@@ -767,158 +815,172 @@ async function renderSettings(){
     <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveSettings()">Save</button></div>
   </div>
   <div class="card"><div class="card-h"><h3>🔐 Status</h3></div>
-    <div style="display:grid;gap:6px">${[
-      ['GMGN',setup.gmgnConfigured,'✅','❌'],
-      ['Telegram',setup.telegramConfigured,'✅','Set up via Telegram page'],
-      ['Tg Active',setup.telegramActive,'✅','❌'],
+    <div style="display:grid;gap:0.35rem">${[
+      ['API Key',setup.gmgnConfigured,'✅','❌'],
       ['Channels',setup.hasChannels,setup.hasChannels?'✅':'0','Add'],
-    ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px"><span>${l}</span><span class="${ok?'badge-g':'badge-gr'} badge">${ok?y:n}</span></div>`).join('')}</div>
+      ['Telegram',tg.connected,'✅ Connected','⏸ '+(!tg.hasSession?'Not set up':'Disconnected')],
+    ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;padding:0.45rem 0.65rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.75rem"><span>${l}</span><span class="${ok?'badge-g':'badge-gr'} badge">${ok?y:n}</span></div>`).join('')}</div>
   </div>
 </div>
+  <div class="card"><div class="card-h"><h3>📡 Telegram</h3>${tg.connected?'<button class="btn btn-sm btn-r" onclick="tgDisconnect()">Disconnect</button>':'<button class="btn btn-sm btn-p" onclick="showLogin()">Connect</button>'}</div>
+  <div class="text-sm text-muted">${tg.connected?'Bot is connected to Telegram and listening for signals.':(tg.hasSession?'Session saved but not connected. Click Connect.':'No Telegram session. Set up via API ID + OTP.')}</div>
+</div>
 <div class="card"><div class="card-h"><h3>📝 Environment</h3></div>
-  <div class="text-sm text-muted">GMGN Key: <span class="mono">${settings.gmgn_api_key||'Not set'}</span><br>Get credentials: <a href="https://gmgn.ai/ai" target="_blank" style="color:var(--accent)">gmgn.ai</a> · <a href="https://my.telegram.org/apps" target="_blank" style="color:var(--accent)">Telegram</a></div>
+    <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key||'Not set'}</span></div>
 </div>`;}
+
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 
-// ═══ LOGIN (Telegram self-service — poll-based, non-blocking) ═══
-let loginSessionId=null;
-let loginPoll=null;
+window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'POST'});toast('Disconnected','info');renderPage('settings')};
+window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 
-function setLoginStatus(msg,type='info'){
-  const el=$('#login-status');
-  if(!el)return;
-  el.innerHTML=`<div class="login-badge ${type}">${type==='ok'?'✅':type==='err'?'❌':type==='wait'?'⏳':'ℹ️'} ${esc(msg)}</div>`;
+// ═══ LOGIN ───
+let tgLoginToken = null;
+
+function showLogin(){
+  $('#loginOverlay').style.display='flex';
+  $('#loginError').style.display='none';
+  $('#tg-login-step1').style.display='flex';
+  $('#tg-login-step2').style.display='none';
+  $('#tg-login-step3').style.display='none';
+  $('#page-dashboard').innerHTML='';
+  const savedId = localStorage.getItem('tg_api_id');
+  const savedHash = localStorage.getItem('tg_api_hash');
+  const savedPhone = localStorage.getItem('tg_phone');
+  if (savedId) $('#tg-login-api-id').value = savedId;
+  if (savedHash) $('#tg-login-api-hash').value = savedHash;
+  if (savedPhone) $('#tg-login-phone').value = savedPhone;
 }
 
-function stopLoginPoll(){if(loginPoll){clearInterval(loginPoll);loginPoll=null}}
-
-function startLoginPoll(sessionId,onActive,onError){
-  stopLoginPoll();
-  loginPoll=setInterval(async()=>{
-    try{
-      const s=await api('/telegram/sessions/'+sessionId);
-      if(s.status==='active'){stopLoginPoll();onActive(s)}
-      else if(s.status==='needs_otp'){
-        stopLoginPoll();
-        $('#login-step1').classList.add('hide');
-        $('#login-step2').classList.remove('hide');
-        setLoginStatus('OTP sent to your Telegram! Enter code below.','ok');
-        $('#lg-otp').focus();
-      }
-      else if(s.status==='error'){stopLoginPoll();onError(s.error_message||'Connection failed')}
-    }catch(err){/* polling — ignore transient errors */}
-  },1500);
-}
-
-window.loginStep1=async function(){
-  const apiId=$('#lg-api-id').value.trim();
-  const apiHash=$('#lg-api-hash').value.trim();
-  const phone=$('#lg-phone').value.trim();
-  if(!apiId||!apiHash||!phone)return setLoginStatus('API ID, API Hash, and Phone required','err');
-
-  const btn=$('#lg-btn1');
-  btn.disabled=true;btn.textContent='Connecting...';
-  setLoginStatus('Connecting to Telegram...','wait');
-
-  try{
-    const r=await api('/telegram/sessions',{method:'POST',body:JSON.stringify({name:'Web Login',api_id:parseInt(apiId),api_hash:apiHash,phone})});
-    loginSessionId=r.id;
-    setLoginStatus('Connecting... waiting for OTP','wait');
-
-    startLoginPoll(r.id,
-      // onActive
-      async (s)=>{
-        await api('/telegram/sessions/'+s.id+'/activate',{method:'POST'});
-        setLoginStatus('Connected! Loading dashboard...','ok');
-        setTimeout(()=>{$('#login-page').style.display='none';initDashboard()},300);
-      },
-      // onError
-      (errMsg)=>{
-        setLoginStatus(errMsg,'err');
-        btn.disabled=false;btn.textContent='Connect Telegram';
-      }
-    );
-  }catch(err){
-    setLoginStatus(err.message,'err');
-    btn.disabled=false;btn.textContent='Connect Telegram';
+window.tgLoginSendCode=async function(){
+  const apiId=$('#tg-login-api-id').value.trim();
+  const apiHash=$('#tg-login-api-hash').value.trim();
+  const phone=$('#tg-login-phone').value.trim();
+  if(!apiId||!apiHash||!phone)return tgLoginError('All fields required');
+  if($('#tg-login-remember').checked){
+    localStorage.setItem('tg_api_id',apiId);
+    localStorage.setItem('tg_api_hash',apiHash);
+    localStorage.setItem('tg_phone',phone);
   }
-};
-
-window.loginStep2=async function(){
-  const code=$('#lg-otp').value.trim();
-  if(!code)return setLoginStatus('Enter the OTP code','err');
-
-  const btn=$('#lg-btn2');
-  btn.disabled=true;btn.textContent='Verifying...';
-  setLoginStatus('Verifying OTP...','wait');
-
   try{
-    await api('/telegram/sessions/'+loginSessionId+'/otp',{method:'POST',body:JSON.stringify({code})});
-    setLoginStatus('Connecting...','wait');
-
-    startLoginPoll(loginSessionId,
-      async (s)=>{
-        await api('/telegram/sessions/'+s.id+'/activate',{method:'POST'});
-        setLoginStatus('Connected! Loading dashboard...','ok');
-        setTimeout(()=>{$('#login-page').style.display='none';initDashboard()},300);
-      },
-      (errMsg)=>{
-        setLoginStatus(errMsg,'err');
-        btn.disabled=false;btn.textContent='Verify & Enter';
-        $('#login-step2').classList.remove('hide');
-      }
-    );
-  }catch(err){
-    setLoginStatus(err.message,'err');
-    btn.disabled=false;btn.textContent='Verify & Enter';
-  }
+    const r=await fetch('/api/telegram/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiId:Number(apiId),apiHash,phone})}).then(x=>x.json());
+    if(r.error)return tgLoginError(r.error);
+    tgLoginToken=r.loginToken;
+    $('#tg-login-step1').style.display='none';
+    $('#tg-login-step2').style.display='flex';
+    $('#tg-login-code').focus();
+    $('#loginError').style.display='none';
+  }catch(err){tgLoginError(err.message)}
 };
 
-window.loginCancel=function(){
-  stopLoginPoll();
-  if(loginSessionId)api('/telegram/sessions/'+loginSessionId,{method:'DELETE'}).catch(()=>{});
-  loginSessionId=null;
-  $('#login-step2').classList.add('hide');
-  $('#login-step1').classList.remove('hide');
-  $('#lg-btn1').disabled=false;$('#lg-btn1').textContent='Connect Telegram';
-  setLoginStatus('');
-};
-
-// ═══ INIT ═══
-async function init(){
+window.tgLoginVerifyCode=async function(){
+  const code=$('#tg-login-code').value.trim();
+  if(!code)return tgLoginError('Enter OTP code');
   try{
-    const setup=await api('/setup');
-    if(setup.telegramActive){
-      $('#login-page').style.display='none';
-      initDashboard();
+    const r=await fetch('/api/telegram/verify-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginToken:tgLoginToken,code})}).then(x=>x.json());
+    if(r.error)return tgLoginError(r.error);
+    if(r.twoFactor){
+      $('#tg-login-2fa').style.display='block';
+      $('#tg-login-btn').textContent='Submit Password';
+      $('#tg-login-btn').onclick=tgLoginVerifyPassword;
+      $('#tg-login-password').focus();
+      if(r.hint)$('#loginError').textContent=r.hint;$('#loginError').style.display=r.hint?'block':'none';
     }else{
-      // Show login — check if there are sessions that just need activation
-      const sessions=await api('/telegram/sessions');
-      if(sessions.length>0){
-        const ready=sessions.find(s=>s.session_string&&s.session_string!==''&&s.status!=='active');
-        if(ready){
-          setLoginStatus('Session found — click Activate on Telegram page','info');
-        }
-      }
+      tgLoginDone();
     }
-  }catch(err){
-    // If can't reach API, still show dashboard
-    $('#login-page').style.display='none';
-    initDashboard();
+  }catch(err){tgLoginError(err.message)}
+};
+
+window.tgLoginVerifyPassword=async function(){
+  const pass=$('#tg-login-password').value.trim();
+  if(!pass)return tgLoginError('Enter password');
+  try{
+    const r=await fetch('/api/telegram/verify-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginToken:tgLoginToken,password:pass})}).then(x=>x.json());
+    if(r.error)return tgLoginError(r.error);
+    tgLoginDone();
+  }catch(err){tgLoginError(err.message)}
+};
+
+function tgLoginDone(){
+  $('#loginError').style.display='none';
+  $('#tg-login-step2').style.display='none';
+  $('#tg-login-step3').style.display='flex';
+  $('#tg-login-done-msg').textContent='Session saved. Loading dashboard...';
+  setTimeout(()=>{
+    $('#loginOverlay').style.display='none';
+    renderPage('dashboard');
+  },800);
+}
+
+function tgLoginError(msg){$('#loginError').textContent=msg;$('#loginError').style.display='block'}
+
+let _autoRefresh = null;
+
+async function refreshCurrentPage() {
+  if (!$('#modal').classList.contains('active')) {
+    const el = $('#page-'+cp);
+    if (el) {
+      try {
+        const fns = {dashboard:renderDashboard,positions:renderPositions,scraper:renderScraper};
+        if (fns[cp]) el.innerHTML = await fns[cp]();
+      } catch {}
+    }
   }
 }
 
-function initDashboard(){
+// ═══ SSE Real-time ───
+function connectSSE(){
+  const ev = new EventSource('/api/events');
+  ev.addEventListener('signal', e => {
+    const d = JSON.parse(e.data);
+    const tbl = $('#page-dashboard .signal-tbl');
+    if (tbl) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${esc(d.source_channel)}</td><td>${fmtCur(d.market_cap)}</td><td class="text-sm">${d.latency_ms?d.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(d.created_at)}</td>`;
+      tbl.prepend(tr);
+      if (tbl.children.length > 50) tbl.lastElementChild?.remove();
+    }
+    $('#navChanCount').textContent = String(Number($('#navChanCount').textContent||0)+1);
+  });
+  ev.addEventListener('trade', e => {
+    const d = JSON.parse(e.data);
+    const tbl = $('#page-dashboard .trade-tbl');
+    if (tbl) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${d.amount||'-'}</td><td>-</td><td class="text-sm">${d.signal_latency_ms?d.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${d.buy_latency_ms?d.buy_latency_ms+'ms':'-'}</td><td>${sb(d.status)}</td>`;
+      tbl.prepend(tr);
+      if (tbl.children.length > 50) tbl.lastElementChild?.remove();
+    }
+    $('#navPosCount').textContent = String(Number($('#navPosCount').textContent||0)+1);
+  });
+  ev.onerror = () => { ev.close(); setTimeout(connectSSE, 2000); };
+}
+
+
+// ═══ INIT ───
+async function initDashboard(){
+  const tg=await fetch('/api/telegram/status').then(r=>r.json()).catch(()=>({}));
+  if(!tg.connected){
+    if(tg.hasSession){
+      setTimeout(initDashboard, 2000);
+      return;
+    }
+    showLogin();
+    return;
+  }
   renderPage('dashboard');
+  connectSSE();
   setInterval(async()=>{
     try{
       const st=await api('/status');
-      $$('.nav-item[data-p="positions"] .count').textContent=st.openTrades;
-      $$('.nav-item[data-p="channels"] .count').textContent=st.channelCount;
+      $('#navPosCount').textContent=st.openTrades;
+      $('#navChanCount').textContent=st.channelCount;
+      document.querySelectorAll('.nav-item[data-p="positions"] .count').forEach(c=>c.textContent=st.openTrades);
+      document.querySelectorAll('.nav-item[data-p="channels"] .count').forEach(c=>c.textContent=st.channelCount);
     }catch{}
   },8000);
 }
-init();
+initDashboard();
 </script>
 </body>
 </html>

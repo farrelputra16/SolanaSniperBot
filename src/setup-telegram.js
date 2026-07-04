@@ -34,9 +34,9 @@ async function main() {
 
   const apiId = parseInt(env.TELEGRAM_API_ID || await q('TELEGRAM_API_ID: '));
   const apiHash = env.TELEGRAM_API_HASH || await q('TELEGRAM_API_HASH: ');
-  const phone = await q('Nomor telepon (format internasional, +62xxx): ');
+  const phone = await q('Phone number (international format, e.g. +1234567890): ');
 
-  console.log('\nMenyambungkan ke Telegram...\n');
+  console.log('\nConnecting to Telegram...\n');
 
   const { loginNewSession } = await import('./telegram.js');
   const { config } = await import('./config.js');
@@ -44,10 +44,10 @@ async function main() {
   let sessionStr;
   try {
     sessionStr = await loginNewSession(apiId, apiHash, phone, async () => {
-      return await q('Masukkan kode OTP dari Telegram: ');
+      return await q('Enter OTP code from Telegram: ');
     });
   } catch (err) {
-    console.error('\nGagal login:', err.message);
+    console.error('\nLogin failed:', err.message);
     process.exit(1);
   }
 
@@ -71,8 +71,8 @@ async function main() {
   envContent = replaceLine(envContent, 'TELEGRAM_SESSION', sessionStr);
 
   writeFileSync(envPath, envContent);
-  console.log('\n✅ Konfigurasi tersimpan di .env');
-  console.log('Jalankan: npm start');
+  console.log('\n✅ Configuration saved to .env');
+  console.log('Run: npm start');
   rl.close();
 }
 

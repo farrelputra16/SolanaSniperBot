@@ -18,15 +18,12 @@ function detectAlgorithm() {
 }
 
 function buildAuthQuery() {
-  return {
-    timestamp: Math.floor(Date.now() / 1000),
-    client_id: crypto.randomUUID(),
-  };
+  return { timestamp: Math.floor(Date.now() / 1000), client_id: crypto.randomUUID() };
 }
 
 function signMessage(message) {
   const algo = detectAlgorithm();
-  if (!algo) throw new Error('Private key tidak valid atau tidak ditemukan');
+  if (!algo) throw new Error('Private key invalid or not found');
   const msgBuf = Buffer.from(message, 'utf-8');
   if (algo === 'Ed25519') {
     const sig = crypto.sign(null, msgBuf, privateKey.trim());
@@ -261,7 +258,7 @@ export async function createTPSLStrategy(chain, from, tokenAddress, tpPercent, s
 }
 
 // ───── Token Address Extraction ─────
-const BASE58_REGEX = /[1-9A-HJ-NP-Za-km-z]{32,44}/g;
+const BASE58_REGEX = /[1-9A-HJ-NP-Za-km-z]{32,88}/g;
 const EVM_ADDRESS_REGEX = /0x[a-fA-F0-9]{40}/g;
 
 export function extractAddresses(text) {
@@ -303,6 +300,52 @@ function buildTrenchesBody(chain, type, opts) {
     };
   }
   return body;
+}
+
+// ───── Portfolio ─────
+export async function getPortfolioInfo() {
+  return request('GET', '/v1/user/info');
+}
+
+export async function getWalletHoldings(chain, wallet, opts = {}) {
+  const params = { chain, wallet, limit: opts.limit || 50, order_by: opts.orderBy || 'usd_value', direction: opts.direction || 'desc' };
+  if (opts.sellOut) params['sell_out'] = true;
+  return request('GET', '/v1/user/wallet_holdings', params);
+}
+
+export async function getWalletStats(chain, wallet, period = '7d') {
+  return request('GET', '/v1/user/wallet_stats', { chain, wallet, period });
+}
+
+export async function getWalletTokenBalance(chain, wallet, token) {
+  return request('GET', '/v1/user/wallet_token_balance', { chain, wallet, token });
+}
+
+export async function getWalletActivity(chain, wallet, opts = {}) {
+  const params = { chain, wallet, limit: opts.limit || 20 };
+  if (opts.token) params.token = opts.token;
+  if (opts.cursor) params.cursor = opts.cursor;
+  return request('GET', '/v1/user/wallet_activity', params);
+}
+
+const BS58_ALPHA = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function bs58Encode(buf) {
+  let n = 0n;
+  for (const b of buf) n = (n << 8n) + BigInt(b);
+  const r = [];
+  while (n > 0n) { r.unshift(BS58_ALPHA[Number(n % 58n)]); n /= 58n; }
+  return r.join('') || '1';
+}
+
+// ───── Wallet Generate ─────
+export function generateSolanaWallet() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {
+    publicKeyEncoding: { type: 'spki', format: 'der' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'der' },
+  });
+  const pub = Buffer.from(publicKey).subarray(-32);
+  const seed = Buffer.from(privateKey).subarray(-32);
+  return { address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])) };
 }
 
 export { CHAIN_CURRENCIES };

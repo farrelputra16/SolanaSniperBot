@@ -1,65 +1,74 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, unlinkSync, mkdirSync, rmSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import { initDatabase, qrun, qall, qget, persist } from '../database.js';
-
-const TEST_DB_PATH = join(process.cwd(), 'data', 'test-sniper.db');
+import * as db from '../database.js';
 
 describe('Database', () => {
   before(async () => {
     const dir = join(process.cwd(), 'data');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    await initDatabase();
+    try { mkdirSync(dir, { recursive: true }); } catch {}
+    await db.initDatabase();
   });
 
-  after(() => {
-    try { rmSync(join(process.cwd(), 'data'), { recursive: true, force: true }); } catch {}
-  });
-
-  it('should create tables', () => {
-    const tables = qall("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
-    const names = tables.map(t => t.name);
-    assert.ok(names.includes('channels'));
-    assert.ok(names.includes('rules'));
-    assert.ok(names.includes('signals'));
-    assert.ok(names.includes('trades'));
-    assert.ok(names.includes('wallets'));
-    assert.ok(names.includes('forwarding'));
-    assert.ok(names.includes('settings'));
-    assert.ok(names.includes('scraper_log'));
-  });
-
-  it('should insert and query channel', () => {
-    qrun("INSERT OR IGNORE INTO channels (channel_username, display_name) VALUES ('test_channel', 'Test')");
-    persist();
-    const ch = qget('SELECT * FROM channels WHERE channel_username = ?', ['test_channel']);
+  it('should insert and query channel', async () => {
+    await db.addChannel('test_channel', 'Test');
+    const channels = await db.getAllChannels();
+    const ch = channels.find(c => c.channel_username === 'test_channel');
     assert.ok(ch);
     assert.equal(ch.channel_username, 'test_channel');
     assert.equal(ch.display_name, 'Test');
   });
 
-  it('should insert and query rule with sender_filter', () => {
-    qrun("INSERT OR IGNORE INTO channels (channel_username) VALUES ('rule_test_chan')");
-    const ch = qget("SELECT id FROM channels WHERE channel_username = 'rule_test_chan'");
-    qrun('INSERT INTO rules (channel_id, name, sender_filter) VALUES (?, ?, ?)', [ch.id, 'test-rule', '@trader1']);
-    const rule = qget('SELECT * FROM rules WHERE name = ?', ['test-rule']);
-    assert.equal(rule.sender_filter, '@trader1');
+  it('should insert and query rule with sender_filter', async () => {
+    await db.addChannel('rule_test_chan', 'RuleTest');
+    const channels = await db.getAllChannels();
+    const ch = channels.find(c => c.channel_username === 'rule_test_chan');
+    assert.ok(ch);
+    await db.upsertChannelRule({
+      channel_id: ch.id,
+      sender_filter: '@trader1',
+      buy_amount_sol: 0.01,
+      slippage: 30,
+      anti_mev: true,
+    });
+    const rules = await db.getChannelRules();
+    const rule = rules.find(r => r.channel_id === ch.id);
+    assert.ok(rule);
+    assert.equal(rule.track_only, 0);
   });
 
-  it('should insert signal with sender_username', () => {
-    qrun(`INSERT INTO signals (token_address, source_channel, sender_username, status)
-      VALUES ('abc123', 'test_channel', 'trader1', 'pending')`);
-    const sig = qget("SELECT * FROM signals WHERE sender_username = 'trader1'");
+  it('should insert signal with sender_username', async () => {
+    await db.saveSignal({
+      token_address: 'abc123',
+      source_channel: 'test_channel',
+      sender_username: 'trader1',
+      chain: 'sol',
+    });
+    const signals = await db.getRecentSignals(10);
+    const sig = signals.find(s => s.token_address === 'abc123');
     assert.ok(sig);
     assert.equal(sig.sender_username, 'trader1');
   });
 
-  it('should log scraper activity', () => {
-    qrun("INSERT INTO scraper_log (channel_username, level, message) VALUES ('test_channel', 'info', 'test message')");
-    const logs = qall('SELECT * FROM scraper_log ORDER BY created_at DESC');
+  it('should log scraper activity', async () => {
+    await db.addScraperLog('test_channel', 'info', 'test message');
+    const logs = await db.getScraperLogs(10);
     assert.ok(logs.length > 0);
-    assert.equal(logs[0].message, 'test message');
+    const found = logs.find(l => l.message === 'test message');
+    assert.ok(found);
+  });
+
+  it('should add and activate wallets', async () => {
+    await db.addWallet('wallet1addr', 'Wallet 1', 'privkey1');
+    await db.addWallet('wallet2addr', 'Wallet 2', 'privkey2');
+    const all = await db.getAllWallets();
+    assert.ok(all.length >= 2);
+    const w1 = all.find(w => w.address === 'wallet1addr');
+    assert.ok(w1);
+    assert.equal(w1.private_key, 'privkey1');
+    const active = await db.getActiveWallet();
+    assert.ok(active);
   });
 });
 
