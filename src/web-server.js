@@ -218,17 +218,34 @@ export function createWebServer() {
   });
 
   async function startTelegramLogin(id, apiId, apiHash, phone) {
+    console.log('[Telegram] Starting login for session', id);
     try {
       const { loginNewSession } = await import('./telegram.js');
-      const sessionStr = await loginNewSession(apiId, apiHash, phone, async () => {
-        db.updateTelegramSession(id, { status: 'needs_otp' });
+
+      // Overall timeout: 60s for the entire login process
+      const loginPromise = loginNewSession(apiId, apiHash, phone, async () => {
+        console.log('[Telegram] phoneCode CALLED for session', id);
+        try {
+          db.updateTelegramSession(id, { status: 'needs_otp' });
+          console.log('[Telegram] Status updated to needs_otp for session', id);
+        } catch (dbErr) {
+          console.error('[Telegram] DB update failed in phoneCode:', dbErr.message);
+        }
         return new Promise((resolve, reject) => {
           pendingLogins[id] = { resolve, reject, timeout: setTimeout(() => {
+            console.log('[Telegram] OTP timeout for session', id);
             delete pendingLogins[id];
             reject(new Error('OTP timeout after 2 minutes'));
           }, 120000) };
         });
       });
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Login timeout — Telegram connection took too long')), 60000)
+      );
+
+      const sessionStr = await Promise.race([loginPromise, timeoutPromise]);
+      console.log('[Telegram] Login complete for session', id);
       db.updateTelegramSession(id, { session_string: sessionStr, status: 'active', phone });
       delete pendingLogins[id];
       // Auto-activate
@@ -237,10 +254,12 @@ export function createWebServer() {
         await initTelegramWithSession(apiId, apiHash, sessionStr);
         db.setActiveTelegramSession(id);
         try { await startListeners(); } catch {}
+        console.log('[Telegram] Auto-activated session', id);
       } catch (activateErr) {
         console.error('[Telegram] Auto-activate failed:', activateErr.message);
       }
     } catch (err) {
+      console.error('[Telegram] Login failed for session', id, ':', err.message);
       db.updateTelegramSession(id, { status: 'error', error_message: err.message });
       delete pendingLogins[id];
     }

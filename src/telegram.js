@@ -60,15 +60,32 @@ export async function destroyClient() {
 export async function loginNewSession(apiId, apiHash, phoneNumber, onCode) {
   const stringSession = new StringSession('');
   const tempClient = new TelegramClient(stringSession, apiId, apiHash, {
-    connectionRetries: 5,
+    connectionRetries: 3,
   });
 
+  console.log('[Telegram] loginNewSession: calling start()...');
   await tempClient.start({
-    phoneNumber: () => Promise.resolve(phoneNumber),
-    phoneCode: () => onCode ? onCode() : Promise.resolve(''),
-    password: () => Promise.resolve(''),
-    onError: (err) => console.error(err),
+    phoneNumber: () => {
+      console.log('[Telegram] start() asking for phone number');
+      return Promise.resolve(phoneNumber);
+    },
+    phoneCode: () => {
+      console.log('[Telegram] start() asking for phone code');
+      if (!onCode) {
+        console.log('[Telegram] ERROR: no onCode callback provided!');
+        return Promise.resolve('');
+      }
+      return onCode();
+    },
+    password: () => {
+      console.log('[Telegram] start() asking for 2FA password — not supported');
+      return Promise.resolve('');
+    },
+    onError: (err) => {
+      console.error('[Telegram] start() error:', err.message);
+    },
   });
+  console.log('[Telegram] loginNewSession: start() completed');
 
   const sessionStr = stringSession.save();
   await tempClient.destroy();
