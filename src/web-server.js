@@ -421,14 +421,21 @@ export function createWebServer() {
     const state = { client, apiId: Number(apiId), apiHash, phone, sessionStr: null, error: null, state: 'init', resolveCode: null, resolvePassword: null, rejectCode: null, rejectPassword: null };
 
     await client.connect();
-    const sent = await client.invoke(new Api.auth.SendCode({
-      phoneNumber: phone, apiId: Number(apiId), apiHash,
-      settings: new Api.CodeSettings({ allowFlashcall: true, currentNumber: true, appHash: '' }),
-    }));
-    state.phoneCodeHash = sent.phoneCodeHash;
-    state.state = 'await_code';
-    PENDING_LOGIN.set(token, state);
-    res.json({ ok: true, loginToken: token });
+    try {
+      const sent = await client.invoke(new Api.auth.SendCode({
+        phoneNumber: phone, apiId: Number(apiId), apiHash,
+        settings: new Api.CodeSettings({ allowFlashcall: true, currentNumber: true, appHash: '' }),
+      }));
+      state.phoneCodeHash = sent.phoneCodeHash;
+      state.state = 'await_code';
+      PENDING_LOGIN.set(token, state);
+      res.json({ ok: true, loginToken: token });
+    } catch (err) {
+      await client.destroy();
+      const sec = err.seconds || (err.errorMessage === 'FLOOD' ? 300 : 0);
+      if (sec > 0) return res.status(429).json({ error: `Telegram flood wait: ${Math.ceil(sec/60)} min`, waitSeconds: sec });
+      res.status(400).json({ error: err.errorMessage || err.message });
+    }
   });
 
   app.post('/api/telegram/verify-code', async (req, res) => {
