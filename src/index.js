@@ -7,6 +7,11 @@ import { onSignal } from './telegram.js';
 import { processSignal } from './router.js';
 import { createWebServer, startWebServer } from './web-server.js';
 
+async function loadTelegramId() {
+  const savedTid = await db.getSetting('telegram_id', '');
+  if (savedTid) db.setTelegramId(savedTid);
+}
+
 async function main() {
   console.log('╔══════════════════════════════════════════╗');
   console.log('║     The Scoop Sc(rape)r v1.0                ║');
@@ -25,6 +30,7 @@ async function main() {
   if (!existsSync(join(process.cwd(), 'data'))) mkdirSync(join(process.cwd(), 'data'), { recursive: true });
 
   await initDatabase();
+  await loadTelegramId();
 
   onSignal(async (sourceChannel, text, message, senderUsername) => {
     await processSignal(sourceChannel, text, message, senderUsername);
@@ -37,13 +43,19 @@ async function main() {
   try {
     const savedSession = await db.getSetting('telegram_session', '');
     if (savedSession && config.telegram.apiId && config.telegram.apiHash) {
-      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+      const { initTelegramWithSession, startListeners, getClient } = await import('./telegram.js');
       await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, savedSession);
+      const c = getClient();
+      const me = c ? await c.getMe() : null;
+      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); }
       console.log('   Telegram: ✅ Connected via saved session');
       await startListeners();
     } else if (config.telegram.apiId && config.telegram.apiHash) {
-      const { initTelegram, startListeners } = await import('./telegram.js');
+      const { initTelegram, startListeners, getClient } = await import('./telegram.js');
       await initTelegram();
+      const c = getClient();
+      const me = c ? await c.getMe() : null;
+      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); }
       console.log('   Telegram: ✅ Connected via .env');
       await startListeners();
     } else {

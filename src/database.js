@@ -9,6 +9,11 @@ let collections = {};
 // ───── SQLite fallback (for tests / no-MONGO env) ─────
 let sqliteDb = null;
 let sqliteMode = false;
+let _currentTgId = '';
+
+export function setTelegramId(id) { _currentTgId = id || ''; }
+export function getTelegramId() { return _currentTgId; }
+function _tid() { return _currentTgId; }
 
 async function ensureSqlite() {
   if (sqliteDb) return;
@@ -78,9 +83,17 @@ export async function initDatabase() {
     "ALTER TABLE signals ADD COLUMN latency_ms INTEGER DEFAULT 0",
     "ALTER TABLE trades ADD COLUMN signal_latency_ms INTEGER DEFAULT 0",
     "ALTER TABLE trades ADD COLUMN buy_latency_ms INTEGER DEFAULT 0",
+    "ALTER TABLE channels ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE rules ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE signals ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE trades ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE wallets ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE wallet_groups ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE strategy_orders ADD COLUMN telegram_id TEXT DEFAULT ''",
+    "ALTER TABLE scraper_log ADD COLUMN telegram_id TEXT DEFAULT ''",
   ]) { try { sqliteDb.exec(sql); } catch {} }
-  // Add private_key column if missing
   try { sqliteDb.exec("ALTER TABLE wallets ADD COLUMN private_key TEXT DEFAULT ''"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE settings ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -101,7 +114,7 @@ async function nextId(seqName) {
 // ───── Channels ─────
 export async function getActiveChannels() {
   if (!sqliteMode && mdb) return collections.channels.find({ active: 1 }).toArray();
-  return sqliteDb.prepare('SELECT * FROM channels WHERE active = 1').all();
+  return sqliteDb.prepare('SELECT * FROM channels WHERE active = 1 AND telegram_id = ?').all(_tid());
 }
 export async function getAllChannels() {
   if (!sqliteMode && mdb) {
@@ -111,14 +124,14 @@ export async function getAllChannels() {
       { $project: { sd: 0 } }, { $sort: { added_at: -1 } }
     ]).toArray();
   }
-  return sqliteDb.prepare(`SELECT c.*, (SELECT COUNT(*) FROM signals s WHERE s.source_channel = c.channel_username) as signal_count, (SELECT MAX(created_at) FROM signals s WHERE s.source_channel = c.channel_username) as last_signal_at FROM channels c ORDER BY c.added_at DESC`).all();
+  return sqliteDb.prepare(`SELECT c.*, (SELECT COUNT(*) FROM signals s WHERE s.source_channel = c.channel_username AND s.telegram_id = ?) as signal_count, (SELECT MAX(created_at) FROM signals s WHERE s.source_channel = c.channel_username AND s.telegram_id = ?) as last_signal_at FROM channels c WHERE c.telegram_id = ? ORDER BY c.added_at DESC`).all(_tid(), _tid(), _tid());
 }
 export async function addChannel(username, displayName) {
   if (!sqliteMode && mdb) {
     try { await collections.channels.insertOne({ channel_username: username, display_name: displayName || username, active: 1, added_at: sqliteNow() }); } catch (e) { if (e.code !== 11000) throw e; }
     return;
   }
-  try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name) VALUES (?,?)').run(username, displayName || username); } catch {}
+  try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid()); } catch {}
 }
 export async function removeChannel(id) {
   if (!sqliteMode && mdb) { await collections.channels.deleteOne({ id: Number(id) }); await collections.rules.deleteOne({ channel_id: Number(id) }); return; }
@@ -230,11 +243,11 @@ export async function getAutoBuyRules() {
 // ───── Wallets ─────
 export async function getAllWallets() {
   if (!sqliteMode && mdb) return collections.wallets.find().sort({ created_at: -1 }).toArray();
-  return sqliteDb.prepare('SELECT * FROM wallets ORDER BY created_at DESC').all();
+  return sqliteDb.prepare('SELECT * FROM wallets WHERE telegram_id = ? ORDER BY created_at DESC').all(_tid());
 }
 export async function getActiveWallet() {
   if (!sqliteMode && mdb) return collections.wallets.findOne({ active: 1 });
-  return sqliteDb.prepare('SELECT * FROM wallets WHERE active = 1 LIMIT 1').get() || null;
+  return sqliteDb.prepare('SELECT * FROM wallets WHERE active = 1 AND telegram_id = ? LIMIT 1').get(_tid()) || null;
 }
 export async function addWallet(address, label, privateKey) {
   if (!sqliteMode && mdb) {
@@ -247,8 +260,8 @@ export async function addWallet(address, label, privateKey) {
     } catch (e) { if (e.code !== 11000) throw e; }
     return;
   }
-  const ex = sqliteDb.prepare('SELECT id FROM wallets').get();
-  sqliteDb.prepare('INSERT OR IGNORE INTO wallets (address, label, private_key, active) VALUES (?,?,?,?)').run(address, label || '', privateKey || '', ex ? 0 : 1);
+  const ex = sqliteDb.prepare(`SELECT id FROM wallets WHERE telegram_id = ?`).get(_tid());
+  sqliteDb.prepare('INSERT OR IGNORE INTO wallets (address, label, private_key, active, telegram_id) VALUES (?,?,?,?,?)').run(address, label || '', privateKey || '', ex ? 0 : 1, _tid());
 }
 export async function importWallets(wallets) {
   if (!sqliteMode && mdb) {
@@ -351,22 +364,22 @@ export async function saveSignal(data) {
     });
     return;
   }
-  sqliteDb.prepare(`INSERT INTO signals (token_address, token_symbol, token_name, chain, source_channel, source_text, price, market_cap, liquidity, volume_24h, rug_ratio, smart_degen_count, bundler_rate, top10_rate, creator_status, is_honeypot, sender_username, latency_ms, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  sqliteDb.prepare(`INSERT INTO signals (token_address, token_symbol, token_name, chain, source_channel, source_text, price, market_cap, liquidity, volume_24h, rug_ratio, smart_degen_count, bundler_rate, top10_rate, creator_status, is_honeypot, sender_username, latency_ms, telegram_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     data.token_address, data.token_symbol || '', data.token_name || '', data.chain || 'sol',
     data.source_channel, data.source_text || '', data.price || 0, data.market_cap || 0,
     data.liquidity || 0, data.volume_24h || 0, data.rug_ratio ?? -1, data.smart_degen_count || 0,
     data.bundler_rate || 0, data.top10_rate || 0, data.creator_status || '', data.is_honeypot || '',
-    data.sender_username || '', data.latency_ms || 0, sqliteNow()
+    data.sender_username || '', data.latency_ms || 0, _tid(), sqliteNow()
   );
 }
 export async function getRecentSignals(limit) {
   if (!sqliteMode && mdb) return collections.signals.find().sort({ created_at: -1 }).limit(limit).toArray();
-  return sqliteDb.prepare('SELECT * FROM signals ORDER BY created_at DESC LIMIT ?').all(limit);
+  return sqliteDb.prepare('SELECT * FROM signals WHERE telegram_id = ? ORDER BY created_at DESC LIMIT ?').all(_tid(), limit);
 }
 export async function getSignalCountToday() {
   const start = sqliteNow() - 86400;
   if (!sqliteMode && mdb) return collections.signals.countDocuments({ created_at: { $gte: start } });
-  return sqliteDb.prepare('SELECT COUNT(*) as cnt FROM signals WHERE created_at >= ?').get(start).cnt;
+  return sqliteDb.prepare('SELECT COUNT(*) as cnt FROM signals WHERE created_at >= ? AND telegram_id = ?').get(start, _tid()).cnt;
 }
 
 // ───── Trades ─────
@@ -388,21 +401,21 @@ export async function createTrade(data) {
     });
     return res.insertedId.toString();
   }
-  const info = sqliteDb.prepare(`INSERT INTO trades (signal_id,wallet_address,token_address,token_symbol,chain,buy_amount_sol,buy_price,buy_price_usd,buy_order_id,signal_latency_ms,buy_latency_ms,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  const info = sqliteDb.prepare(`INSERT INTO trades (signal_id,wallet_address,token_address,token_symbol,chain,buy_amount_sol,buy_price,buy_price_usd,buy_order_id,signal_latency_ms,buy_latency_ms,telegram_id,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     data.signal_id, data.wallet_address, data.token_address, data.token_symbol, data.chain,
     data.buy_amount_sol, data.buy_price, data.buy_price_usd, data.buy_order_id,
-    data.signal_latency_ms || 0, data.buy_latency_ms || 0,
+    data.signal_latency_ms || 0, data.buy_latency_ms || 0, _tid(),
     data.status || 'open', sqliteNow()
   );
   return Number(info.lastInsertRowid);
 }
 export async function getOpenTrades() {
   if (!sqliteMode && mdb) return collections.trades.find({ status: 'open' }).sort({ created_at: -1 }).toArray();
-  return sqliteDb.prepare("SELECT * FROM trades WHERE status = 'open' ORDER BY created_at DESC").all();
+  return sqliteDb.prepare("SELECT * FROM trades WHERE status = 'open' AND telegram_id = ? ORDER BY created_at DESC").all(_tid());
 }
 export async function getTradeHistory(limit) {
   if (!sqliteMode && mdb) return collections.trades.find().sort({ created_at: -1 }).limit(limit).toArray();
-  return sqliteDb.prepare('SELECT * FROM trades ORDER BY created_at DESC LIMIT ?').all(limit);
+  return sqliteDb.prepare('SELECT * FROM trades WHERE telegram_id = ? ORDER BY created_at DESC LIMIT ?').all(_tid(), limit);
 }
 export async function getTrade(id) {
   if (!sqliteMode && mdb) return collections.trades.findOne({ id: Number(id) });

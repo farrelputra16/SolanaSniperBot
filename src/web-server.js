@@ -13,6 +13,11 @@ liveEvents.setMaxListeners(100);
 
 const SESSIONS = new Map();
 
+export function getTelegramId(token) {
+  const s = SESSIONS.get(token);
+  return s && typeof s === 'object' ? s.telegramId : null;
+}
+
 export function createWebServer() {
   const app = express();
   app.use(express.json());
@@ -20,14 +25,22 @@ export function createWebServer() {
 
   app.use('/api', (req, res, next) => {
     if (req.path === '/login' || req.path === '/login-check') return next();
-    if (req.path.startsWith('/telegram/')) return next();
     if (req.path === '/events') return next();
-    if (!config.server.password) return next();
     const token = req.headers['x-auth-token'];
-    if (token && SESSIONS.has(token) && SESSIONS.get(token) > Date.now()) {
-      SESSIONS.set(token, Date.now() + 3600000);
-      return next();
+    if (token && SESSIONS.has(token)) {
+      const s = SESSIONS.get(token);
+      if (typeof s === 'object' && s.expires > Date.now()) {
+        s.expires = Date.now() + 3600000;
+        req.telegramId = s.telegramId;
+        return next();
+      }
+      if (typeof s === 'number' && s > Date.now()) {
+        SESSIONS.set(token, Date.now() + 3600000);
+        return next();
+      }
     }
+    // Allow telegram login routes
+    if (req.path.startsWith('/telegram/') || req.path === '/login' || req.path === '/login-check') return next();
     res.status(401).json({ error: 'unauthorized' });
   });
 
@@ -435,8 +448,15 @@ export function createWebServer() {
       state.state = 'done';
       await db.setSetting('telegram_session', state.sessionStr);
       await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
+      const { getClient } = await import('./telegram.js');
+      const c = getClient();
+      const me = c ? await c.getMe() : null;
+      const telegramId = String(me?.id || '');
+      const sessionToken = crypto.randomUUID();
+      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId });
+      await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true });
+      res.json({ ok: true, token: sessionToken, telegramId });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
