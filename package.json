@@ -1,0 +1,17 @@
+{
+  "name": "sniper-bot",
+  "version": "1.0.0",
+  "description": "Solana Sniper Bot — GMGN-powered signal scraper, auto-buy, and Telegram forwarder",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "setup-telegram": "node src/setup-telegram.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "express": "^4.21.0",
+    "gramjs": "^0.8.0"
+  }
+}

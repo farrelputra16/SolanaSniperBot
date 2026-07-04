@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solana Sniper Bot</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh}
+nav{background:#161b22;border-bottom:1px solid #30363d;padding:12px 24px;display:flex;align-items:center;gap:24px}
+nav h1{font-size:18px;color:#58a6ff}
+nav a{color:#8b949e;text-decoration:none;font-size:14px;cursor:pointer;padding:4px 8px;border-radius:4px}
+nav a:hover{color:#e6edf3;background:#21262d}
+nav a.active{color:#58a6ff;background:#1f2d3d}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.section{display:none}.section.active{display:block}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:16px}
+.card h3{font-size:14px;color:#8b949e;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px;border-bottom:2px solid #30363d;color:#8b949e;font-weight:600}
+td{padding:8px;border-bottom:1px solid #21262d}
+tr:hover td{background:#1c2128}
+.btn{display:inline-block;padding:6px 14px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e6edf3;cursor:pointer;font-size:13px;text-decoration:none}
+.btn:hover{background:#30363d}
+.btn-primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.btn-primary:hover{background:#388bfd}
+.btn-danger{background:#da3633;border-color:#da3633;color:#fff}
+.btn-danger:hover{background:#f85149}
+.btn-sm{padding:3px 8px;font-size:12px}
+input,select{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:6px 10px;color:#e6edf3;font-size:13px;width:100%}
+input:focus,select:focus{outline:none;border-color:#58a6ff}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.form-group{margin-bottom:8px}
+.form-group label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.form-actions{margin-top:12px;display:flex;gap:8px}
+.badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-green{background:#1b3a1b;color:#3fb950}
+.badge-red{background:#3a1b1b;color:#f85149}
+.badge-yellow{background:#3a321b;color:#d29922}
+.badge-blue{background:#1b2d3a;color:#58a6ff}
+.status-bar{display:flex;gap:24px;margin-bottom:20px}
+.status-item{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;flex:1;text-align:center}
+.status-item .num{font-size:28px;font-weight:700;color:#58a6ff}
+.status-item .label{font-size:12px;color:#8b949e;margin-top:4px}
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100}
+.modal-overlay.active{display:flex;align-items:center;justify-content:center}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;width:90%;max-width:600px;max-height:80vh;overflow-y:auto}
+.modal h2{font-size:18px;margin-bottom:16px}
+.modal-actions{margin-top:16px;display:flex;gap:8px;justify-content:flex-end}
+.address-text{font-family:monospace;font-size:11px;color:#8b949e;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+.float-right{float:right}
+.mt-12{margin-top:12px}
+.empty{text-align:center;padding:40px;color:#8b949e;font-size:14px}
+.switch{position:relative;display:inline-block;width:36px;height:20px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#30363d;transition:.3s;border-radius:20px}
+.slider:before{position:absolute;content:"";height:14px;width:14px;left:3px;bottom:3px;background:#fff;transition:.3s;border-radius:50%}
+input:checked+.slider{background:#1f6feb}
+input:checked+.slider:before{transform:translateX(16px)}
+</style>
+</head>
+<body>
+<nav>
+  <h1>⚡ SniperBot</h1>
+  <a class="active" data-page="dashboard">Dashboard</a>
+  <a data-page="channels">Channels</a>
+  <a data-page="rules">Rules</a>
+  <a data-page="forwarding">Forwarding</a>
+  <a data-page="wallets">Wallets</a>
+  <a data-page="signals">Signals</a>
+  <a data-page="trades">Trades</a>
+  <a data-page="settings">Settings</a>
+</nav>
+
+<div class="container">
+  <div id="page-dashboard" class="section active"></div>
+  <div id="page-channels" class="section"></div>
+  <div id="page-rules" class="section"></div>
+  <div id="page-forwarding" class="section"></div>
+  <div id="page-wallets" class="section"></div>
+  <div id="page-signals" class="section"></div>
+  <div id="page-trades" class="section"></div>
+  <div id="page-settings" class="section"></div>
+</div>
+
+<div id="modal" class="modal-overlay"><div class="modal" id="modal-content"></div></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const api = (path, opts) => fetch('/api' + path, { headers: { 'Content-Type': 'application/json' }, ...opts }).then(r => r.json());
+
+function showPage(name) {
+  $$('.section').forEach(s => s.classList.remove('active'));
+  $$('nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector(`nav a[data-page="${name}"]`).classList.add('active');
+  renderPage(name);
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('active'); }
+function openModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal').classList.add('active');
+}
+
+document.querySelectorAll('nav a').forEach(a => {
+  a.addEventListener('click', () => showPage(a.dataset.page));
+});
+document.getElementById('modal').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal(); });
+
+async function renderPage(name) {
+  const el = document.getElementById('page-' + name);
+  if (name === 'dashboard') el.innerHTML = await renderDashboard();
+  else if (name === 'channels') el.innerHTML = await renderChannels();
+  else if (name === 'rules') el.innerHTML = await renderRules();
+  else if (name === 'forwarding') el.innerHTML = await renderForwarding();
+  else if (name === 'wallets') el.innerHTML = await renderWallets();
+  else if (name === 'signals') el.innerHTML = await renderSignals();
+  else if (name === 'trades') el.innerHTML = await renderTrades();
+  else if (name === 'settings') el.innerHTML = await renderSettings();
+}
+
+async function renderDashboard() {
+  const [status, signals, trades] = await Promise.all([
+    api('/status'), api('/signals?limit=10'), api('/trades?limit=10')
+  ]);
+  return `
+    <div class="status-bar">
+      <div class="status-item"><div class="num">${status.channelCount}</div><div class="label">Channels Active</div></div>
+      <div class="status-item"><div class="num">${status.openTrades}</div><div class="label">Open Trades</div></div>
+      <div class="status-item"><div class="num">${status.todaySignals}</div><div class="label">Signals Today</div></div>
+      <div class="status-item"><div class="num">${Math.floor(status.uptime / 60)}m</div><div class="label">Uptime</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card"><h3>Recent Signals</h3>${signals.length ? signalTable(signals) : '<div class="empty">No signals yet</div>'}</div>
+      <div class="card"><h3>Recent Trades</h3>${trades.length ? tradeTable(trades) : '<div class="empty">No trades yet</div>'}</div>
+    </div>
+  `;
+}
+
+async function renderChannels() {
+  const channels = await api('/channels');
+  return `
+    <div class="card">
+      <h3>Channels <button class="btn btn-primary btn-sm float-right" onclick="addChannel()">+ Add</button></h3>
+      ${channels.length ? `
+      <table>
+        <tr><th>Channel</th><th>Status</th><th>Added</th><th></th></tr>
+        ${channels.map(c => `<tr>
+          <td>${c.display_name || c.channel_username}</td>
+          <td><label class="switch"><input type="checkbox" ${c.active ? 'checked' : ''} onchange="toggleChannel(${c.id}, this.checked)"><span class="slider"></span></label></td>
+          <td>${new Date(c.added_at * 1000).toLocaleDateString()}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteChannel(${c.id})">Delete</button></td>
+        </tr>`).join('')}
+      </table>` : '<div class="empty">No channels added yet. Click + Add to start monitoring.</div>'}
+    </div>
+  `;
+}
+
+async function renderRules() {
+  const [rules, channels] = await Promise.all([api('/rules'), api('/channels')]);
+  const grouped = {};
+  for (const r of rules) {
+    if (!grouped[r.channel_id]) grouped[r.channel_id] = { channel: r.channel_username, rules: [] };
+    grouped[r.channel_id].rules.push(r);
+  }
+  return `
+    <div class="card">
+      <h3>Filter Rules <button class="btn btn-primary btn-sm float-right" onclick="addRule(${channels.length ? channels[0].id : 0})">+ Add Rule</button></h3>
+      ${Object.keys(grouped).length ? Object.entries(grouped).map(([cid, g]) => `
+        <div style="margin-bottom:16px">
+          <h4 style="color:#58a6ff;margin-bottom:8px">📢 ${g.channel}</h4>
+          <table>
+            <tr><th>Name</th><th>Min MC</th><th>Max Rug</th><th>Smart Money</th><th>Auto Buy</th><th>Buy Amount</th><th>TP/SL</th><th></th></tr>
+            ${g.rules.map(r => `<tr>
+              <td>${r.name}</td>
+              <td>${r.min_market_cap ? '$' + (+r.min_market_cap).toLocaleString() : '-'}</td>
+              <td>${r.max_rug_ratio ? (+r.max_rug_ratio * 100).toFixed(0) + '%' : '-'}</td>
+              <td>${r.require_smart_money ? '✅' : '❌'}</td>
+              <td>${r.auto_buy ? '✅' : '❌'}</td>
+              <td>${r.buy_amount_sol || '-'} SOL</td>
+              <td>${r.take_profit_percent ? 'TP ' + r.take_profit_percent + '%' : ''}${r.stop_loss_percent ? ' SL ' + r.stop_loss_percent + '%' : '-'}</td>
+              <td><button class="btn btn-sm" onclick="editRule(${r.id})">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteRule(${r.id})">Del</button></td>
+            </tr>`).join('')}
+          </table>
+        </div>`
+      ).join('') : '<div class="empty">No rules yet. Add a rule to filter signals per channel.</div>'}
+    </div>
+  `;
+}
+
+async function renderForwarding() {
+  const [forwarding, channels] = await Promise.all([api('/forwarding'), api('/channels')]);
+  return `
+    <div class="card">
+      <h3>Forwarding <button class="btn btn-primary btn-sm float-right" onclick="addForward()">+ Add</button></h3>
+      ${forwarding.length ? `
+      <table>
+        <tr><th>Source Channel</th><th>Target Chat</th><th>Active</th><th></th></tr>
+        ${forwarding.map(f => `<tr>
+          <td>${f.channel_username}</td>
+          <td>${f.target_chat_username || f.target_chat_id}</td>
+          <td>${f.active ? '✅' : '❌'}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteForward(${f.id})">Delete</button></td>
+        </tr>`).join('')}
+      </table>` : '<div class="empty">No forwarding rules. Signals detected in channels will not be forwarded anywhere.</div>'}
+    </div>
+  `;
+}
+
+async function renderWallets() {
+  const wallets = await api('/wallets');
+  return `
+    <div class="card">
+      <h3>Wallets <button class="btn btn-primary btn-sm float-right" onclick="addWallet()">+ Add</button></h3>
+      ${wallets.length ? `
+      <table>
+        <tr><th>Address</th><th>Label</th><th>Active</th><th></th></tr>
+        ${wallets.map(w => `<tr>
+          <td><span class="address-text" title="${w.address}">${w.address}</span></td>
+          <td>${w.label || '-'}</td>
+          <td>${w.active ? '✅' : '❌'}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteWallet(${w.id})">Delete</button></td>
+        </tr>`).join('')}
+      </table>` : '<div class="empty">No wallets. Add at least one wallet for auto-buy to work.</div>'}
+    </div>
+  `;
+}
+
+async function renderSignals() {
+  const signals = await api('/signals?limit=100');
+  return `
+    <div class="card">
+      <h3>Signal History (last 100)</h3>
+      ${signals.length ? signalTable(signals) : '<div class="empty">No signals yet</div>'}
+    </div>
+  `;
+}
+
+async function renderTrades() {
+  const trades = await api('/trades?limit=100');
+  return `
+    <div class="card">
+      <h3>Trade History (last 100)</h3>
+      ${trades.length ? tradeTable(trades) : '<div class="empty">No trades yet</div>'}
+    </div>
+  `;
+}
+
+async function renderSettings() {
+  return `
+    <div class="card">
+      <h3>Settings</h3>
+      <div class="form-grid">
+        <div class="form-group"><label>GMGN API Key</label><input id="s-gmgn-key" value="${config.gmgnApiKey || ''}" placeholder="Configured in .env"/></div>
+        <div class="form-group"><label>Default Buy Amount (SOL)</label><input id="s-buy-amount" value="0.01"/></div>
+        <div class="form-group"><label>Default Slippage (%)</label><input id="s-slippage" value="30"/></div>
+        <div class="form-group"><label>Anti-MEV</label><select id="s-antimev"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="saveSettings()">Save</button></div>
+    </div>
+  `;
+}
+
+function signalTable(signals) {
+  return `<table>
+    <tr><th>Token</th><th>Channel</th><th>MC</th><th>Liq</th><th>Rug</th><th>SM</th><th>Status</th><th>Time</th></tr>
+    ${signals.map(s => `<tr>
+      <td><span class="address-text" title="${s.token_address}">${s.token_symbol || s.token_address.slice(0, 8)}</span></td>
+      <td>${s.source_channel || '-'}</td>
+      <td>$${s.market_cap ? (+s.market_cap).toLocaleString() : '?'}</td>
+      <td>$${s.liquidity ? (+s.liquidity).toLocaleString() : '?'}</td>
+      <td>${s.rug_ratio >= 0 ? '<span class="badge ' + (s.rug_ratio > 0.3 ? 'badge-red' : s.rug_ratio > 0.1 ? 'badge-yellow' : 'badge-green') + '">' + (s.rug_ratio * 100).toFixed(0) + '%</span>' : '-'}</td>
+      <td>${s.smart_degen_count || 0}</td>
+      <td>${s.auto_buy_triggered ? '<span class="badge badge-green">Bought</span>' : '<span class="badge badge-blue">Pass</span>'}</td>
+      <td>${new Date(s.created_at * 1000).toLocaleTimeString()}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function tradeTable(trades) {
+  return `<table>
+    <tr><th>Token</th><th>Amount</th><th>Buy Price</th><th>Status</th><th>P&L</th><th>Time</th></tr>
+    ${trades.map(t => `<tr>
+      <td><span class="address-text" title="${t.token_address}">${t.token_symbol || t.token_address.slice(0, 8)}</span></td>
+      <td>${t.buy_amount_sol || '-'} SOL</td>
+      <td>$${t.buy_price_usd ? (+t.buy_price_usd).toFixed(8) : '?'}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td>${t.pnl ? '$' + (+t.pnl).toFixed(2) : '-'}</td>
+      <td>${new Date(t.created_at * 1000).toLocaleTimeString()}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function statusBadge(s) {
+  const map = { open: ['badge-blue', 'Open'], closed: ['badge-green', 'Closed'], failed: ['badge-red', 'Failed'], pending: ['badge-yellow', 'Pending'] };
+  const [cls, label] = map[s] || ['badge-blue', s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+async function addChannel() {
+  openModal(`
+    <h2>Add Channel</h2>
+    <div class="form-group"><label>Channel Username (with or without @)</label><input id="f-channel" placeholder="username"/></div>
+    <div class="form-group"><label>Display Name</label><input id="f-channel-name" placeholder="My Alpha Channel"/></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitChannel()">Add</button></div>
+  `);
+}
+window.submitChannel = async function() {
+  const username = document.getElementById('f-channel').value.trim().replace('@', '');
+  const name = document.getElementById('f-channel-name').value.trim();
+  if (!username) return;
+  await api('/channels', { method: 'POST', body: JSON.stringify({ username, display_name: name }) });
+  closeModal();
+  renderPage('channels');
+};
+
+window.toggleChannel = async function(id, active) {
+  await api('/channels/' + id + '/toggle', { method: 'PATCH' });
+};
+window.deleteChannel = async function(id) {
+  if (!confirm('Delete this channel?')) return;
+  await api('/channels/' + id, { method: 'DELETE' });
+  renderPage('channels');
+};
+
+window.addRule = async function(channelId) {
+  const channels = await api('/channels');
+  openModal(`
+    <h2>Add Rule</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Channel</label><select id="f-rule-channel">${channels.map(c => `<option value="${c.id}">${c.channel_username}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Rule Name</label><input id="f-rule-name" value="default"/></div>
+      <div class="form-group"><label>Min Market Cap ($)</label><input id="f-rule-min-mc" type="number"/></div>
+      <div class="form-group"><label>Max Market Cap ($)</label><input id="f-rule-max-mc" type="number"/></div>
+      <div class="form-group"><label>Min Liquidity ($)</label><input id="f-rule-min-liq" type="number"/></div>
+      <div class="form-group"><label>Max Rug Ratio (0-1)</label><input id="f-rule-max-rug" value="0.3" step="0.1"/></div>
+      <div class="form-group"><label><input type="checkbox" id="f-rule-sm"/> Require Smart Money</label></div>
+      <div class="form-group"><label>Min Smart Degen</label><input id="f-rule-sm-count" value="1" type="number"/></div>
+      <div class="form-group"><label>Max Bundler Rate (0-1)</label><input id="f-rule-bundler" value="0.3" step="0.1"/></div>
+      <div class="form-group"><label><input type="checkbox" id="f-rule-autobuy"/> Auto Buy</label></div>
+      <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-rule-amount" value="0.01" step="0.001"/></div>
+      <div class="form-group"><label>Slippage (%)</label><input id="f-rule-slippage" value="30" type="number"/></div>
+      <div class="form-group"><label><input type="checkbox" id="f-rule-antimev" checked/> Anti-MEV</label></div>
+      <div class="form-group"><label>Take Profit (%)</label><input id="f-rule-tp" type="number"/></div>
+      <div class="form-group"><label>Stop Loss (%)</label><input id="f-rule-sl" type="number"/></div>
+    </div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitRule()">Save</button></div>
+  `);
+};
+window.submitRule = async function() {
+  const data = {
+    channel_id: parseInt(document.getElementById('f-rule-channel').value),
+    name: document.getElementById('f-rule-name').value,
+    min_market_cap: parseFloat(document.getElementById('f-rule-min-mc').value) || null,
+    max_market_cap: parseFloat(document.getElementById('f-rule-max-mc').value) || null,
+    min_liquidity: parseFloat(document.getElementById('f-rule-min-liq').value) || null,
+    max_rug_ratio: parseFloat(document.getElementById('f-rule-max-rug').value) || 0.3,
+    require_smart_money: document.getElementById('f-rule-sm').checked,
+    min_smart_degen: parseInt(document.getElementById('f-rule-sm-count').value) || 1,
+    max_bundler_rate: parseFloat(document.getElementById('f-rule-bundler').value) || 0.3,
+    auto_buy: document.getElementById('f-rule-autobuy').checked,
+    buy_amount_sol: parseFloat(document.getElementById('f-rule-amount').value) || 0.01,
+    slippage: parseInt(document.getElementById('f-rule-slippage').value) || 30,
+    anti_mev: document.getElementById('f-rule-antimev').checked,
+    take_profit_percent: parseFloat(document.getElementById('f-rule-tp').value) || null,
+    stop_loss_percent: parseFloat(document.getElementById('f-rule-sl').value) || null,
+  };
+  await api('/rules', { method: 'POST', body: JSON.stringify(data) });
+  closeModal();
+  renderPage('rules');
+};
+window.deleteRule = async function(id) {
+  if (!confirm('Delete this rule?')) return;
+  await api('/rules/' + id, { method: 'DELETE' });
+  renderPage('rules');
+};
+
+window.addForward = async function() {
+  const channels = await api('/channels');
+  openModal(`
+    <h2>Add Forwarding</h2>
+    <div class="form-group"><label>Source Channel</label><select id="f-fwd-channel">${channels.map(c => `<option value="${c.id}">${c.channel_username}</option>`).join('')}</select></div>
+    <div class="form-group"><label>Target Chat (username or ID)</label><input id="f-fwd-target" placeholder="@your_channel or chat_id"/></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitForward()">Save</button></div>
+  `);
+};
+window.submitForward = async function() {
+  const target = document.getElementById('f-fwd-target').value.trim();
+  await api('/forwarding', { method: 'POST', body: JSON.stringify({
+    channel_id: parseInt(document.getElementById('f-fwd-channel').value),
+    target_chat_username: target.startsWith('@') || isNaN(target) ? target : '',
+    target_chat_id: isNaN(target) ? '' : target,
+  })});
+  closeModal();
+  renderPage('forwarding');
+};
+window.deleteForward = async function(id) {
+  if (!confirm('Delete this forwarding rule?')) return;
+  await api('/forwarding/' + id, { method: 'DELETE' });
+  renderPage('forwarding');
+};
+
+window.addWallet = function() {
+  openModal(`
+    <h2>Add Wallet</h2>
+    <div class="form-group"><label>Wallet Address</label><input id="f-wallet-addr" placeholder="Solana wallet address"/></div>
+    <div class="form-group"><label>Label</label><input id="f-wallet-label" placeholder="Main wallet"/></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitWallet()">Add</button></div>
+  `);
+};
+window.submitWallet = async function() {
+  const addr = document.getElementById('f-wallet-addr').value.trim();
+  const label = document.getElementById('f-wallet-label').value.trim();
+  if (!addr) return;
+  await api('/wallets', { method: 'POST', body: JSON.stringify({ address: addr, label }) });
+  closeModal();
+  renderPage('wallets');
+};
+window.deleteWallet = async function(id) {
+  if (!confirm('Remove this wallet?')) return;
+  await api('/wallets/' + id, { method: 'DELETE' });
+  renderPage('wallets');
+};
+
+window.saveSettings = async function() {
+  await api('/settings', { method: 'POST', body: JSON.stringify({
+    buy_amount: document.getElementById('s-buy-amount').value,
+    slippage: document.getElementById('s-slippage').value,
+    anti_mev: document.getElementById('s-antimev').value,
+  })});
+  alert('Settings saved');
+};
+
+showPage('dashboard');
+</script>
+</body>
+</html>
