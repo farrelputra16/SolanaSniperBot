@@ -356,10 +356,10 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 
 <script>
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
-const AUTH_TOKEN=localStorage.getItem('auth_token')||'';
+function authToken(){return localStorage.getItem('auth_token')||''}
 const api=async(p,o)=>{
   const h={'Content-Type':'application/json'};
-  if(AUTH_TOKEN)h['x-auth-token']=AUTH_TOKEN;
+  const t=authToken();if(t)h['x-auth-token']=t;
   const r=await fetch('/api'+p,{headers:h,...o});
   if(r.status===401){localStorage.removeItem('auth_token');showLogin();throw new Error('Session expired')}
   if(!r.ok){let e;try{e=await r.json()}catch{e={error:r.statusText}}throw new Error(e.error||e.message||r.statusText)}
@@ -1018,7 +1018,8 @@ function connectSSE(){
 
 // ═══ INIT ───
 async function initDashboard(){
-  const tg=await fetch('/api/telegram/status').then(r=>r.json()).catch(()=>({}));
+  const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':localStorage.getItem('auth_token')||''}}).then(r=>r.json()).catch(()=>({}));
+  if(tg.token){localStorage.setItem('auth_token',tg.token)}
   if(!tg.connected){
     if(tg.hasSession){
       setTimeout(initDashboard, 2000);

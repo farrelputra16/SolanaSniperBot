@@ -510,8 +510,16 @@ export function createWebServer() {
       const { getClient } = await import('./telegram.js');
       const c = getClient();
       const connected = !!(c && c.connected);
-      let sessionStr = await db.getSetting('telegram_session', '');
-      res.json({ connected, hasSession: !!sessionStr, apiId: !!(config.telegram.apiId) });
+      const sessionStr = await db.getSetting('telegram_session', '');
+      const tgId = await db.getSetting('telegram_id', '');
+      let token = null;
+      if (connected && tgId) {
+        const h = req.headers['x-auth-token'];
+        if (h && SESSIONS.has(h)) { token = h; }
+        else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: tgId }); }
+        if (tgId) db.setTelegramId(tgId);
+      }
+      res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
 
