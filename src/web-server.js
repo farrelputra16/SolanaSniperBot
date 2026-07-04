@@ -2,8 +2,8 @@ import express from 'express';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
-import { getDatabase } from './database.js';
-import { addChannelListener } from './telegram.js';
+import * as db from './database.js';
+import * as gmgn from './gmgn.js';
 
 const __dirname = join(fileURLToPath(import.meta.url), '..');
 
@@ -12,195 +12,238 @@ export function createWebServer() {
   app.use(express.json());
   app.use(express.static(join(__dirname, 'public')));
 
-  // ─── API Routes ───
-
-  // Channels
+  // ───── Channels (Scraper Setup) ─────
   app.get('/api/channels', (req, res) => {
-    const db = getDatabase();
-    res.json(db.prepare('SELECT * FROM channels ORDER BY added_at DESC').all());
+    const channels = db.getAllChannels();
+    const rules = db.qall('SELECT * FROM rules');
+    const enriched = channels.map(c => {
+      const rule = rules.find(r => r.channel_id === c.id);
+      return { ...c, rule: rule || null };
+    });
+    res.json(enriched);
+  });
+
+  app.get('/api/channels/:id', (req, res) => {
+    const c = db.getChannel(req.params.id);
+    if (!c) return res.status(404).json({ error: 'not found' });
+    const rule = db.qget('SELECT * FROM rules WHERE channel_id = ?', [c.id]);
+    let tpLevels = [];
+    try { tpLevels = rule?.tp_levels ? JSON.parse(rule.tp_levels) : []; } catch {}
+    res.json({ ...c, rule: rule ? { ...rule, tp_levels: tpLevels } : null });
   });
 
   app.post('/api/channels', async (req, res) => {
     const { username, display_name } = req.body;
     if (!username) return res.status(400).json({ error: 'username required' });
     const clean = username.replace('@', '').trim();
-    const db = getDatabase();
-    db.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name) VALUES (?, ?)').run(clean, display_name || clean);
+    db.addChannel(clean, display_name || clean);
     try {
+      const { addChannelListener } = await import('./telegram.js');
       await addChannelListener(clean);
-    } catch (err) {
-      console.error('Failed to listen:', err.message);
-    }
+    } catch {}
+    res.json({ success: true, username: clean });
+  });
+
+  app.put('/api/channels/:id/rules', (req, res) => {
+    const ch = db.getChannel(req.params.id);
+    if (!ch) return res.status(404).json({ error: 'channel not found' });
+    db.upsertChannelRule({ ...req.body, channel_id: req.params.id });
     res.json({ success: true });
   });
 
-  app.delete('/api/channels/:id', (req, res) => {
-    const db = getDatabase();
-    db.prepare('DELETE FROM channels WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
-  });
-
+  app.delete('/api/channels/:id', (req, res) => { db.removeChannel(req.params.id); res.json({ success: true }); });
   app.patch('/api/channels/:id/toggle', (req, res) => {
-    const db = getDatabase();
-    const ch = db.prepare('SELECT * FROM channels WHERE id = ?').get(req.params.id);
+    const ch = db.getChannel(req.params.id);
     if (!ch) return res.status(404).json({ error: 'not found' });
-    db.prepare('UPDATE channels SET active = ? WHERE id = ?').run(ch.active ? 0 : 1, req.params.id);
+    db.toggleChannel(req.params.id, !ch.active);
     res.json({ success: true, active: !ch.active });
   });
 
-  // Rules
-  app.get('/api/rules', (req, res) => {
-    const db = getDatabase();
-    const rules = db.prepare(`
-      SELECT r.*, c.channel_username FROM rules r
-      JOIN channels c ON c.id = r.channel_id
-      ORDER BY c.channel_username
-    `).all();
-    res.json(rules);
-  });
+  // ───── Rules ─────
+  app.get('/api/rules', (req, res) => res.json(db.getRulesWithChannels()));
+  app.delete('/api/rules/:id', (req, res) => { db.deleteRule(req.params.id); res.json({ success: true }); });
 
-  app.get('/api/rules/:channelId', (req, res) => {
-    const db = getDatabase();
-    res.json(db.prepare('SELECT * FROM rules WHERE channel_id = ?').all(req.params.channelId));
+  // ───── Wallets (Import/Export) ─────
+  app.get('/api/wallets', (req, res) => res.json(db.getAllWallets()));
+  app.post('/api/wallets/import', (req, res) => {
+    const list = req.body.wallets || [];
+    if (!list.length) return res.status(400).json({ error: 'wallets array required' });
+    db.importWallets(list);
+    res.json({ success: true, imported: list.length });
   });
-
-  app.post('/api/rules', (req, res) => {
-    const db = getDatabase();
-    const r = req.body;
-    if (r.id) {
-      db.prepare(`UPDATE rules SET
-        name=?, min_market_cap=?, max_market_cap=?, min_liquidity=?, min_volume_24h=?,
-        max_rug_ratio=?, require_smart_money=?, min_smart_degen=?, max_bundler_rate=?,
-        auto_buy=?, buy_amount_sol=?, slippage=?, anti_mev=?,
-        take_profit_percent=?, stop_loss_percent=?
-        WHERE id=?`).run(
-        r.name, r.min_market_cap, r.max_market_cap, r.min_liquidity, r.min_volume_24h,
-        r.max_rug_ratio, r.require_smart_money ? 1 : 0, r.min_smart_degen || 0, r.max_bundler_rate,
-        r.auto_buy ? 1 : 0, r.buy_amount_sol, r.slippage, r.anti_mev ? 1 : 0,
-        r.take_profit_percent, r.stop_loss_percent, r.id
-      );
-    } else {
-      db.prepare(`INSERT INTO rules
-        (channel_id, name, min_market_cap, max_market_cap, min_liquidity, min_volume_24h,
-         max_rug_ratio, require_smart_money, min_smart_degen, max_bundler_rate,
-         auto_buy, buy_amount_sol, slippage, anti_mev, take_profit_percent, stop_loss_percent)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-        r.channel_id, r.name, r.min_market_cap, r.max_market_cap, r.min_liquidity, r.min_volume_24h,
-        r.max_rug_ratio, r.require_smart_money ? 1 : 0, r.min_smart_degen || 0, r.max_bundler_rate,
-        r.auto_buy ? 1 : 0, r.buy_amount_sol, r.slippage, r.anti_mev ? 1 : 0,
-        r.take_profit_percent, r.stop_loss_percent
-      );
-    }
-    res.json({ success: true });
-  });
-
-  app.delete('/api/rules/:id', (req, res) => {
-    const db = getDatabase();
-    db.prepare('DELETE FROM rules WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
-  });
-
-  // Forwarding
-  app.get('/api/forwarding', (req, res) => {
-    const db = getDatabase();
-    res.json(db.prepare(`
-      SELECT f.*, c.channel_username FROM forwarding f
-      JOIN channels c ON c.id = f.channel_id
-    `).all());
-  });
-
-  app.post('/api/forwarding', (req, res) => {
-    const { channel_id, target_chat_id, target_chat_username } = req.body;
-    const db = getDatabase();
-    const existing = db.prepare('SELECT id FROM forwarding WHERE channel_id = ?').get(channel_id);
-    if (existing) {
-      db.prepare('UPDATE forwarding SET target_chat_id=?, target_chat_username=?, active=1 WHERE id=?')
-        .run(target_chat_id, target_chat_username, existing.id);
-    } else {
-      db.prepare('INSERT INTO forwarding (channel_id, target_chat_id, target_chat_username) VALUES (?,?,?)')
-        .run(channel_id, target_chat_id, target_chat_username);
-    }
-    res.json({ success: true });
-  });
-
-  app.delete('/api/forwarding/:id', (req, res) => {
-    const db = getDatabase();
-    db.prepare('DELETE FROM forwarding WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
-  });
-
-  // Wallets
-  app.get('/api/wallets', (req, res) => {
-    const db = getDatabase();
-    res.json(db.prepare('SELECT * FROM wallets ORDER BY created_at DESC').all());
-  });
-
   app.post('/api/wallets', (req, res) => {
-    const { address, label } = req.body;
+    if (!req.body.address) return res.status(400).json({ error: 'address required' });
+    db.addWallet(req.body.address, req.body.label);
+    res.json({ success: true });
+  });
+  app.delete('/api/wallets/:id', (req, res) => { db.removeWallet(req.params.id); res.json({ success: true }); });
+  app.post('/api/wallets/:id/activate', (req, res) => { db.setActiveWallet(req.params.id); res.json({ success: true }); });
+
+  // ───── Wallet Groups ─────
+  app.get('/api/wallet-groups', (req, res) => res.json(db.getWalletGroups()));
+  app.post('/api/wallet-groups', (req, res) => { const id = db.createWalletGroup(req.body.name, req.body.description); res.json({ success: true, id }); });
+  app.delete('/api/wallet-groups/:id', (req, res) => { db.deleteWalletGroup(req.params.id); res.json({ success: true }); });
+  app.get('/api/wallet-groups/:id/wallets', (req, res) => res.json(db.getGroupWallets(req.params.id)));
+  app.post('/api/wallet-groups/:id/wallets', (req, res) => { db.addWalletToGroup(req.params.id, req.body.wallet_id); res.json({ success: true }); });
+  app.delete('/api/wallet-groups/:id/wallets/:walletId', (req, res) => { db.removeWalletFromGroup(req.params.id, req.params.walletId); res.json({ success: true }); });
+
+  // ───── Positions ─────
+  app.get('/api/positions', (req, res) => res.json(db.getOpenTrades()));
+  app.get('/api/positions/all', (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const all = db.getTradeHistory(limit);
+    if (req.query.type === 'open') return res.json(all.filter(t => t.status === 'open'));
+    if (req.query.type === 'closed') return res.json(all.filter(t => t.status === 'closed'));
+    res.json(all);
+  });
+  app.get('/api/positions/:id', (req, res) => {
+    const t = db.getTrade(req.params.id);
+    if (!t) return res.status(404).json({ error: 'not found' });
+    const orders = db.qall('SELECT * FROM strategy_orders WHERE trade_id = ?', [t.id]);
+    res.json({ ...t, strategy_orders: orders });
+  });
+  app.post('/api/positions/:id/close', async (req, res) => {
+    const trade = db.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ error: 'not found' });
+    if (trade.status === 'closed') return res.status(400).json({ error: 'already closed' });
+    try {
+      const result = await gmgn.executeSell(trade.chain, trade.wallet_address, trade.token_address, req.body.percent || 100, { slippage: req.body.slippage || config.sniper.defaultSlippage });
+      const orderId = result.data?.order_id || result.order_id;
+      db.closeTrade(req.params.id, { sell_amount_sol: req.body.sell_amount_sol, sell_price: req.body.sell_price, sell_price_usd: req.body.sell_price_usd, sell_tx: req.body.sell_tx || '', sell_order_id: orderId });
+      res.json({ success: true, order_id: orderId });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+  app.get('/api/trades', (req, res) => res.json(db.getTradeHistory(Math.min(parseInt(req.query.limit) || 50, 200))));
+
+  // ───── Strategy Orders ─────
+  app.get('/api/orders', (req, res) => res.json(db.getStrategyOrders()));
+  app.get('/api/orders/active', (req, res) => res.json(db.getActiveStrategyOrders()));
+
+  app.post('/api/orders/limit-sell', async (req, res) => {
+    const { chain, wallet_address, token_address, target_price, percent, token_symbol } = req.body;
+    if (!wallet_address || !token_address || !target_price) return res.status(400).json({ error: 'required: wallet_address, token_address, target_price' });
+    try {
+      const result = await gmgn.createLimitSell(chain || 'sol', wallet_address, token_address, target_price, percent || 100);
+      const oid = result.data?.order_id || result.order_id;
+      const localId = db.saveStrategyOrder({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', order_type: 'limit_order', sub_order_type: 'take_profit', check_price: target_price, amount_in_percent: percent || 100, group_tag: 'LimitOrder', remote_order_id: oid });
+      res.json({ success: true, id: localId, remote_order_id: oid });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post('/api/orders/buy-with-tp-sl', async (req, res) => {
+    const { chain, wallet_address, token_address, amount_lamports, take_profit_percent, stop_loss_percent, slippage, token_symbol } = req.body;
+    if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
+    try {
+      const result = await gmgn.executeBuyWithTP(chain || 'sol', wallet_address, token_address, amount_lamports, { takeProfitPercent: take_profit_percent, stopLossPercent: stop_loss_percent, slippage });
+      const oid = result.data?.order_id || result.order_id;
+      const tradeId = db.createTrade({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', buy_amount_sol: amount_lamports / 1e9, buy_order_id: oid, take_profit_percent, stop_loss_percent, status: 'open' });
+      res.json({ success: true, trade_id: tradeId, order_id: oid });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete('/api/orders/:id', async (req, res) => {
+    const o = db.qget('SELECT * FROM strategy_orders WHERE id = ?', [req.params.id]);
+    if (!o) return res.status(404).json({ error: 'not found' });
+    try { if (o.remote_order_id) await gmgn.cancelStrategyOrder(o.chain, o.wallet_address, o.remote_order_id); } catch {}
+    db.cancelStrategyOrderLocal(req.params.id);
+    res.json({ success: true });
+  });
+
+  // ───── Swap helpers ─────
+  app.post('/api/sell', async (req, res) => {
+    const { chain, wallet_address, token_address, percent, slippage } = req.body;
+    if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
+    try {
+      const result = await gmgn.executeSell(chain || 'sol', wallet_address, token_address, percent || 100, { slippage });
+      res.json({ success: true, order_id: result.data?.order_id || result.order_id });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post('/api/buy', async (req, res) => {
+    const { chain, wallet_address, token_address, amount_lamports, slippage } = req.body;
+    if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
+    try {
+      const result = await gmgn.executeSwap(chain || 'sol', wallet_address, 'So11111111111111111111111111111111111111112', token_address, amount_lamports, { slippage });
+      res.json({ success: true, order_id: result.data?.order_id || result.order_id });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ───── Token Info (simplified — just for position details) ─────
+  app.get('/api/token/info', async (req, res) => {
+    const { chain, address } = req.query;
     if (!address) return res.status(400).json({ error: 'address required' });
-    const db = getDatabase();
-    db.prepare('INSERT OR IGNORE INTO wallets (address, label) VALUES (?, ?)').run(address, label || '');
-    res.json({ success: true });
+    try {
+      const [info, security] = await Promise.allSettled([
+        gmgn.getTokenInfo(chain || 'sol', address),
+        gmgn.getTokenSecurity(chain || 'sol', address),
+      ]);
+      res.json({
+        info: info.status === 'fulfilled' ? info.value?.data || info.value : null,
+        security: security.status === 'fulfilled' ? security.value?.data || security.value : null,
+      });
+    } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/wallets/:id', (req, res) => {
-    const db = getDatabase();
-    db.prepare('DELETE FROM wallets WHERE id = ?').run(req.params.id);
-    res.json({ success: true });
-  });
+  // ───── Scraper ─────
+  app.get('/api/scraper/status', (req, res) => res.json(db.getScraperStatus()));
+  app.get('/api/scraper/logs', (req, res) => res.json(db.getScraperLogs(Math.min(parseInt(req.query.limit) || 200, 500))));
 
-  // Signals
-  app.get('/api/signals', (req, res) => {
-    const db = getDatabase();
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    res.json(db.prepare('SELECT * FROM signals ORDER BY created_at DESC LIMIT ?').all(limit));
-  });
-
-  // Trades
-  app.get('/api/trades', (req, res) => {
-    const db = getDatabase();
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    res.json(db.prepare(`
-      SELECT t.*, s.token_symbol as signal_symbol, s.source_channel
-      FROM trades t LEFT JOIN signals s ON s.id = t.signal_id
-      ORDER BY t.created_at DESC LIMIT ?
-    `).all(limit));
-  });
-
-  // Settings
+  // ───── Settings ─────
   app.get('/api/settings', (req, res) => {
-    const db = getDatabase();
-    const rows = db.prepare('SELECT * FROM settings').all();
-    const settings = {};
-    for (const r of rows) settings[r.key] = r.value;
-    settings.default_buy_amount = String(config.sniper.defaultBuyAmount);
-    settings.default_slippage = String(config.sniper.defaultSlippage);
-    res.json(settings);
+    const rows = db.getAllSettings();
+    const s = {};
+    for (const r of rows) s[r.key] = r.value;
+    s.default_buy_amount = String(config.sniper.defaultBuyAmount);
+    s.default_slippage = String(config.sniper.defaultSlippage);
+    s.default_anti_mev = String(config.sniper.defaultAntiMev);
+    s.gmgn_api_key = config.gmgn.apiKey ? config.gmgn.apiKey.slice(0, 12) + '...' : '';
+    s.telegram_configured = String(!!config.telegram.apiId);
+    res.json(s);
   });
-
   app.post('/api/settings', (req, res) => {
-    const db = getDatabase();
-    for (const [key, value] of Object.entries(req.body)) {
-      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(value));
-    }
+    for (const [k, v] of Object.entries(req.body)) db.setSetting(k, String(v));
     res.json({ success: true });
   });
 
-  // Status
+  // ───── Status ─────
   app.get('/api/status', (req, res) => {
-    const db = getDatabase();
-    const channelCount = db.prepare('SELECT COUNT(*) as c FROM channels WHERE active=1').get().c;
-    const openTrades = db.prepare("SELECT COUNT(*) as c FROM trades WHERE status='open'").get().c;
-    const todaySignals = db.prepare("SELECT COUNT(*) as c FROM signals WHERE created_at > unixepoch('now', '-1 day')").get().c;
-    res.json({ channelCount, openTrades, todaySignals, uptime: process.uptime() });
+    res.json({
+      channelCount: db.getActiveChannels().length,
+      openTrades: db.getOpenTrades().length,
+      todaySignals: db.getSignalCountToday(),
+      walletCount: db.getAllWallets().length,
+      hasActiveWallet: !!db.getActiveWallet(),
+      activeOrders: db.getActiveStrategyOrders().length,
+      walletGroups: db.getWalletGroups().length,
+      uptime: process.uptime(),
+    });
+  });
+
+  // ───── Setup ─────
+  app.get('/api/setup', (req, res) => {
+    res.json({
+      gmgnConfigured: !!config.gmgn.apiKey && !!config.gmgn.privateKey,
+      telegramConfigured: !!config.telegram.apiId && !!config.telegram.apiHash,
+      telegramSession: !!config.telegram.session,
+      hasChannels: db.getActiveChannels().length > 0,
+      hasWallets: db.getAllWallets().length > 0,
+    });
+  });
+
+  // ───── Activity ─────
+  app.get('/api/activity', (req, res) => {
+    res.json({
+      signals: db.getRecentSignals(8),
+      trades: db.getTradeHistory(8),
+      logs: db.getScraperLogs(8),
+    });
   });
 
   return app;
 }
 
 export function startWebServer(app) {
-  const { port, host } = config.server;
-  app.listen(port, host, () => {
-    console.log(`[Web] Dashboard: http://${host}:${port}`);
+  app.listen(config.server.port, config.server.host, () => {
+    console.log(`[Web] Dashboard: http://${config.server.host}:${config.server.port}`);
   });
 }

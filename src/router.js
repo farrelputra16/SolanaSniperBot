@@ -1,5 +1,5 @@
 import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder } from './gmgn.js';
-import { getDatabase, saveSignal, getAutoBuyRules, createTrade, updateTrade } from './database.js';
+import * as db from './database.js';
 import { config } from './config.js';
 import { forwardToChat, sendToChat } from './telegram.js';
 
@@ -8,14 +8,14 @@ const CURRENCY_ADDRESSES = {
   sol: 'So11111111111111111111111111111111111111112',
 };
 
-export async function processSignal(sourceChannel, text, message) {
-  console.log(`[Router] Memproses signal dari ${sourceChannel}`);
+export async function processSignal(sourceChannel, text, message, senderUsername) {
+  console.log(`[Router] Signal dari ${sourceChannel}${senderUsername ? ' oleh @' + senderUsername : ''}`);
+
+  db.addScraperLog(sourceChannel, 'info', `Signal diterima${senderUsername ? ' dari @' + senderUsername : ''}: ${text.slice(0, 80)}`);
 
   const found = extractAddresses(text);
 
   for (const { address, chain } of found) {
-    console.log(`[Router] Address ditemukan: ${address} (${chain})`);
-
     let tokenInfo, tokenSecurity;
 
     try {
@@ -24,14 +24,15 @@ export async function processSignal(sourceChannel, text, message) {
         getTokenSecurity(chain, address),
       ]);
     } catch (err) {
-      console.error(`[Router] Gagal fetch data untuk ${address}:`, err.message);
+      console.error(`[Router] Gagal fetch ${address}:`, err.message);
+      db.addScraperLog(sourceChannel, 'error', `Gagal fetch ${address}: ${err.message}`);
       await forwardSignal(sourceChannel, address, null, text, err.message);
       continue;
     }
 
     const data = parseTokenData(tokenInfo, tokenSecurity, chain, address, sourceChannel, text);
-
-    saveSignal(data);
+    data.sender_username = senderUsername || '';
+    db.saveSignal(data);
 
     const skipReasons = evaluateSecurity(data, tokenSecurity);
     if (skipReasons.length > 0) {
@@ -43,7 +44,7 @@ export async function processSignal(sourceChannel, text, message) {
     console.log(`[Router] ✅ ${address} lolos filter — ${data.token_symbol || 'UNKNOWN'}`);
     await forwardSignal(sourceChannel, address, data, text, null);
 
-    const rules = getAutoBuyRules();
+    const rules = db.getAutoBuyRules();
     const matchingRules = rules.filter((r) => {
       if (r.channel_username !== sourceChannel) return false;
       if (r.min_market_cap && data.market_cap < r.min_market_cap) return false;
@@ -53,6 +54,10 @@ export async function processSignal(sourceChannel, text, message) {
       if (r.max_rug_ratio && data.rug_ratio > r.max_rug_ratio) return false;
       if (r.require_smart_money && data.smart_degen_count < (r.min_smart_degen || 1)) return false;
       if (r.max_bundler_rate && data.bundler_rate > r.max_bundler_rate) return false;
+      if (r.sender_filter) {
+        const allowed = r.sender_filter.split(',').map(s => s.trim().replace('@', '')).filter(Boolean);
+        if (allowed.length > 0 && !allowed.includes(senderUsername || '')) return false;
+      }
       return true;
     });
 
@@ -97,17 +102,15 @@ function evaluateSecurity(data, security) {
   if (data.rug_ratio > 0.3 && data.rug_ratio !== -1) reasons.push(`rug_ratio ${data.rug_ratio.toFixed(2)} > 0.3`);
   if (data.bundler_rate > 0.3) reasons.push(`bundler ${(data.bundler_rate * 100).toFixed(0)}%`);
   if (data.top10_rate > 0.5) reasons.push(`top10_holder ${(data.top10_rate * 100).toFixed(0)}%`);
-
   if (sec.creator_token_status === 'creator_hold') reasons.push('dev masih hold');
 
   return reasons;
 }
 
 async function forwardSignal(sourceChannel, address, data, text, error) {
-  const db = getDatabase();
-  const forwards = db.prepare(`SELECT f.* FROM forwarding f
+  const forwards = db.qall(`SELECT f.* FROM forwarding f
     JOIN channels c ON c.id = f.channel_id
-    WHERE c.channel_username = ? AND f.active = 1`).all(sourceChannel);
+    WHERE c.channel_username = ? AND f.active = 1`, [sourceChannel]);
 
   if (forwards.length === 0) return;
 
@@ -136,9 +139,10 @@ function formatSignalMessage(source, address, data) {
 }
 
 async function executeAutoBuy(address, chain, data, rule, sourceChannel) {
-  const wallet = getDatabase().prepare('SELECT address FROM wallets WHERE active = 1 LIMIT 1').get();
+  const wallet = db.getActiveWallet();
   if (!wallet) {
     console.log('[Router] Tidak ada wallet aktif untuk auto-buy');
+    db.addScraperLog(sourceChannel, 'error', `Auto-buy ${address} gagal: tidak ada wallet aktif`);
     return;
   }
 
@@ -154,12 +158,12 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel) {
 
     const orderId = result.data?.order_id || result.order_id;
     console.log(`[Router] Swap submitted: order_id=${orderId}`);
+    db.addScraperLog(sourceChannel, 'info', `Auto-buy ${data.token_symbol || address}: order=${orderId}`);
 
-    const signalId = getDatabase().prepare(
-      'SELECT id FROM signals WHERE token_address = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(address)?.id;
+    const signal = db.qget('SELECT id FROM signals WHERE token_address = ? ORDER BY created_at DESC LIMIT 1', [address]);
+    const signalId = signal?.id;
 
-    const trade = createTrade({
+    const tradeId = db.createTrade({
       signal_id: signalId,
       wallet_address: wallet.address,
       token_address: address,
@@ -173,11 +177,11 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel) {
       stop_loss_percent: rule.stop_loss_percent,
     });
 
-    pollOrder(orderId, chain, trade.id);
-
+    pollOrder(orderId, chain, tradeId);
     await notifyBuy(wallet.address, address, data, rule, orderId, sourceChannel);
   } catch (err) {
     console.error(`[Router] Gagal auto-buy ${address}:`, err.message);
+    db.addScraperLog(sourceChannel, 'error', `Auto-buy ${data.token_symbol || address} gagal: ${err.message}`);
     await sendToChat(sourceChannel, `❌ Gagal buy ${data.token_symbol || address}: ${err.message}`);
   }
 }
@@ -191,20 +195,19 @@ async function pollOrder(orderId, chain, tradeId) {
     try {
       const result = await getOrder(chain, orderId);
       const status = result.data?.status || result.status;
-      const report = result.data?.report || result.report;
 
       if (status === 'confirmed' || status === 'successful') {
-        updateTrade(tradeId, {
+        db.updateTrade(tradeId, {
           buy_status: 'confirmed',
-          buy_tx: report?.hash || result.data?.hash,
-          buy_price_usd: report?.price_usd ? parseFloat(report.price_usd) : undefined,
+          buy_tx: result.data?.report?.hash || result.data?.hash,
+          buy_price_usd: result.data?.report?.price_usd ? parseFloat(result.data.report.price_usd) : undefined,
         });
         console.log(`[Router] ✅ Buy confirmed: ${orderId}`);
         return;
       }
 
       if (status === 'failed' || status === 'expired') {
-        updateTrade(tradeId, { buy_status: 'failed', status: 'failed' });
+        db.updateTrade(tradeId, { buy_status: 'failed', status: 'failed' });
         console.log(`[Router] ❌ Buy failed: ${orderId}`);
         return;
       }
@@ -215,7 +218,7 @@ async function pollOrder(orderId, chain, tradeId) {
     }
   }
 
-  updateTrade(tradeId, { buy_status: 'timeout' });
+  db.updateTrade(tradeId, { buy_status: 'timeout' });
   console.log(`[Router] ⏰ Buy polling timeout: ${orderId}`);
 }
 

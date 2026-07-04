@@ -60,7 +60,7 @@ export function validateConfig() {
   if (!config.gmgn.apiKey) errors.push('GMGN_API_KEY tidak ditemukan');
   if (!config.gmgn.privateKey) errors.push('GMGN_PRIVATE_KEY tidak ditemukan');
   if (!config.telegram.apiId || !config.telegram.apiHash) {
-    errors.push('TELEGRAM_API_ID dan TELEGRAM_API_HASH harus diisi (dapatkan dari https://my.telegram.org/apps)');
+    errors.push('TELEGRAM_API_ID dan TELEGRAM_API_HASH belum diisi — dashboard-only mode');
   }
   return errors;
 }

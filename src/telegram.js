@@ -1,8 +1,8 @@
-import { TelegramClient } from 'gramjs';
-import { StringSession } from 'gramjs/sessions/index.js';
-import { NewMessage } from 'gramjs/events/index.js';
+import { TelegramClient } from 'telegram';
+import { StringSession } from 'telegram/sessions/index.js';
+import { NewMessage } from 'telegram/events/index.js';
 import { config } from './config.js';
-import { getDatabase } from './database.js';
+import * as db from './database.js';
 
 let client = null;
 let onSignalCallback = null;
@@ -47,15 +47,10 @@ export async function loginNewSession(apiId, apiHash, phoneNumber, onCode) {
     connectionRetries: 5,
   });
 
-  let codeResolver;
-  const codePromise = new Promise((r) => { codeResolver = r; });
-  let passwordResolver;
-  const passwordPromise = new Promise((r) => { passwordResolver = r; });
-
   await tempClient.start({
     phoneNumber: () => Promise.resolve(phoneNumber),
-    phoneCode: () => onCode ? onCode() : codePromise,
-    password: () => passwordPromise,
+    phoneCode: () => onCode ? onCode() : Promise.resolve(''),
+    password: () => Promise.resolve(''),
     onError: (err) => console.error(err),
   });
 
@@ -71,7 +66,7 @@ export function getClient() {
 export async function startListeners() {
   if (!client) throw new Error('Telegram belum initialized');
 
-  const channels = getDatabase().prepare('SELECT channel_username FROM channels WHERE active = 1').all();
+  const channels = db.qall('SELECT channel_username FROM channels WHERE active = 1');
 
   for (const ch of channels) {
     await addChannelListener(ch.channel_username);
@@ -80,19 +75,32 @@ export async function startListeners() {
   console.log(`[Telegram] Listening ${channels.length} channel(s)`);
 }
 
+async function getSenderUsername(event) {
+  try {
+    if (!event.message) return null;
+    const sender = await event.message.getSender();
+    if (!sender) return null;
+    return sender.username || `${sender.firstName || ''} ${sender.lastName || ''}`.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleMessage(sourceChannel, event) {
   const message = event.message;
   if (!message || !message.text) return;
 
   const text = message.text;
-  console.log(`[Signal] ${sourceChannel}: ${text.slice(0, 120)}`);
+  const senderUsername = await getSenderUsername(event);
+
+  console.log(`[Signal] ${sourceChannel}${senderUsername ? ' (@' + senderUsername + ')' : ''}: ${text.slice(0, 120)}`);
 
   if (onForwardCallback) {
     onForwardCallback(sourceChannel, message);
   }
 
   if (onSignalCallback) {
-    onSignalCallback(sourceChannel, text, message);
+    onSignalCallback(sourceChannel, text, message, senderUsername);
   }
 }
 
@@ -105,9 +113,11 @@ export async function addChannelListener(channelUsername) {
       new NewMessage({ chats: [entity.id] })
     );
     console.log(`[Telegram] Listening: ${channelUsername}`);
+    db.addScraperLog(channelUsername, 'info', 'Mulai listening');
     return true;
   } catch (err) {
     console.error(`[Telegram] Gagal listen ${channelUsername}:`, err.message);
+    db.addScraperLog(channelUsername, 'error', `Gagal listen: ${err.message}`);
     return false;
   }
 }

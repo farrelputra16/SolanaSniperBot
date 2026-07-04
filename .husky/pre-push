@@ -1,0 +1,10 @@
+#!/bin/sh
+# Pre-push hook — run tests before pushing
+echo "🧪 Running tests before push..."
+npm test
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
+  echo "❌ Tests failed. Push cancelled."
+  exit 1
+fi
+echo "✅ All tests passed. Pushing..."
