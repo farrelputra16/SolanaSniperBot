@@ -168,6 +168,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
     <div class="nav-item" data-p="channels"><span class="ico">📡</span><span>Channels</span></div>
     <div class="nav-item" data-p="positions"><span class="ico">💼</span><span>Positions</span></div>
     <div class="nav-item" data-p="scraper"><span class="ico">🕵️</span><span>Scraper</span></div>
+    <div class="nav-item" data-p="telegram"><span class="ico">✈️</span><span>Telegram</span></div>
     <div class="nav-item" data-p="wallets"><span class="ico">👛</span><span>Wallets</span></div>
     <div class="nav-item" data-p="settings"><span class="ico">⚙️</span><span>Settings</span></div>
   </nav>
@@ -179,6 +180,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   <div id="page-channels" class="section"></div>
   <div id="page-positions" class="section"></div>
   <div id="page-scraper" class="section"></div>
+  <div id="page-telegram" class="section"></div>
   <div id="page-wallets" class="section"></div>
   <div id="page-settings" class="section"></div>
 </div>
@@ -210,7 +212,7 @@ document.querySelectorAll('.nav-item').forEach(a=>{a.addEventListener('click',()
 async function renderPage(n){
   const el=$('#page-'+n);if(!el)return;
   try{
-    const fns={dashboard:renderDashboard,channels:renderChannels,positions:renderPositions,scraper:renderScraper,wallets:renderWallets,settings:renderSettings};
+    const fns={dashboard:renderDashboard,channels:renderChannels,positions:renderPositions,scraper:renderScraper,telegram:renderTelegram,wallets:renderWallets,settings:renderSettings};
     el.innerHTML=await fns[n]();
   }catch(err){el.innerHTML=`<div class="empty-state"><h4>Error</h4><p>${esc(err.message)}</p></div>`}
 }
@@ -467,6 +469,114 @@ async function renderScraper(){
   ${logs.length?`<div style="max-height:350px;overflow-y:auto">${logs.map(l=>`<div class="log-line"><span class="log-time">${fmtShort(l.created_at)}</span><span class="log-lv ${l.level}">${l.level}</span><span class="log-msg">${l.channel_username?'['+esc(l.channel_username)+'] ':''}${esc(l.message)}</span></div>`).join('')}</div>`:`<div class="empty-state"><p>No activity</p></div>`}
 </div>`;}
 
+// ═══ TELEGRAM (Self-service setup) ═══
+async function renderTelegram(){
+  const sessions=await api('/telegram/sessions');
+  return`<div class="page-header"><h2>Telegram</h2><div class="sub">Set up your own Telegram account for signal scraping. API ID/Hash from my.telegram.org/apps</div></div>
+<div class="card"><div class="card-h"><h3>${sessions.length} Session${sessions.length!==1?'s':''}</h3><button class="btn btn-p btn-sm" onclick="openTelegramSetup()">+ New Session</button></div>
+${sessions.length?sessions.map(s=>renderTelegramSession(s)).join(''):
+`<div class="empty-state"><div class="ico">✈️</div><h4>No Telegram sessions</h4><p>Add your Telegram account to start listening on channels.</p><button class="btn btn-p mt-12" onclick="openTelegramSetup()">+ New Session</button></div>`}
+</div>`;}
+
+function renderTelegramSession(s){
+  const st=s.status;
+  const stMap={pending:'badge-y Pending',connecting:'badge-b Connecting',active:'badge-g Active',error:'badge-r Error',inactive:'badge-gr Inactive'};
+  const[c,l]=(stMap[st]||'badge-gr '+st).split(' ');
+  const isActive=st==='active';
+  const hasSession=!!s.session_string && s.session_string!=='';
+  return`<div class="channel-card">
+  <div class="top">
+    <div class="name">${esc(s.name||'Telegram')} <span class="badge ${c}">${l}</span></div>
+    <div class="actions">
+      ${hasSession&&!isActive?`<button class="btn btn-sm btn-g" onclick="activateSession(${s.id})">▶ Activate</button>`:''}
+      <button class="btn btn-sm btn-r" onclick="delSession(${s.id})">✕</button>
+    </div>
+  </div>
+  <div class="chips">
+    <span class="chip">ID: ${s.api_id}</span>
+    <span class="chip">Hash: ${s.api_hash}</span>
+    ${s.phone?`<span class="chip">${esc(s.phone)}</span>`:''}
+    ${s.created_at?`<span class="chip">${fmtTime(s.created_at)}</span>`:''}
+  </div>
+  ${s.error_message?`<div class="text-sm" style="color:var(--red);margin-top:4px">❌ ${esc(s.error_message)}</div>`:''}
+</div>`;}
+
+window.openTelegramSetup=function(){
+  openModal(`<h2>New Telegram Session</h2>
+<p class="text-sm text-muted mb-12">Get your API ID and Hash from <a href="https://my.telegram.org/apps" target="_blank" style="color:var(--accent)">my.telegram.org/apps</a></p>
+<div class="form-grid">
+  <div class="form-group"><label>Session Name</label><input id="tg-name" value="My Account" placeholder="My Telegram"/></div>
+  <div class="form-group"><label>API ID</label><input id="tg-api-id" type="number" placeholder="123456"/></div>
+  <div class="form-group"><label>API Hash</label><input id="tg-api-hash" placeholder="your_api_hash"/></div>
+  <div class="form-group"><label>Phone Number</label><input id="tg-phone" placeholder="+628123456789"/></div>
+</div>
+<div id="tg-otp-area" class="hide">
+  <div class="form-group"><label>OTP Code from Telegram</label><input id="tg-otp" placeholder="12345"/></div>
+</div>
+<div class="modal-actions">
+  <button class="btn" onclick="closeModal()">Cancel</button>
+  <button class="btn btn-p" id="tg-submit-btn" onclick="submitTelegramSetup()">Connect</button>
+</div>`);
+};
+
+let tgSessionId=null;
+window.submitTelegramSetup=async function(){
+  const btn=$('#tg-submit-btn');
+  if(btn.textContent==='Submit OTP'){
+    const code=$('#tg-otp').value.trim();
+    if(!code)return toast('Enter OTP code','err');
+    try{
+      await api('/telegram/sessions/'+tgSessionId+'/otp',{method:'POST',body:JSON.stringify({code})});
+      toast('OTP submitted! Waiting for connection...','info');
+      btn.textContent='Connecting...';btn.disabled=true;
+      // poll for session status
+      const poll=setInterval(async()=>{
+        const sessions=await api('/telegram/sessions');
+        const s=sessions.find(x=>x.id===tgSessionId);
+        if(!s)return;
+        if(s.status==='active'){clearInterval(poll);closeModal();toast('Telegram connected! ✅','ok');renderPage('telegram')}
+        else if(s.status==='error'){clearInterval(poll);closeModal();toast('Error: '+esc(s.error_message),'err');renderPage('telegram')}
+      },1500);
+    }catch(err){toast(err.message,'err')}
+    return;
+  }
+
+  const name=$('#tg-name').value.trim()||'My Account';
+  const apiId=$('#tg-api-id').value.trim();
+  const apiHash=$('#tg-api-hash').value.trim();
+  const phone=$('#tg-phone').value.trim();
+  if(!apiId||!apiHash||!phone)return toast('API ID, Hash, and Phone required','err');
+
+  try{
+    btn.textContent='Connecting...';btn.disabled=true;
+    // First request starts login, waits for OTP prompt on server
+    const r=await api('/telegram/sessions',{method:'POST',body:JSON.stringify({name,api_id:parseInt(apiId),api_hash:apiHash,phone})});
+    tgSessionId=r.id;
+    // Show OTP input
+    $('#tg-otp-area').classList.remove('hide');
+    btn.textContent='Submit OTP';btn.disabled=false;
+    toast('Check Telegram for OTP code','info');
+  }catch(err){
+    btn.textContent='Connect';btn.disabled=false;
+    toast(err.message,'err');
+  }
+};
+
+window.activateSession=async function(id){
+  try{
+    await api('/telegram/sessions/'+id+'/activate',{method:'POST'});
+    toast('Telegram activated ✅','ok');
+    renderPage('telegram');
+  }catch(err){toast(err.message,'err')}
+};
+
+window.delSession=async function(id){
+  if(!confirm('Delete this Telegram session?'))return;
+  await api('/telegram/sessions/'+id,{method:'DELETE'});
+  toast('Deleted','info');
+  renderPage('telegram');
+};
+
 // ═══ WALLETS (Import/Export) ═══
 async function renderWallets(){
   const[wallets,groups]=await Promise.all([api('/wallets'),api('/wallet-groups')]);
@@ -537,8 +647,8 @@ async function renderSettings(){
   <div class="card"><div class="card-h"><h3>🔐 Status</h3></div>
     <div style="display:grid;gap:6px">${[
       ['GMGN',setup.gmgnConfigured,'✅','❌'],
-      ['Telegram',setup.telegramConfigured,'✅','❌'],
-      ['Session',setup.telegramSession,'✅','⚠️'],
+      ['Telegram',setup.telegramConfigured,'✅','Set up via Telegram page'],
+      ['Tg Active',setup.telegramActive,'✅','❌'],
       ['Channels',setup.hasChannels,setup.hasChannels?'✅':'0','Add'],
     ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px"><span>${l}</span><span class="${ok?'badge-g':'badge-gr'} badge">${ok?y:n}</span></div>`).join('')}</div>
   </div>

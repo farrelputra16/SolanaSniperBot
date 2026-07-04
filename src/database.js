@@ -124,6 +124,17 @@ function createTables() {
       wallet_id INTEGER REFERENCES wallets(id),
       UNIQUE(group_id, wallet_id)
     );
+    CREATE TABLE IF NOT EXISTS telegram_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT DEFAULT 'My Account',
+      api_id INTEGER NOT NULL,
+      api_hash TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      session_string TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      error_message TEXT DEFAULT '',
+      created_at INTEGER DEFAULT (strftime('%s','now'))
+    );
   `);
 }
 
@@ -322,6 +333,28 @@ export function setSetting(key, value) { qrun('INSERT OR REPLACE INTO settings (
 // ───── Scraper Log ─────
 export function addScraperLog(ch, level, msg) { qrun('INSERT INTO scraper_log (channel_username, level, message) VALUES (?,?,?)', [ch, level, msg]); persist(); }
 export function getScraperLogs(limit = 100) { return qall('SELECT * FROM scraper_log ORDER BY created_at DESC LIMIT ?', [limit]); }
+// ───── Telegram Sessions ─────
+export function createTelegramSession(data) {
+  qrun('INSERT INTO telegram_sessions (name, api_id, api_hash, phone, session_string, status) VALUES (?,?,?,?,?,?)',
+    [data.name || 'My Account', data.api_id, data.api_hash, data.phone || '', data.session_string || '', data.status || 'pending']);
+  persist();
+  return qget('SELECT last_insert_rowid() as id').id;
+}
+export function getTelegramSessions() { return qall('SELECT * FROM telegram_sessions ORDER BY created_at DESC'); }
+export function getTelegramSession(id) { return qget('SELECT * FROM telegram_sessions WHERE id = ?', [id]); }
+export function getActiveTelegramSession() { return qget("SELECT * FROM telegram_sessions WHERE status = 'active' LIMIT 1"); }
+export function updateTelegramSession(id, data) {
+  const keys = Object.keys(data);
+  qrun(`UPDATE telegram_sessions SET ${keys.map(k => `${k}=?`).join(',')} WHERE id=?`, [...keys.map(k => data[k]), id]);
+  persist();
+}
+export function deleteTelegramSession(id) { qrun('DELETE FROM telegram_sessions WHERE id = ?', [id]); persist(); }
+export function setActiveTelegramSession(id) {
+  qrun("UPDATE telegram_sessions SET status = 'inactive' WHERE status = 'active'");
+  qrun("UPDATE telegram_sessions SET status = 'active' WHERE id = ?", [id]);
+  persist();
+}
+
 export function getScraperStatus() {
   return qall(`SELECT c.channel_username, c.display_name, c.active,
     (SELECT COUNT(*) FROM scraper_log sl WHERE sl.channel_username = c.channel_username AND sl.level = 'error') as error_count,

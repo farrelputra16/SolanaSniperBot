@@ -21,16 +21,22 @@ export async function initTelegram() {
   if (!apiId || !apiHash) {
     throw new Error('TELEGRAM_API_ID dan TELEGRAM_API_HASH belum dikonfigurasi');
   }
+  return initTelegramWithSession(apiId, apiHash, session);
+}
 
-  const stringSession = new StringSession(session);
+export async function initTelegramWithSession(apiId, apiHash, sessionStr) {
+  if (client) {
+    await destroyClient();
+  }
 
+  const stringSession = new StringSession(sessionStr);
   client = new TelegramClient(stringSession, apiId, apiHash, {
     connectionRetries: 5,
   });
 
   await client.start({
     phoneNumber: async () => {
-      throw new Error('Session tidak valid. Jalankan: npm run setup-telegram');
+      throw new Error('Session tidak valid');
     },
     phoneCode: async () => '',
     onError: (err) => console.error('[Telegram]', err),
@@ -39,6 +45,16 @@ export async function initTelegram() {
   const me = await client.getMe();
   console.log(`[Telegram] Terhubung sebagai @${me.username || me.id}`);
   return client;
+}
+
+export async function destroyClient() {
+  if (client) {
+    try {
+      client.removeAllEventHandlers?.();
+      await client.destroy();
+    } catch {}
+    client = null;
+  }
 }
 
 export async function loginNewSession(apiId, apiHash, phoneNumber, onCode) {

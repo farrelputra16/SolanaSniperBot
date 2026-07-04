@@ -23,7 +23,6 @@ async function main() {
   }
 
   if (!existsSync(join(process.cwd(), 'data'))) mkdirSync(join(process.cwd(), 'data'), { recursive: true });
-  if (!existsSync(join(process.cwd(), 'session'))) mkdirSync(join(process.cwd(), 'session'), { recursive: true });
 
   await initDatabase();
 
@@ -41,19 +40,20 @@ async function main() {
     }
   });
 
-  // Telegram is optional — start web server even if Telegram fails
-  if (config.telegram.apiId && config.telegram.apiHash) {
+  // Resume active Telegram session if any
+  const activeSession = db.getActiveTelegramSession();
+  if (activeSession && activeSession.session_string) {
     try {
-      const { initTelegram, startListeners } = await import('./telegram.js');
-      await initTelegram();
+      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+      await initTelegramWithSession(activeSession.api_id, activeSession.api_hash, activeSession.session_string);
+      console.log('   Telegram: ✅ Resumed session @' + (activeSession.name || 'Telegram'));
       await startListeners();
-      console.log('   Telegram: ✅ Connected');
     } catch (err) {
-      console.warn('   Telegram: ⚠️  ' + err.message);
-      console.log('   Run: npm run setup-telegram');
+      console.warn('   Telegram: ⚠️  Failed to resume session: ' + err.message);
+      db.updateTelegramSession(activeSession.id, { status: 'error', error_message: err.message });
     }
   } else {
-    console.warn('   Telegram: ⏸️  Not configured (dashboard-only mode)');
+    console.log('   Telegram: ⏸️  Not configured — set up via Dashboard > Telegram');
   }
 
   const app = createWebServer();
@@ -61,12 +61,6 @@ async function main() {
 
   console.log(`\n✅ Sniper Bot running!`);
   console.log(`   Dashboard: http://${config.server.host}:${config.server.port}`);
-  if (!config.telegram.apiId) {
-    console.log('\n📋 Quick Start:');
-    console.log('   1. Set TELEGRAM_API_ID and TELEGRAM_API_HASH in .env');
-    console.log('   2. Run: npm run setup-telegram');
-    console.log('   3. Restart: npm start');
-  }
   console.log('   Press Ctrl+C to stop\n');
 }
 

@@ -184,6 +184,85 @@ export function createWebServer() {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
+  // ───── Telegram Sessions (self-service setup via UI) ─────
+  app.get('/api/telegram/sessions', (req, res) => {
+    const sessions = db.getTelegramSessions();
+    res.json(sessions.map(s => ({
+      ...s,
+      api_hash: s.api_hash ? s.api_hash.slice(0, 8) + '...' : '',
+      session_string: s.session_string ? '***' : '',
+    })));
+  });
+
+  app.post('/api/telegram/sessions', async (req, res) => {
+    const { name, api_id, api_hash, phone } = req.body;
+    if (!api_id || !api_hash) return res.status(400).json({ error: 'api_id and api_hash required' });
+    if (!phone) return res.status(400).json({ error: 'phone required' });
+
+    const id = db.createTelegramSession({ name, api_id: parseInt(api_id), api_hash, phone, status: 'connecting' });
+
+    try {
+      const { loginNewSession } = await import('./telegram.js');
+      const sessionStr = await loginNewSession(parseInt(api_id), api_hash, phone, async () => {
+        return new Promise((resolve, reject) => {
+          pendingOtp[id] = { resolve, reject, timeout: setTimeout(() => {
+            delete pendingOtp[id];
+            reject(new Error('OTP timeout'));
+          }, 120000) };
+        });
+      });
+      db.updateTelegramSession(id, { session_string: sessionStr, status: 'active', phone });
+      delete pendingOtp[id];
+      res.json({ success: true, id, status: 'active', message: 'Telegram connected!' });
+    } catch (err) {
+      db.updateTelegramSession(id, { status: 'error', error_message: err.message });
+      delete pendingOtp[id];
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/telegram/sessions/:id/otp', (req, res) => {
+    const otp = pendingOtp[req.params.id];
+    if (!otp) return res.status(400).json({ error: 'No pending OTP request for this session' });
+    if (!req.body.code) return res.status(400).json({ error: 'code required' });
+    clearTimeout(otp.timeout);
+    otp.resolve(req.body.code);
+    delete pendingOtp[req.params.id];
+    res.json({ success: true, message: 'OTP submitted' });
+  });
+
+  app.post('/api/telegram/sessions/:id/activate', async (req, res) => {
+    const session = db.getTelegramSession(req.params.id);
+    if (!session) return res.status(404).json({ error: 'session not found' });
+    if (!session.session_string) return res.status(400).json({ error: 'Session not yet connected (no session string)' });
+
+    try {
+      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+      await initTelegramWithSession(session.api_id, session.api_hash, session.session_string);
+      db.setActiveTelegramSession(session.id);
+      db.updateTelegramSession(session.id, { status: 'active' });
+
+      try { await startListeners(); } catch {}
+
+      res.json({ success: true, message: 'Telegram activated' });
+    } catch (err) {
+      db.updateTelegramSession(session.id, { status: 'error', error_message: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/telegram/sessions/:id', async (req, res) => {
+    const session = db.getTelegramSession(req.params.id);
+    if (session?.status === 'active') {
+      const { destroyClient } = await import('./telegram.js');
+      await destroyClient();
+    }
+    db.deleteTelegramSession(req.params.id);
+    res.json({ success: true });
+  });
+
+  let pendingOtp = {};
+
   // ───── Scraper ─────
   app.get('/api/scraper/status', (req, res) => res.json(db.getScraperStatus()));
   app.get('/api/scraper/logs', (req, res) => res.json(db.getScraperLogs(Math.min(parseInt(req.query.limit) || 200, 500))));
@@ -197,7 +276,8 @@ export function createWebServer() {
     s.default_slippage = String(config.sniper.defaultSlippage);
     s.default_anti_mev = String(config.sniper.defaultAntiMev);
     s.gmgn_api_key = config.gmgn.apiKey ? config.gmgn.apiKey.slice(0, 12) + '...' : '';
-    s.telegram_configured = String(!!config.telegram.apiId);
+    const activeTg = db.getActiveTelegramSession();
+    s.telegram_configured = String(!!activeTg);
     res.json(s);
   });
   app.post('/api/settings', (req, res) => {
@@ -221,10 +301,13 @@ export function createWebServer() {
 
   // ───── Setup ─────
   app.get('/api/setup', (req, res) => {
+    const activeSession = db.getActiveTelegramSession();
     res.json({
       gmgnConfigured: !!config.gmgn.apiKey && !!config.gmgn.privateKey,
-      telegramConfigured: !!config.telegram.apiId && !!config.telegram.apiHash,
-      telegramSession: !!config.telegram.session,
+      telegramConfigured: !!activeSession,
+      telegramActive: activeSession?.status === 'active',
+      telegramSession: !!activeSession?.session_string,
+      telegramSessions: db.getTelegramSessions().length,
       hasChannels: db.getActiveChannels().length > 0,
       hasWallets: db.getAllWallets().length > 0,
     });
