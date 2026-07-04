@@ -184,50 +184,75 @@ export function createWebServer() {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
-  // ───── Telegram Sessions (self-service setup via UI) ─────
-  app.get('/api/telegram/sessions', (req, res) => {
-    const sessions = db.getTelegramSessions();
-    res.json(sessions.map(s => ({
+  // ───── Telegram Sessions (non-blocking background login) ─────
+  const pendingLogins = {};
+
+  function getCleanSession(s) {
+    return {
       ...s,
       api_hash: s.api_hash ? s.api_hash.slice(0, 8) + '...' : '',
       session_string: s.session_string ? '***' : '',
-    })));
+    };
+  }
+
+  app.get('/api/telegram/sessions', (req, res) => {
+    res.json(db.getTelegramSessions().map(getCleanSession));
   });
 
-  app.post('/api/telegram/sessions', async (req, res) => {
+  app.get('/api/telegram/sessions/:id', (req, res) => {
+    const s = db.getTelegramSession(req.params.id);
+    if (!s) return res.status(404).json({ error: 'not found' });
+    res.json(getCleanSession(s));
+  });
+
+  app.post('/api/telegram/sessions', (req, res) => {
     const { name, api_id, api_hash, phone } = req.body;
     if (!api_id || !api_hash) return res.status(400).json({ error: 'api_id and api_hash required' });
     if (!phone) return res.status(400).json({ error: 'phone required' });
 
     const id = db.createTelegramSession({ name, api_id: parseInt(api_id), api_hash, phone, status: 'connecting' });
+    res.json({ success: true, id, status: 'connecting' });
 
+    // Start login in background — does NOT block the HTTP response
+    startTelegramLogin(id, parseInt(api_id), api_hash, phone);
+  });
+
+  async function startTelegramLogin(id, apiId, apiHash, phone) {
     try {
       const { loginNewSession } = await import('./telegram.js');
-      const sessionStr = await loginNewSession(parseInt(api_id), api_hash, phone, async () => {
+      const sessionStr = await loginNewSession(apiId, apiHash, phone, async () => {
+        db.updateTelegramSession(id, { status: 'needs_otp' });
         return new Promise((resolve, reject) => {
-          pendingOtp[id] = { resolve, reject, timeout: setTimeout(() => {
-            delete pendingOtp[id];
-            reject(new Error('OTP timeout'));
+          pendingLogins[id] = { resolve, reject, timeout: setTimeout(() => {
+            delete pendingLogins[id];
+            reject(new Error('OTP timeout after 2 minutes'));
           }, 120000) };
         });
       });
       db.updateTelegramSession(id, { session_string: sessionStr, status: 'active', phone });
-      delete pendingOtp[id];
-      res.json({ success: true, id, status: 'active', message: 'Telegram connected!' });
+      delete pendingLogins[id];
+      // Auto-activate
+      try {
+        const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+        await initTelegramWithSession(apiId, apiHash, sessionStr);
+        db.setActiveTelegramSession(id);
+        try { await startListeners(); } catch {}
+      } catch (activateErr) {
+        console.error('[Telegram] Auto-activate failed:', activateErr.message);
+      }
     } catch (err) {
       db.updateTelegramSession(id, { status: 'error', error_message: err.message });
-      delete pendingOtp[id];
-      res.status(500).json({ error: err.message });
+      delete pendingLogins[id];
     }
-  });
+  }
 
   app.post('/api/telegram/sessions/:id/otp', (req, res) => {
-    const otp = pendingOtp[req.params.id];
-    if (!otp) return res.status(400).json({ error: 'No pending OTP request for this session' });
+    const login = pendingLogins[req.params.id];
+    if (!login) return res.status(400).json({ error: 'No pending OTP request for this session' });
     if (!req.body.code) return res.status(400).json({ error: 'code required' });
-    clearTimeout(otp.timeout);
-    otp.resolve(req.body.code);
-    delete pendingOtp[req.params.id];
+    clearTimeout(login.timeout);
+    login.resolve(req.body.code);
+    delete pendingLogins[req.params.id];
     res.json({ success: true, message: 'OTP submitted' });
   });
 
@@ -241,9 +266,7 @@ export function createWebServer() {
       await initTelegramWithSession(session.api_id, session.api_hash, session.session_string);
       db.setActiveTelegramSession(session.id);
       db.updateTelegramSession(session.id, { status: 'active' });
-
       try { await startListeners(); } catch {}
-
       res.json({ success: true, message: 'Telegram activated' });
     } catch (err) {
       db.updateTelegramSession(session.id, { status: 'error', error_message: err.message });
@@ -258,10 +281,9 @@ export function createWebServer() {
       await destroyClient();
     }
     db.deleteTelegramSession(req.params.id);
+    delete pendingLogins[req.params.id];
     res.json({ success: true });
   });
-
-  let pendingOtp = {};
 
   // ───── Scraper ─────
   app.get('/api/scraper/status', (req, res) => res.json(db.getScraperStatus()));

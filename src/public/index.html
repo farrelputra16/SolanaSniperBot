@@ -518,7 +518,7 @@ ${sessions.length?sessions.map(s=>renderTelegramSession(s)).join(''):
 
 function renderTelegramSession(s){
   const st=s.status;
-  const stMap={pending:'badge-y Pending',connecting:'badge-b Connecting',active:'badge-g Active',error:'badge-r Error',inactive:'badge-gr Inactive'};
+  const stMap={pending:'badge-y Pending',connecting:'badge-b Connecting','needs_otp':'badge-y Needs OTP',active:'badge-g Active',error:'badge-r Error',inactive:'badge-gr Inactive'};
   const[c,l]=(stMap[st]||'badge-gr '+st).split(' ');
   const isActive=st==='active';
   const hasSession=!!s.session_string && s.session_string!=='';
@@ -558,6 +558,25 @@ window.openTelegramSetup=function(){
 };
 
 let tgSessionId=null;
+let tgPoll=null;
+function stopTgPoll(){if(tgPoll){clearInterval(tgPoll);tgPoll=null}}
+function startTgPoll(sessionId){
+  stopTgPoll();
+  tgPoll=setInterval(async()=>{
+    try{
+      const s=await api('/telegram/sessions/'+sessionId);
+      if(s.status==='active'){stopTgPoll();closeModal();toast('Telegram connected! ✅','ok');renderPage('telegram')}
+      else if(s.status==='needs_otp'){
+        $('#tg-otp-area').classList.remove('hide');
+        const btn=$('#tg-submit-btn');
+        btn.textContent='Submit OTP';btn.disabled=false;
+        toast('OTP sent! Enter code below.','info');
+      }
+      else if(s.status==='error'){stopTgPoll();closeModal();toast('Error: '+(s.error_message||'Connection failed'),'err');renderPage('telegram')}
+    }catch(err){/* ignore polling errors */}
+  },1500);
+}
+
 window.submitTelegramSetup=async function(){
   const btn=$('#tg-submit-btn');
   if(btn.textContent==='Submit OTP'){
@@ -565,16 +584,9 @@ window.submitTelegramSetup=async function(){
     if(!code)return toast('Enter OTP code','err');
     try{
       await api('/telegram/sessions/'+tgSessionId+'/otp',{method:'POST',body:JSON.stringify({code})});
-      toast('OTP submitted! Waiting for connection...','info');
+      toast('OTP submitted! Connecting...','info');
       btn.textContent='Connecting...';btn.disabled=true;
-      // poll for session status
-      const poll=setInterval(async()=>{
-        const sessions=await api('/telegram/sessions');
-        const s=sessions.find(x=>x.id===tgSessionId);
-        if(!s)return;
-        if(s.status==='active'){clearInterval(poll);closeModal();toast('Telegram connected! ✅','ok');renderPage('telegram')}
-        else if(s.status==='error'){clearInterval(poll);closeModal();toast('Error: '+esc(s.error_message),'err');renderPage('telegram')}
-      },1500);
+      startTgPoll(tgSessionId);
     }catch(err){toast(err.message,'err')}
     return;
   }
@@ -587,13 +599,10 @@ window.submitTelegramSetup=async function(){
 
   try{
     btn.textContent='Connecting...';btn.disabled=true;
-    // First request starts login, waits for OTP prompt on server
     const r=await api('/telegram/sessions',{method:'POST',body:JSON.stringify({name,api_id:parseInt(apiId),api_hash:apiHash,phone})});
     tgSessionId=r.id;
-    // Show OTP input
-    $('#tg-otp-area').classList.remove('hide');
-    btn.textContent='Submit OTP';btn.disabled=false;
-    toast('Check Telegram for OTP code','info');
+    toast('Connecting to Telegram...','info');
+    startTgPoll(r.id);
   }catch(err){
     btn.textContent='Connect';btn.disabled=false;
     toast(err.message,'err');
@@ -771,13 +780,34 @@ async function renderSettings(){
 </div>`;}
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 
-// ═══ LOGIN (Telegram self-service) ═══
+// ═══ LOGIN (Telegram self-service — poll-based, non-blocking) ═══
 let loginSessionId=null;
+let loginPoll=null;
 
 function setLoginStatus(msg,type='info'){
   const el=$('#login-status');
   if(!el)return;
   el.innerHTML=`<div class="login-badge ${type}">${type==='ok'?'✅':type==='err'?'❌':type==='wait'?'⏳':'ℹ️'} ${esc(msg)}</div>`;
+}
+
+function stopLoginPoll(){if(loginPoll){clearInterval(loginPoll);loginPoll=null}}
+
+function startLoginPoll(sessionId,onActive,onError){
+  stopLoginPoll();
+  loginPoll=setInterval(async()=>{
+    try{
+      const s=await api('/telegram/sessions/'+sessionId);
+      if(s.status==='active'){stopLoginPoll();onActive(s)}
+      else if(s.status==='needs_otp'){
+        stopLoginPoll();
+        $('#login-step1').classList.add('hide');
+        $('#login-step2').classList.remove('hide');
+        setLoginStatus('OTP sent to your Telegram! Enter code below.','ok');
+        $('#lg-otp').focus();
+      }
+      else if(s.status==='error'){stopLoginPoll();onError(s.error_message||'Connection failed')}
+    }catch(err){/* polling — ignore transient errors */}
+  },1500);
 }
 
 window.loginStep1=async function(){
@@ -788,15 +818,26 @@ window.loginStep1=async function(){
 
   const btn=$('#lg-btn1');
   btn.disabled=true;btn.textContent='Connecting...';
-  setLoginStatus('Initiating Telegram login...','wait');
+  setLoginStatus('Connecting to Telegram...','wait');
 
   try{
     const r=await api('/telegram/sessions',{method:'POST',body:JSON.stringify({name:'Web Login',api_id:parseInt(apiId),api_hash:apiHash,phone})});
     loginSessionId=r.id;
-    $('#login-step1').classList.add('hide');
-    $('#login-step2').classList.remove('hide');
-    setLoginStatus('OTP sent to your Telegram!','ok');
-    $('#lg-otp').focus();
+    setLoginStatus('Connecting... waiting for OTP','wait');
+
+    startLoginPoll(r.id,
+      // onActive
+      async (s)=>{
+        await api('/telegram/sessions/'+s.id+'/activate',{method:'POST'});
+        setLoginStatus('Connected! Loading dashboard...','ok');
+        setTimeout(()=>{$('#login-page').style.display='none';initDashboard()},300);
+      },
+      // onError
+      (errMsg)=>{
+        setLoginStatus(errMsg,'err');
+        btn.disabled=false;btn.textContent='Connect Telegram';
+      }
+    );
   }catch(err){
     setLoginStatus(err.message,'err');
     btn.disabled=false;btn.textContent='Connect Telegram';
@@ -813,33 +854,20 @@ window.loginStep2=async function(){
 
   try{
     await api('/telegram/sessions/'+loginSessionId+'/otp',{method:'POST',body:JSON.stringify({code})});
-    setLoginStatus('Connecting Telegram...','wait');
+    setLoginStatus('Connecting...','wait');
 
-    // poll until session becomes active
-    const poll=setInterval(async()=>{
-      try{
-        const sessions=await api('/telegram/sessions');
-        const s=sessions.find(x=>x.id===loginSessionId);
-        if(!s)return;
-        if(s.status==='active'){
-          clearInterval(poll);
-          await api('/telegram/sessions/'+s.id+'/activate',{method:'POST'});
-          setLoginStatus('Connected! Loading dashboard...','ok');
-          setTimeout(()=>{
-            $('#login-page').style.display='none';
-            initDashboard();
-          },500);
-        }else if(s.status==='error'){
-          clearInterval(poll);
-          setLoginStatus(s.error_message||'Connection failed','err');
-          btn.disabled=false;btn.textContent='Verify & Enter';
-        }
-      }catch(err){
-        setLoginStatus(err.message,'err');
-        clearInterval(poll);
+    startLoginPoll(loginSessionId,
+      async (s)=>{
+        await api('/telegram/sessions/'+s.id+'/activate',{method:'POST'});
+        setLoginStatus('Connected! Loading dashboard...','ok');
+        setTimeout(()=>{$('#login-page').style.display='none';initDashboard()},300);
+      },
+      (errMsg)=>{
+        setLoginStatus(errMsg,'err');
         btn.disabled=false;btn.textContent='Verify & Enter';
+        $('#login-step2').classList.remove('hide');
       }
-    },1500);
+    );
   }catch(err){
     setLoginStatus(err.message,'err');
     btn.disabled=false;btn.textContent='Verify & Enter';
@@ -847,12 +875,13 @@ window.loginStep2=async function(){
 };
 
 window.loginCancel=function(){
+  stopLoginPoll();
+  if(loginSessionId)api('/telegram/sessions/'+loginSessionId,{method:'DELETE'}).catch(()=>{});
   loginSessionId=null;
   $('#login-step2').classList.add('hide');
   $('#login-step1').classList.remove('hide');
   $('#lg-btn1').disabled=false;$('#lg-btn1').textContent='Connect Telegram';
   setLoginStatus('');
-  if(loginSessionId)api('/telegram/sessions/'+loginSessionId,{method:'DELETE'}).catch(()=>{});
 };
 
 // ═══ INIT ═══
