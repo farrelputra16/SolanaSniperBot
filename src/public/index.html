@@ -139,6 +139,17 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 .log-lv.info{color:var(--accent);background:var(--accent-bg)}
 .log-lv.error{color:var(--red);background:var(--red-bg)}
 .log-lv.warn{color:var(--yellow);background:var(--yellow-bg)}
+.login-overlay{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center}
+.login-box{width:100%;max-width:420px;padding:20px}
+.login-box h1{font-size:22px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px}
+.login-box .sub{color:var(--text3);font-size:13px;margin-bottom:24px;line-height:1.5}
+.login-box .step{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.login-box .form-group{margin-bottom:12px}
+.login-box .login-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:600}
+.login-box .login-badge.ok{background:var(--green-bg);color:var(--green)}
+.login-box .login-badge.wait{background:var(--yellow-bg);color:var(--yellow)}
+.login-box .login-badge.err{background:var(--red-bg);color:var(--red)}
+.login-box .login-badge.info{background:var(--accent-bg);color:var(--accent)}
 .toast-container{position:fixed;top:12px;right:12px;z-index:300;display:flex;flex-direction:column;gap:6px}
 .toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:slideIn .15s ease;min-width:180px}
 .toast.ok{border-left:3px solid var(--green)}
@@ -187,6 +198,33 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 
 <div class="modal-overlay" id="modal"><div class="modal" id="modal-c"></div></div>
 <div class="toast-container" id="toast-c"></div>
+
+<div class="login-overlay" id="login-page">
+  <div class="login-box">
+    <h1>⚡ SniperBot</h1>
+    <div class="sub">Connect your Telegram account to start scraping signals. Each user uses their own credentials.</div>
+    <div id="login-status"></div>
+    <div id="login-step1">
+      <div class="step">Step 1 of 2 — API Credentials</div>
+      <p class="text-sm text-muted mb-12">Get these from <a href="https://my.telegram.org/apps" target="_blank" style="color:var(--accent)">my.telegram.org/apps</a></p>
+      <div class="form-grid" style="grid-template-columns:1fr 2fr">
+        <div class="form-group"><label>API ID</label><input id="lg-api-id" type="number" placeholder="123456"/></div>
+        <div class="form-group"><label>API Hash</label><input id="lg-api-hash" placeholder="your_api_hash"/></div>
+      </div>
+      <div class="form-group"><label>Phone Number</label><input id="lg-phone" placeholder="+628123456789"/></div>
+      <button class="btn btn-p w-full mt-12" id="lg-btn1" onclick="loginStep1()">Connect Telegram</button>
+    </div>
+    <div id="login-step2" class="hide">
+      <div class="step">Step 2 of 2 — Verification Code</div>
+      <p class="text-sm text-muted mb-12">Telegram sent an OTP code to your account. Enter it below.</p>
+      <div class="form-group"><label>OTP Code</label><input id="lg-otp" placeholder="12345" autocomplete="off"/></div>
+      <div class="form-actions" style="border:none;padding:0;margin-top:4px">
+        <button class="btn w-full" onclick="loginCancel()">Cancel</button>
+        <button class="btn btn-p w-full" id="lg-btn2" onclick="loginStep2()">Verify &amp; Enter</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
@@ -659,10 +697,11 @@ function updateImportPreview(){
   const count=$('#import-preview-count');
   if(!preview||wallets.length===0){if(preview)preview.classList.add('hide');return}
   preview.classList.remove('hide');
-  const valid=wallets.filter(w=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address));
-  const invalid=wallets.filter(w=>!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address));
+  const isValidAddr=w=>/^[A-Za-z0-9]{32,44}$/.test(w.address);
+  const valid=wallets.filter(isValidAddr);
+  const invalid=wallets.filter(w=>!isValidAddr(w));
   list.innerHTML=wallets.slice(0,5).map(w=>{
-    const ok=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address);
+    const ok=isValidAddr(w);
     return`<div style="color:${ok?'var(--green)':'var(--red)'};padding:1px 0">${ok?'✅':'❌'} ${w.address.slice(0,8)}...${w.address.slice(-4)}${w.label?' <span style="color:var(--text3)">→ '+esc(w.label)+'</span>':''}</div>`;
   }).join('');
   if(wallets.length>5)list.innerHTML+=`<div style="color:var(--text3)">...and ${wallets.length-5} more</div>`;
@@ -671,8 +710,9 @@ function updateImportPreview(){
 
 window.submitImport=async function(){
   const wallets=parseImportText();
-  const valid=wallets.filter(w=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address));
-  if(valid.length===0)return toast('No valid Solana addresses found','err');
+  const isValidAddr=w=>/^[A-Za-z0-9]{32,44}$/.test(w.address);
+  const valid=wallets.filter(isValidAddr);
+  if(valid.length===0)return toast('No valid Solana addresses found — check format (32-44 chars, alphanumeric)','err');
   if($('#f-import-clear').checked){
     // clear all existing wallets first
     const existing=await api('/wallets');
@@ -731,8 +771,115 @@ async function renderSettings(){
 </div>`;}
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 
+// ═══ LOGIN (Telegram self-service) ═══
+let loginSessionId=null;
+
+function setLoginStatus(msg,type='info'){
+  const el=$('#login-status');
+  if(!el)return;
+  el.innerHTML=`<div class="login-badge ${type}">${type==='ok'?'✅':type==='err'?'❌':type==='wait'?'⏳':'ℹ️'} ${esc(msg)}</div>`;
+}
+
+window.loginStep1=async function(){
+  const apiId=$('#lg-api-id').value.trim();
+  const apiHash=$('#lg-api-hash').value.trim();
+  const phone=$('#lg-phone').value.trim();
+  if(!apiId||!apiHash||!phone)return setLoginStatus('API ID, API Hash, and Phone required','err');
+
+  const btn=$('#lg-btn1');
+  btn.disabled=true;btn.textContent='Connecting...';
+  setLoginStatus('Initiating Telegram login...','wait');
+
+  try{
+    const r=await api('/telegram/sessions',{method:'POST',body:JSON.stringify({name:'Web Login',api_id:parseInt(apiId),api_hash:apiHash,phone})});
+    loginSessionId=r.id;
+    $('#login-step1').classList.add('hide');
+    $('#login-step2').classList.remove('hide');
+    setLoginStatus('OTP sent to your Telegram!','ok');
+    $('#lg-otp').focus();
+  }catch(err){
+    setLoginStatus(err.message,'err');
+    btn.disabled=false;btn.textContent='Connect Telegram';
+  }
+};
+
+window.loginStep2=async function(){
+  const code=$('#lg-otp').value.trim();
+  if(!code)return setLoginStatus('Enter the OTP code','err');
+
+  const btn=$('#lg-btn2');
+  btn.disabled=true;btn.textContent='Verifying...';
+  setLoginStatus('Verifying OTP...','wait');
+
+  try{
+    await api('/telegram/sessions/'+loginSessionId+'/otp',{method:'POST',body:JSON.stringify({code})});
+    setLoginStatus('Connecting Telegram...','wait');
+
+    // poll until session becomes active
+    const poll=setInterval(async()=>{
+      try{
+        const sessions=await api('/telegram/sessions');
+        const s=sessions.find(x=>x.id===loginSessionId);
+        if(!s)return;
+        if(s.status==='active'){
+          clearInterval(poll);
+          await api('/telegram/sessions/'+s.id+'/activate',{method:'POST'});
+          setLoginStatus('Connected! Loading dashboard...','ok');
+          setTimeout(()=>{
+            $('#login-page').style.display='none';
+            initDashboard();
+          },500);
+        }else if(s.status==='error'){
+          clearInterval(poll);
+          setLoginStatus(s.error_message||'Connection failed','err');
+          btn.disabled=false;btn.textContent='Verify & Enter';
+        }
+      }catch(err){
+        setLoginStatus(err.message,'err');
+        clearInterval(poll);
+        btn.disabled=false;btn.textContent='Verify & Enter';
+      }
+    },1500);
+  }catch(err){
+    setLoginStatus(err.message,'err');
+    btn.disabled=false;btn.textContent='Verify & Enter';
+  }
+};
+
+window.loginCancel=function(){
+  loginSessionId=null;
+  $('#login-step2').classList.add('hide');
+  $('#login-step1').classList.remove('hide');
+  $('#lg-btn1').disabled=false;$('#lg-btn1').textContent='Connect Telegram';
+  setLoginStatus('');
+  if(loginSessionId)api('/telegram/sessions/'+loginSessionId,{method:'DELETE'}).catch(()=>{});
+};
+
 // ═══ INIT ═══
 async function init(){
+  try{
+    const setup=await api('/setup');
+    if(setup.telegramActive){
+      $('#login-page').style.display='none';
+      initDashboard();
+    }else{
+      // Show login — check if there are sessions that just need activation
+      const sessions=await api('/telegram/sessions');
+      if(sessions.length>0){
+        const ready=sessions.find(s=>s.session_string&&s.session_string!==''&&s.status!=='active');
+        if(ready){
+          setLoginStatus('Session found — click Activate on Telegram page','info');
+        }
+      }
+    }
+  }catch(err){
+    // If can't reach API, still show dashboard
+    $('#login-page').style.display='none';
+    initDashboard();
+  }
+}
+
+function initDashboard(){
   renderPage('dashboard');
   setInterval(async()=>{
     try{
