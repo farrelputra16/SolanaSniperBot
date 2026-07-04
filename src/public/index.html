@@ -597,19 +597,92 @@ window.delW=async function(id){if(!confirm('Remove?'))return;await api('/wallets
 window.copyAddr=function(a){navigator.clipboard.writeText(a);toast('Copied!','info')};
 
 window.openImportWallet=function(){
-  openModal(`<h2>Import Wallets</h2><p class="text-sm text-muted mb-8">Paste a list of addresses (one per line) with optional labels.</p>
-<div class="form-group"><label>Addresses (one per line: address or address,label)</label><textarea id="f-import" rows="8" placeholder="wallet1_address&#10;wallet2_address,My Label&#10;wallet3_address"/></div>
-<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitImport()">Import</button></div>`);
+  openModal(`<h2>Import Wallets</h2>
+<p class="text-sm text-muted mb-12">Paste wallet addresses below. One per line, with optional label after a comma.</p>
+<div class="tabs" style="margin-bottom:8px">
+  <div class="tab active" data-import-tab="csv" onclick="switchImportFormat('csv')">CSV</div>
+  <div class="tab" data-import-tab="raw" onclick="switchImportFormat('raw')">Plain</div>
+</div>
+<div id="import-csv" class="tab-content active">
+  <div class="form-group">
+    <label>Addresses <span class="text-muted" style="font-weight:400">— address,label per line</span></label>
+    <textarea id="f-import" rows="8" placeholder="e.g.&#10;Abc123...xyz,Main Wallet&#10;Def456...uvw,Trading Bot&#10;Ghi789...rst" style="font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
+  </div>
+</div>
+<div id="import-raw" class="tab-content">
+  <div class="form-group">
+    <label>Raw Addresses <span class="text-muted" style="font-weight:400">— one address per line, no labels</span></label>
+    <textarea id="f-import-raw" rows="8" placeholder="Paste raw addresses here&#10;one per line&#10;no commas needed" style="font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
+  </div>
+</div>
+<div id="import-preview" class="hide" style="background:var(--bg);border-radius:var(--radius-sm);padding:10px;margin-top:8px">
+  <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Preview</div>
+  <div id="import-preview-list" style="font-size:11.5px;max-height:100px;overflow-y:auto;font-family:'SF Mono','JetBrains Mono',monospace"></div>
+  <div style="font-size:11px;color:var(--text2);margin-top:4px" id="import-preview-count"></div>
+</div>
+<div class="modal-actions" style="justify-content:space-between;align-items:center">
+  <div class="flex gap-6 items-center">
+    <label class="cb" style="font-size:11.5px;margin:0"><input type="checkbox" id="f-import-clear"/> Clear existing before import</label>
+  </div>
+  <div class="flex gap-6">
+    <button class="btn" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-p" onclick="submitImport()" id="import-btn">Import</button>
+  </div>
+</div>`);
+  document.getElementById('f-import').addEventListener('input', updateImportPreview);
+  document.getElementById('f-import-raw').addEventListener('input', updateImportPreview);
 };
+
+window.switchImportFormat=function(fmt){
+  $$('[data-import-tab]').forEach(t=>t.classList.toggle('active',t.dataset.importTab===fmt));
+  ['csv','raw'].forEach(f=>document.getElementById('import-'+f).classList.toggle('active',f===fmt));
+  updateImportPreview();
+};
+
+function parseImportText(){
+  const activeTab=$$('[data-import-tab].active')[0]?.dataset.importTab||'csv';
+  const raw=activeTab==='csv'?$('#f-import').value:$('#f-import-raw').value;
+  const lines=raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(activeTab==='csv'){
+    return lines.map(line=>{
+      const parts=line.split(',').map(s=>s.trim());
+      return{address:parts[0],label:parts.slice(1).join(', ')||''};
+    });
+  }
+  return lines.map(a=>({address:a,label:''}));
+}
+
+function updateImportPreview(){
+  const wallets=parseImportText();
+  const preview=$('#import-preview');
+  const list=$('#import-preview-list');
+  const count=$('#import-preview-count');
+  if(!preview||wallets.length===0){if(preview)preview.classList.add('hide');return}
+  preview.classList.remove('hide');
+  const valid=wallets.filter(w=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address));
+  const invalid=wallets.filter(w=>!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address));
+  list.innerHTML=wallets.slice(0,5).map(w=>{
+    const ok=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address);
+    return`<div style="color:${ok?'var(--green)':'var(--red)'};padding:1px 0">${ok?'✅':'❌'} ${w.address.slice(0,8)}...${w.address.slice(-4)}${w.label?' <span style="color:var(--text3)">→ '+esc(w.label)+'</span>':''}</div>`;
+  }).join('');
+  if(wallets.length>5)list.innerHTML+=`<div style="color:var(--text3)">...and ${wallets.length-5} more</div>`;
+  count.innerHTML=(valid.length>0?`<span style="color:var(--green)">${valid.length} valid</span>`:'')+(invalid.length>0?` <span style="color:var(--red)">${invalid.length} invalid</span>`:'')+` <span style="color:var(--text2)">· ${wallets.length} total</span>`;
+}
+
 window.submitImport=async function(){
-  const text=$('#f-import').value.trim();if(!text)return toast('Paste addresses','err');
-  const lines=text.split('\n').map(s=>s.trim()).filter(Boolean);
-  const wallets=lines.map(line=>{
-    const parts=line.split(',').map(s=>s.trim());
-    return{address:parts[0],label:parts[1]||''};
-  });
-  await api('/wallets/import',{method:'POST',body:JSON.stringify({wallets})});
-  closeModal();toast('Imported '+wallets.length+' wallets ✅','ok');renderPage('wallets');
+  const wallets=parseImportText();
+  const valid=wallets.filter(w=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w.address));
+  if(valid.length===0)return toast('No valid Solana addresses found','err');
+  if($('#f-import-clear').checked){
+    // clear all existing wallets first
+    const existing=await api('/wallets');
+    for(const w of existing)await api('/wallets/'+w.id,{method:'DELETE'});
+  }
+  await api('/wallets/import',{method:'POST',body:JSON.stringify({wallets:valid})});
+  const invalidCount=wallets.length-valid.length;
+  closeModal();
+  toast(`Imported ${valid.length} wallet${valid.length!==1?'s':''} ✅${invalidCount?` (${invalidCount} skipped)`:''}`,'ok');
+  renderPage('wallets');
 };
 
 window.openGroupForm=async function(){
