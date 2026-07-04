@@ -224,9 +224,11 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
         conditionOrders: conditionOrders.length > 0 ? conditionOrders : undefined,
       });
 
-      const orderId = result.data?.order_id || result.order_id;
+      const orderRes = result.data || result;
+      const orderId = orderRes.order_id;
+      const strategyId = orderRes.strategy_order_id;
       const buyLatency = Date.now() - tBuy;
-      console.log(`[Router] Swap submitted: ${orderId}`);
+      console.log(`[Router] Swap submitted: ${orderId}${strategyId ? ' strategy='+strategyId : ''}`);
       db.addScraperLog(sourceChannel, 'info', `Auto-buy ${data.token_symbol || address}: order=${orderId}`).catch(() => {});
 
       const tradeId = await db.createTrade({
@@ -244,6 +246,20 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
         stop_loss_percent: rule.stop_loss_percent,
         source_channel: sourceChannel,
       });
+
+      if (strategyId) {
+        db.saveStrategyOrder({
+          trade_id: tradeId,
+          wallet_address: wallet.address,
+          token_address: address,
+          token_symbol: data.token_symbol,
+          chain,
+          order_type: 'condition_order',
+          sub_order_type: 'mix_trade',
+          group_tag: 'STMix',
+          remote_order_id: strategyId,
+        }).catch(() => {});
+      }
 
       liveEvents.emit('trade', {
         token_symbol: data.token_symbol, token_address: address, wallet: wallet.address,
@@ -270,10 +286,11 @@ async function pollOrder(orderId, chain, tradeId) {
       const status = result.data?.status || result.status;
 
       if (status === 'confirmed' || status === 'successful') {
+        const report = result.data?.report || result.report;
         await db.updateTrade(tradeId, {
           buy_status: 'confirmed',
-          buy_tx: result.data?.report?.hash || result.data?.hash,
-          buy_price_usd: result.data?.report?.price_usd ? parseFloat(result.data.report.price_usd) : undefined,
+          buy_tx: report?.hash || result.data?.hash || result.hash,
+          buy_price_usd: report?.price_usd ? parseFloat(report.price_usd) : undefined,
         });
         console.log(`[Router] ✅ Buy confirmed: ${orderId}`);
         return;
