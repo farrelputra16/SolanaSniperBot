@@ -33,7 +33,9 @@ export async function initTelegramWithSession(apiId, apiHash, sessionStr) {
   let stringSession;
   try { stringSession = new StringSession(sessionStr); } catch { throw new Error('Invalid session format'); }
 
-  client = new TelegramClient(stringSession, apiId, apiHash, { connectionRetries: 3 });
+  const opts = { connectionRetries: 3 };
+  if (config.telegram.dcId) opts.dcId = config.telegram.dcId;
+  client = new TelegramClient(stringSession, apiId, apiHash, opts);
 
   await client.connect();
   const me = await client.getMe();

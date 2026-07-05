@@ -43,6 +43,7 @@ export const config = {
     apiId: parseInt(get('TELEGRAM_API_ID', '0')),
     apiHash: get('TELEGRAM_API_HASH', ''),
     session: get('TELEGRAM_SESSION', ''),
+    dcId: parseInt(get('TELEGRAM_DC', '0')),
   },
   sniper: {
     defaultBuyAmount: parseFloat(get('DEFAULT_BUY_AMOUNT', '0.01')),

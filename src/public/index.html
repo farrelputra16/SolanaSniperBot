@@ -339,12 +339,18 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 
 <div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1.25rem">
   <img src="/logo.jpg" alt="SS" style="width:4rem;height:4rem;border-radius:9999px;object-fit:cover">
-  <h1 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em">SniperBot</h1>
+  <h1 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em">The Scoop Sc(rape)r</h1>
   <p class="text-sm text-muted" style="margin-top:-0.5rem">Connect your Telegram account</p>
   <div id="tg-login-step1" style="width:340px;max-width:90vw;display:flex;flex-direction:column;gap:0.6rem">
     <input id="tg-login-api-id" type="number" placeholder="API ID" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
     <input id="tg-login-api-hash" placeholder="API Hash" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
     <input id="tg-login-phone" placeholder="Phone +1234567890" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
+    <select id="tg-login-dc" style="text-align:center;font-size:0.8rem;padding:0.6rem 1rem;border-radius:var(--radius-md);cursor:pointer">
+      <option value="0">Server: Auto</option>
+      <option value="1">US / Miami (DC 1)</option>
+      <option value="2">Europe / Amsterdam (DC 2)</option>
+      <option value="5">Asia / Singapore (DC 5)</option>
+    </select>
     <label class="cb" style="justify-content:center;margin:0"><input type="checkbox" id="tg-login-remember" checked/> Remember me</label>
     <button class="btn btn-p" onclick="tgLoginSendCode()" style="padding:0.75rem;font-size:1rem;width:100%">Send Code</button>
   </div>
@@ -914,9 +920,11 @@ function showLogin(){
   const savedId = localStorage.getItem('tg_api_id');
   const savedHash = localStorage.getItem('tg_api_hash');
   const savedPhone = localStorage.getItem('tg_phone');
+  const savedDc = localStorage.getItem('tg_dc');
   if (savedId) $('#tg-login-api-id').value = savedId;
   if (savedHash) $('#tg-login-api-hash').value = savedHash;
   if (savedPhone) $('#tg-login-phone').value = savedPhone;
+  if (savedDc) $('#tg-login-dc').value = savedDc;
 }
 
 window.tgLoginSendCode=async function(){
@@ -928,9 +936,11 @@ window.tgLoginSendCode=async function(){
     localStorage.setItem('tg_api_id',apiId);
     localStorage.setItem('tg_api_hash',apiHash);
     localStorage.setItem('tg_phone',phone);
+    localStorage.setItem('tg_dc',$('#tg-login-dc').value);
   }
   try{
-    const r=await fetch('/api/telegram/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiId:Number(apiId),apiHash,phone})}).then(x=>x.json());
+    const dcId=parseInt($('#tg-login-dc').value)||0;
+    const r=await fetch('/api/telegram/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiId:Number(apiId),apiHash,phone,dcId})}).then(x=>x.json());
     if(r.error)return tgLoginError(r.error);
     tgLoginToken=r.loginToken;
     $('#tg-login-step1').style.display='none';

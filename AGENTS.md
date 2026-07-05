@@ -58,6 +58,7 @@ Login flow is done via the web dashboard, not CLI:
 5. On startup: check DB for saved session → `initTelegramWithSession()` → `startListeners()`
 6. Fallback to `.env` credentials if no saved session
 7. Flood wait errors caught → returns `waitSeconds` in response
+8. DC selection: dropdown in login form (Auto / US / Europe / Singapore), saved to `tg_dc` localStorage + `telegram_dc` DB setting
 
 ## Auth System
 - Optional password via `DASHBOARD_PASSWORD` env

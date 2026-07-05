@@ -422,9 +422,12 @@ export function createWebServer() {
     const { StringSession } = await import('telegram/sessions/index.js');
 
     const token = crypto.randomUUID();
-    const client = new (await import('telegram')).TelegramClient(new StringSession(''), Number(apiId), apiHash, { connectionRetries: 3 });
+    const dcId = parseInt(req.body.dcId) || 0;
+    const clientOpts = { connectionRetries: 3 };
+    if (dcId > 0) clientOpts.dcId = dcId;
+    const client = new (await import('telegram')).TelegramClient(new StringSession(''), Number(apiId), apiHash, clientOpts);
 
-    const state = { client, apiId: Number(apiId), apiHash, phone, sessionStr: null, error: null, state: 'init', resolveCode: null, resolvePassword: null, rejectCode: null, rejectPassword: null };
+    const state = { client, apiId: Number(apiId), apiHash, phone, dcId, sessionStr: null, error: null, state: 'init', resolveCode: null, resolvePassword: null, rejectCode: null, rejectPassword: null };
 
     await client.connect();
     try {
@@ -460,6 +463,7 @@ export function createWebServer() {
       state.sessionStr = state.client.session.save();
       state.state = 'done';
       await db.setSetting('telegram_session', state.sessionStr);
+      if (state.dcId) await db.setSetting('telegram_dc', String(state.dcId));
       await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
       const { getClient } = await import('./telegram.js');
       const c = getClient();

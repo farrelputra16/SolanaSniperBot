@@ -44,6 +44,11 @@ async function main() {
     const savedSession = await db.getSetting('telegram_session', '');
     if (savedSession && config.telegram.apiId && config.telegram.apiHash) {
       const { initTelegramWithSession, startListeners, getClient } = await import('./telegram.js');
+      const savedDc = await db.getSetting('telegram_dc', '0');
+      if (savedDc && savedDc !== '0') {
+        const { default: telegram } = await import('telegram');
+        config.telegram.dcId = parseInt(savedDc);
+      }
       await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, savedSession);
       const c = getClient();
       const me = c ? await c.getMe() : null;
