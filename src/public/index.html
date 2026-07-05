@@ -106,20 +106,19 @@ a{color:var(--accent);text-decoration:none;transition:color 0.3s var(--ease-spri
 .page-header h2{font-family:var(--font-heading);font-size:2rem;font-weight:700;letter-spacing:-0.03em;line-height:1.15}
 .page-header .sub{font-size:0.85rem;color:var(--text3);margin-top:0.35rem;max-width:480px;margin-left:auto;margin-right:auto}
 
-/* ─── Cards (premium glass, single-layer) ─── */
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:1rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.04);transition:all 0.4s var(--ease-spring)}
-.card:hover{border-color:var(--border-hover);box-shadow:inset 0 1px 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.2)}
+/* ─── Double-Bezel Shell ─── */
+.shell{background:rgba(255,255,255,0.025);border:1px solid var(--border);padding:1.5px;border-radius:var(--radius-xl);transition:all 0.4s var(--ease-spring);box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+.shell:hover{border-color:var(--border-hover);box-shadow:0 12px 48px rgba(0,0,0,0.25)}
+.core{background:var(--card);border-radius:calc(var(--radius-xl) - 0.375rem);padding:1.25rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.05)}
+
+/* ─── Card header (used inside core) ─── */
 .card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .card-h h3{font-size:0.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em}
 
-/* ─── Double-Bezel Shell ─── */
-.shell{background:rgba(255,255,255,0.025);border:1px solid var(--border);padding:1.5px;border-radius:var(--radius-xl);transition:all 0.4s var(--ease-spring)}.shell:hover{border-color:var(--border-hover)}
-.core{background:var(--card);border-radius:calc(var(--radius-xl) - 0.375rem);padding:1.5rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.05)}
-
 /* ─── Stats Grid ─── */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;margin-bottom:1.5rem}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;transition:all 0.4s var(--ease-spring);box-shadow:inset 0 1px 1px rgba(255,255,255,0.04)}
-.stat:hover{border-color:var(--border-hover);transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,0.25)}
+.stat{padding:0;transition:all 0.4s var(--ease-spring);cursor:default}
+.stat:hover{transform:translateY(-2px)}
 .stat .num{font-family:var(--font-heading);font-size:1.75rem;font-weight:700;line-height:1.1;letter-spacing:-0.03em}
 .stat .lbl{font-size:0.7rem;color:var(--text3);margin-top:0.3rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;word-break:keep-all}
 .stat.accent .num{color:var(--accent)}
@@ -127,6 +126,9 @@ a{color:var(--accent);text-decoration:none;transition:color 0.3s var(--ease-spri
 .stat.red .num{color:var(--red)}
 .stat.yellow .num{color:var(--yellow)}
 .stat.cyan .num{color:var(--cyan)}
+.stat .shell{padding:1px;border-radius:var(--radius-lg)}
+.stat .shell:hover{transform:none}
+.stat .core{padding:1rem 1.25rem;border-radius:calc(var(--radius-lg) - 0.25rem)}
 
 /* ─── Buttons ─── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.6rem 1.2rem;border-radius:9999px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:0.85rem;font-weight:500;font-family:var(--font-sans);transition:all 0.3s var(--ease-spring);white-space:nowrap;line-height:1}
@@ -467,21 +469,21 @@ async function renderDashboard(){
   const[st,act]=await Promise.all([api('/status'),api('/activity')]);
   return`<div class="page-header"><span class="eyebrow">Overview</span><h2>Dashboard</h2><div class="sub">Real-time signal and trade activity</div></div>
 <div class="stats">
-  <div class="stat accent"><div class="num">${st.channelCount}</div><div class="lbl">Channels</div></div>
-  <div class="stat ${st.openTrades>0?'green':''}"><div class="num">${st.openTrades}</div><div class="lbl">Open Positions</div></div>
-  <div class="stat yellow"><div class="num">${st.todaySignals}</div><div class="lbl">Signals Today</div></div>
-  <div class="stat ${st.hasActiveWallet?'green':'red'}"><div class="num">${st.walletCount}</div><div class="lbl">${st.hasActiveWallet?'✅ Wallet':'No Wallet'}</div></div>
-  <div class="stat cyan"><div class="num">${st.activeOrders}</div><div class="lbl">Active Orders</div></div>
-  <div class="stat"><div class="num">${Math.floor(st.uptime/3600)}h${Math.floor((st.uptime%3600)/60)}m</div><div class="lbl">Uptime</div></div>
+  <div class="stat accent"><div class="shell"><div class="core"><div class="num">${st.channelCount}</div><div class="lbl">Channels</div></div></div></div>
+  <div class="stat ${st.openTrades>0?'green':''}"><div class="shell"><div class="core"><div class="num">${st.openTrades}</div><div class="lbl">Open Positions</div></div></div></div>
+  <div class="stat yellow"><div class="shell"><div class="core"><div class="num">${st.todaySignals}</div><div class="lbl">Signals Today</div></div></div></div>
+  <div class="stat ${st.hasActiveWallet?'green':'red'}"><div class="shell"><div class="core"><div class="num">${st.walletCount}</div><div class="lbl">${st.hasActiveWallet?'Wallet':'No Wallet'}</div></div></div></div>
+  <div class="stat cyan"><div class="shell"><div class="core"><div class="num">${st.activeOrders}</div><div class="lbl">Active Orders</div></div></div></div>
+  <div class="stat"><div class="shell"><div class="core"><div class="num">${Math.floor(st.uptime/3600)}h${Math.floor((st.uptime%3600)/60)}m</div><div class="lbl">Uptime</div></div></div></div>
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-  <div class="card"><div class="card-h"><h3>Signals</h3></div>
+  <div class="shell"><div class="core" style="padding:1.25rem"><div class="card-h"><h3>Signals</h3></div>
     ${act.signals.length?`<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Latency</th><th>Time</th></tr></thead><tbody>${act.signals.map((s,i)=>`<tr style="cursor:pointer" onclick="openTokenDetail('${s.token_address}',${s.market_cap||0})"><td><span class="mono addr" title="${s.token_address}">${s.token_symbol||addrShort(s.token_address)}</span></td><td>${s.source_channel||'-'}</td><td>${fmtCur(s.market_cap)}</td><td class="text-sm">${s.latency_ms?s.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(s.created_at)}</td></tr>`).join('')}</tbody></table></div>
 <div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.5rem">${act.signals.slice(0,8).map((s,i)=>`<div style="display:flex;align-items:center;gap:0.4rem;padding:0.35rem 0.5rem 0.35rem 0.75rem;background:var(--card);border:1px solid var(--border);border-radius:9999px;font-size:0.75rem;cursor:pointer" onclick="openTokenDetail('${s.token_address}',${s.market_cap||0})"><span class="mono">${s.token_symbol||addrShort(s.token_address)}</span><span class="text-muted">${s.latency_ms?s.latency_ms+'ms':''}</span><span class="text-muted" style="font-size:0.65rem">${fmtCur(s.market_cap)}</span><span style="margin-left:0.15rem;cursor:pointer;opacity:0.4;hover:opacity:1" onclick="event.stopPropagation();this.parentElement.remove()">✕</span></div>`).join('')}</div>`:`<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>`}
-  </div>
-  <div class="card"><div class="card-h"><h3>Trades</h3></div>
+  </div></div>
+  <div class="shell"><div class="core" style="padding:1.25rem"><div class="card-h"><h3>Trades</h3></div>
     ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>Amt</th><th>P&L</th><th>Signal</th><th>Buy</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.signal_latency_ms?t.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${t.buy_latency_ms?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
-  </div>
+  </div></div>
 </div>`;}
 
 // ═══ CHANNELS ───

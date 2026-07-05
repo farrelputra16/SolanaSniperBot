@@ -20,9 +20,9 @@ export function onForward(cb) {
 
 export async function initTelegram() {
   const { apiId, apiHash, session } = config.telegram;
-  if (!apiId || !apiHash) {
-    throw new Error('TELEGRAM_API_ID and TELEGRAM_API_HASH not configured');
-  }
+  if (!apiId || !apiHash) throw new Error('Telegram API ID/Hash not configured');
+  if (!session) throw new Error('No session string — login from dashboard');
+  try { new (await import('telegram/sessions/index.js')).StringSession(session); } catch { throw new Error('Session invalid — login ulang dari dashboard'); }
   return initTelegramWithSession(apiId, apiHash, session);
 }
 
