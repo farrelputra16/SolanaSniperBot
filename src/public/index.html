@@ -10,34 +10,37 @@
 <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #050505;
-  --surface: #0a0a0f;
-  --card: #0e0e18;
-  --card2: #12121e;
+  --bg: #03030a;
+  --surface: #08080f;
+  --card: #0c0c18;
+  --card2: #101020;
   --border: rgba(255,255,255,0.06);
-  --border-hover: rgba(255,255,255,0.1);
-  --border-subtle: rgba(255,255,255,0.03);
-  --text: #ededf0;
-  --text2: #9d9db0;
-  --text3: #5d5d70;
-  --accent: #7c5cfc;
-  --accent-hover: #9b7eff;
-  --accent-bg: rgba(124,92,252,0.1);
-  --green: #34d399;
-  --green-bg: rgba(52,211,153,0.12);
-  --red: #f87171;
-  --red-bg: rgba(248,113,113,0.1);
-  --yellow: #fbbf24;
-  --yellow-bg: rgba(251,191,36,0.1);
-  --cyan: #22d3ee;
-  --cyan-bg: rgba(34,211,238,0.1);
-  --radius-xl: 1.75rem;
+  --border-hover: rgba(255,255,255,0.12);
+  --border-subtle: rgba(255,255,255,0.025);
+  --text: #eeeff6;
+  --text2: #9495b0;
+  --text3: #54556a;
+  --accent: #6c5ce7;
+  --accent-hover: #8b7cf7;
+  --accent-bg: rgba(108,92,231,0.12);
+  --green: #2ecc71;
+  --green-bg: rgba(46,204,113,0.12);
+  --red: #e74c3c;
+  --red-bg: rgba(231,76,60,0.1);
+  --yellow: #f1c40f;
+  --yellow-bg: rgba(241,196,15,0.1);
+  --cyan: #00cec9;
+  --cyan-bg: rgba(0,206,201,0.1);
+  --radius-xl: 1.5rem;
   --radius-lg: 1rem;
   --radius-md: 0.75rem;
   --radius-sm: 0.5rem;
   --radius-xs: 0.375rem;
-  --ease-spring: cubic-bezier(0.32,0.72,0,1);
+  --ease-spring: cubic-bezier(0.34,0.72,0,1);
   --ease-out: cubic-bezier(0.16,1,0.3,1);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.3);
+  --shadow-card-hover: 0 8px 40px rgba(0,0,0,0.4);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.5);
   --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
   --font-heading: 'Clash Display', 'Plus Jakarta Sans', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
@@ -46,45 +49,41 @@
 html{font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-height:100dvh;overflow-x:hidden}
 ::selection{background:var(--accent);color:#fff}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:2px}
 a{color:var(--accent);text-decoration:none;transition:color 0.3s var(--ease-spring)}a:hover{color:var(--accent-hover)}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 
-/* ─── Background Orbs ─── */
+/* Background */
 .bg-orbs{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
-.bg-orbs::before{content:'';position:absolute;width:800px;height:800px;top:-10%;left:-5%;background:radial-gradient(circle,rgba(124,92,252,0.06) 0%,transparent 70%);border-radius:50%;animation:orbFloat 20s ease-in-out infinite}
-.bg-orbs::after{content:'';position:absolute;width:600px;height:600px;bottom:-15%;right:-5%;background:radial-gradient(circle,rgba(52,211,153,0.04) 0%,transparent 70%);border-radius:50%;animation:orbFloat 25s ease-in-out infinite reverse}
-@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-20px) scale(1.05)}66%{transform:translate(-20px,15px) scale(0.95)}}
-@media(prefers-reduced-motion:reduce){.bg-orbs::before,.bg-orbs::after{animation:none}}
+.bg-orbs::before{content:'';position:absolute;width:700px;height:700px;top:-15%;right:-10%;background:radial-gradient(circle,rgba(108,92,231,0.05) 0%,transparent 70%);border-radius:50%}
+.bg-orbs::after{content:'';position:absolute;width:500px;height:500px;bottom:-10%;left:-5%;background:radial-gradient(circle,rgba(46,204,113,0.03) 0%,transparent 70%);border-radius:50%}
 
-/* ─── Noise Overlay ─── */
-.noise-overlay{position:fixed;inset:0;z-index:100;pointer-events:none;opacity:0.015;background-image:repeating-conic-gradient(#fff 0.0001%,transparent 0.0002%);mix-blend-mode:overlay}
+/* Noise */
+.noise-overlay{position:fixed;inset:0;z-index:100;pointer-events:none;opacity:0.012;background-image:repeating-conic-gradient(#fff 0.0001%,transparent 0.0002%);mix-blend-mode:overlay}
 
-/* ─── Fluid Island Nav ─── */
-.fluid-nav{position:fixed;top:1.25rem;left:50%;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:0.25rem;padding:0.4rem 0.4rem 0.4rem 1rem;background:rgba(10,10,15,0.7);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);border:1px solid var(--border);border-radius:9999px;box-shadow:0 8px 40px rgba(0,0,0,0.5);transition:all 0.5s var(--ease-spring);max-width:calc(100vw - 2rem)}
-.fluid-nav-brand{display:flex;align-items:center;margin-right:0.25rem}
-.nav-logo{width:2.25rem;height:2.25rem;border-radius:9999px;object-fit:cover}
-
-.fluid-nav-items{display:flex;align-items:center;gap:0.125rem}
-.fluid-nav-items .nav-item{display:flex;align-items:center;gap:0.35rem;padding:0.35rem 0.7rem;border-radius:9999px;font-size:0.8rem;font-weight:500;color:var(--text3);cursor:pointer;transition:all 0.3s var(--ease-spring);white-space:nowrap;user-select:none}
+/* Fluid Island Nav */
+.fluid-nav{position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:0.25rem;padding:0.35rem 0.35rem 0.35rem 0.75rem;background:rgba(8,8,15,0.75);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid var(--border);border-radius:9999px;box-shadow:0 4px 24px rgba(0,0,0,0.4);transition:all 0.5s var(--ease-spring);max-width:calc(100vw - 1.5rem)}
+.nav-logo{width:2rem;height:2rem;border-radius:9999px;object-fit:cover}
+.fluid-nav-items{display:flex;align-items:center;gap:1px}
+.fluid-nav-items .nav-item{display:flex;align-items:center;gap:0.3rem;padding:0.3rem 0.65rem;border-radius:9999px;font-size:0.75rem;font-weight:500;color:var(--text3);cursor:pointer;transition:all 0.3s var(--ease-spring);white-space:nowrap;user-select:none}
 .fluid-nav-items .nav-item:hover{color:var(--text2);background:rgba(255,255,255,0.04)}
-.fluid-nav-items .nav-item.active{color:#fff;background:var(--accent);box-shadow:0 2px 12px rgba(124,92,252,0.25)}
-.fluid-nav-items .nav-item .count{font-size:0.65rem;padding:0.05rem 0.35rem;border-radius:9999px;background:rgba(255,255,255,0.08);color:var(--text3);font-weight:600;line-height:1.4}
+.fluid-nav-items .nav-item.active{color:#fff;background:var(--accent);box-shadow:0 2px 12px rgba(108,92,231,0.3)}
+.fluid-nav-items .nav-item .count{font-size:0.6rem;padding:0.05rem 0.3rem;border-radius:9999px;background:rgba(255,255,255,0.08);color:var(--text3);font-weight:600}
 .fluid-nav-items .nav-item.active .count{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.8)}
 
-/* ─── Hamburger ─── */
-.hamburger{display:none;width:2.25rem;height:2.25rem;border:1px solid var(--border);border-radius:9999px;background:transparent;cursor:pointer;position:relative;flex-shrink:0;transition:all 0.3s var(--ease-spring)}
+/* Hamburger */
+.hamburger{display:none;width:2rem;height:2rem;border:1px solid var(--border);border-radius:9999px;background:transparent;cursor:pointer;position:relative;flex-shrink:0}
 .hamburger:hover{border-color:var(--border-hover)}
-.hamburger span{position:absolute;left:50%;transform:translateX(-50%);width:1rem;height:1.5px;background:var(--text3);border-radius:1px;transition:all 0.4s var(--ease-spring)}
-.hamburger span:nth-child(1){top:38%}
-.hamburger span:nth-child(2){top:58%}
+.hamburger span{position:absolute;left:50%;transform:translateX(-50%);width:0.85rem;height:1.5px;background:var(--text3);border-radius:1px;transition:all 0.4s var(--ease-spring)}
+.hamburger span:nth-child(1){top:39%}
+.hamburger span:nth-child(2){top:57%}
 .hamburger.active span:nth-child(1){top:50%;transform:translateX(-50%) rotate(45deg);background:var(--text)}
 .hamburger.active span:nth-child(2){top:50%;transform:translateX(-50%) rotate(-45deg);background:var(--text)}
 
-/* ─── Nav Overlay (mobile fullscreen) ─── */
-.nav-overlay{position:fixed;inset:0;z-index:75;background:rgba(5,5,5,0.88);backdrop-filter:blur(48px);-webkit-backdrop-filter:blur(48px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.75rem;opacity:0;pointer-events:none;transition:all 0.6s var(--ease-spring)}
+/* Nav Overlay */
+.nav-overlay{position:fixed;inset:0;z-index:75;background:rgba(3,3,10,0.9);backdrop-filter:blur(60px);-webkit-backdrop-filter:blur(60px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.5rem;opacity:0;pointer-events:none;transition:all 0.6s var(--ease-spring)}
 .nav-overlay.open{opacity:1;pointer-events:all}
-.nav-overlay .nav-item{font-size:1.35rem;font-weight:600;font-family:var(--font-heading);color:var(--text3);cursor:pointer;transition:all 0.5s var(--ease-spring);transform:translateY(1.5rem);opacity:0;padding:0.5rem 1.5rem;border-radius:9999px}
+.nav-overlay .nav-item{font-size:1.25rem;font-weight:600;font-family:var(--font-heading);color:var(--text3);cursor:pointer;transition:all 0.5s var(--ease-spring);transform:translateY(1.5rem);opacity:0;padding:0.4rem 1.25rem;border-radius:9999px}
 .nav-overlay.open .nav-item{transform:translateY(0);opacity:1}
 .nav-overlay .nav-item:hover{color:var(--text);background:rgba(255,255,255,0.04)}
 .nav-overlay .nav-item.active{color:#fff;background:var(--accent)}
@@ -95,65 +94,56 @@ a{color:var(--accent);text-decoration:none;transition:color 0.3s var(--ease-spri
 .nav-overlay .nav-item:nth-child(5){transition-delay:0.2s}
 .nav-overlay .nav-item:nth-child(6){transition-delay:0.24s}
 .nav-overlay .nav-item:nth-child(7){transition-delay:0.28s}
-.nav-overlay-footer{position:absolute;bottom:2rem;font-size:0.7rem;color:var(--text3);letter-spacing:0.05em}
+.nav-overlay-footer{position:absolute;bottom:2rem;font-size:0.65rem;color:var(--text3);letter-spacing:0.05em}
 
-/* ─── Main Layout ─── */
-.main{padding:5.5rem 2rem 3rem;max-width:1400px;margin:0 auto;min-height:100dvh}
+/* Main Layout */
+.main{padding:5rem 1.5rem 3rem;max-width:1320px;margin:0 auto;min-height:100dvh}
 
-/* ─── Page Header ─── */
-.page-header{margin-bottom:2rem;text-align:center}
-.page-header .eyebrow{display:inline-flex;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent);background:var(--accent-bg);margin-bottom:0.75rem}
-.page-header h2{font-family:var(--font-heading);font-size:2rem;font-weight:700;letter-spacing:-0.03em;line-height:1.15}
-.page-header .sub{font-size:0.85rem;color:var(--text3);margin-top:0.35rem;max-width:480px;margin-left:auto;margin-right:auto}
+/* Page Header */
+.page-header{margin-bottom:1.75rem;text-align:center}
+.page-header .eyebrow{display:inline-flex;padding:0.2rem 0.7rem;border-radius:9999px;font-size:0.6rem;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:var(--accent);background:var(--accent-bg);margin-bottom:0.6rem}
+.page-header h2{font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em;line-height:1.15}
+.page-header .sub{font-size:0.8rem;color:var(--text3);margin-top:0.3rem}
 
-/* ─── Double-Bezel Shell ─── */
-.shell{background:rgba(255,255,255,0.025);border:1px solid var(--border);padding:1.5px;border-radius:var(--radius-xl);transition:all 0.4s var(--ease-spring);box-shadow:0 8px 32px rgba(0,0,0,0.15)}
-.shell:hover{border-color:var(--border-hover);box-shadow:0 12px 48px rgba(0,0,0,0.25)}
-.core{background:var(--card);border-radius:calc(var(--radius-xl) - 0.375rem);padding:1.25rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.05)}
+/* Double-Bezel Shell */
+.shell{background:rgba(255,255,255,0.02);border:1px solid var(--border);padding:1px;border-radius:var(--radius-lg);transition:all 0.4s var(--ease-spring);box-shadow:var(--shadow-card)}
+.shell:hover{border-color:var(--border-hover);box-shadow:var(--shadow-card-hover)}
+.core{background:var(--card);border-radius:calc(var(--radius-lg) - 0.25rem);padding:1.25rem;box-shadow:inset 0 1px 1px rgba(255,255,255,0.04)}
 
-/* ─── Card header (used inside core) ─── */
-.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
-.card-h h3{font-size:0.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em}
+/* Card header */
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem}
+.card-h h3{font-size:0.7rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em}
 
-/* ─── Stats Grid ─── */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;margin-bottom:1.5rem}
+/* Stats Grid */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.65rem;margin-bottom:1.25rem}
 .stat{padding:0;transition:all 0.4s var(--ease-spring);cursor:default}
-.stat:hover{transform:translateY(-2px)}
-.stat .num{font-family:var(--font-heading);font-size:1.75rem;font-weight:700;line-height:1.1;letter-spacing:-0.03em}
-.stat .lbl{font-size:0.7rem;color:var(--text3);margin-top:0.3rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;word-break:keep-all}
+.stat:hover{transform:translateY(-1px)}
+.stat .num{font-family:var(--font-heading);font-size:1.5rem;font-weight:700;line-height:1.1;letter-spacing:-0.03em}
+.stat .lbl{font-size:0.65rem;color:var(--text3);margin-top:0.25rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
 .stat.accent .num{color:var(--accent)}
-.stat.green .num{color:var(--green)}
-.stat.red .num{color:var(--red)}
-.stat.yellow .num{color:var(--yellow)}
-.stat.cyan .num{color:var(--cyan)}
-.stat .shell{padding:1px;border-radius:var(--radius-lg)}
+.stat.green .num{color:var(--green)}.stat.red .num{color:var(--red)}
+.stat.yellow .num{color:var(--yellow)}.stat.cyan .num{color:var(--cyan)}
+.stat .shell{border-radius:var(--radius-md);padding:1px}
 .stat .shell:hover{transform:none}
-.stat .core{padding:1rem 1.25rem;border-radius:calc(var(--radius-lg) - 0.25rem)}
+.stat .core{padding:0.85rem 1rem;border-radius:calc(var(--radius-md) - 0.25rem)}
 
-/* ─── Buttons ─── */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.6rem 1.2rem;border-radius:9999px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:0.85rem;font-weight:500;font-family:var(--font-sans);transition:all 0.3s var(--ease-spring);white-space:nowrap;line-height:1}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:0.45rem;padding:0.5rem 1rem;border-radius:9999px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:0.8rem;font-weight:500;font-family:var(--font-sans);transition:all 0.3s var(--ease-spring);white-space:nowrap;line-height:1}
 .btn:hover{border-color:var(--border-hover);color:var(--text);background:rgba(255,255,255,0.03)}
-.btn:active{transform:scale(0.97)}
-.btn-sm{padding:0.4rem 0.9rem;font-size:0.8rem}
+.btn:active{transform:scale(0.96)}
+.btn-sm{padding:0.3rem 0.75rem;font-size:0.75rem}
 .btn-p{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn-p:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:#fff;box-shadow:0 4px 20px rgba(124,92,252,0.25)}
-.btn-g{background:var(--green);border-color:var(--green);color:#0a0a0f}
-.btn-g:hover{opacity:0.9;color:#0a0a0f;box-shadow:0 4px 20px rgba(52,211,153,0.2)}
+.btn-p:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:#fff;box-shadow:0 4px 16px rgba(108,92,231,0.3)}
+.btn-g{background:var(--green);border-color:var(--green);color:#03030a}
+.btn-g:hover{opacity:0.9;color:#03030a;box-shadow:0 4px 16px rgba(46,204,113,0.2)}
 .btn-r{background:var(--red);border-color:var(--red);color:#fff}
-.btn-r:hover{opacity:0.9;color:#fff;box-shadow:0 4px 20px rgba(248,113,113,0.2)}
+.btn-r:hover{opacity:0.9;color:#fff;box-shadow:0 4px 16px rgba(231,76,60,0.2)}
 .btn-ghost{border-color:transparent;background:transparent;color:var(--text3)}
 .btn-ghost:hover{border-color:transparent;background:rgba(255,255,255,0.04);color:var(--text2)}
-.btn-group{display:flex;gap:0.5rem}
+.btn-group{display:flex;gap:0.35rem}
 
-/* ─── Button-in-Button Primary ─── */
-.btn-primary{display:inline-flex;align-items:center;gap:0.5rem;padding:0.6rem 0.6rem 0.6rem 1.25rem;border-radius:9999px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;font-family:var(--font-sans);transition:all 0.3s var(--ease-spring);white-space:nowrap}
-.btn-primary:hover{background:var(--accent-hover);box-shadow:0 4px 24px rgba(124,92,252,0.3)}
-.btn-primary:active{transform:scale(0.97)}
-.btn-primary .btn-icon{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:9999px;background:rgba(0,0,0,0.15);font-size:0.75rem;transition:all 0.3s var(--ease-spring)}
-.btn-primary:hover .btn-icon{transform:translateX(2px) scale(1.05)}
-
-/* ─── Badges ─── */
-.badge{display:inline-flex;align-items:center;gap:0.25rem;padding:0.15rem 0.5rem;border-radius:9999px;font-size:0.65rem;font-weight:600;white-space:nowrap;letter-spacing:0.01em}
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:0.25rem;padding:0.1rem 0.45rem;border-radius:9999px;font-size:0.6rem;font-weight:600;white-space:nowrap;letter-spacing:0.01em}
 .badge-g{background:var(--green-bg);color:var(--green)}
 .badge-r{background:var(--red-bg);color:var(--red)}
 .badge-y{background:var(--yellow-bg);color:var(--yellow)}
@@ -162,136 +152,128 @@ a{color:var(--accent);text-decoration:none;transition:color 0.3s var(--ease-spri
 .badge-gr{background:rgba(100,116,139,0.08);color:var(--text3)}
 .badge-o{border:1px solid var(--border);background:transparent;color:var(--text2)}
 
-/* ─── Channel Cards ─── */
-.channel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:0.75rem;transition:all 0.4s var(--ease-spring);box-shadow:inset 0 1px 1px rgba(255,255,255,0.04)}
-.channel-card:hover{border-color:var(--border-hover);box-shadow:0 8px 32px rgba(0,0,0,0.2),inset 0 1px 1px rgba(255,255,255,0.06)}
-.channel-card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem}
-.channel-card .name{font-size:0.9rem;font-weight:600;font-family:var(--font-heading);display:flex;align-items:center;gap:0.5rem}
-.channel-card .chips{display:flex;flex-wrap:wrap;gap:0.3rem;font-size:0.7rem;margin-bottom:0.4rem}
-.channel-card .chip{background:rgba(255,255,255,0.035);padding:0.15rem 0.5rem;border-radius:9999px;color:var(--text2);border:1px solid var(--border)}
+/* Channel Cards */
+.channel-card{padding:0;margin-bottom:0.65rem}
+.channel-card .shell{border-radius:var(--radius-md);padding:1px}
+.channel-card .shell:hover{transform:none}
+.channel-card .core{padding:1rem 1.1rem;border-radius:calc(var(--radius-md) - 0.25rem)}
+.channel-card .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem}
+.channel-card .name{font-size:0.85rem;font-weight:600;font-family:var(--font-heading);display:flex;align-items:center;gap:0.4rem}
+.channel-card .chips{display:flex;flex-wrap:wrap;gap:0.25rem;font-size:0.65rem;margin-bottom:0.35rem}
+.channel-card .chip{background:rgba(255,255,255,0.03);padding:0.1rem 0.45rem;border-radius:9999px;color:var(--text2);border:1px solid var(--border)}
 .channel-card .chip.accent{background:var(--accent-bg);color:var(--accent);border-color:transparent}
 .channel-card .chip.green{background:var(--green-bg);color:var(--green);border-color:transparent}
-.channel-card .stats-row{display:flex;gap:1rem;font-size:0.75rem;color:var(--text3);margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--border)}
-.channel-card .actions{display:flex;gap:0.35rem;align-items:center}
+.channel-card .stats-row{display:flex;gap:0.75rem;font-size:0.7rem;color:var(--text3);margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid var(--border)}
+.channel-card .actions{display:flex;gap:0.3rem;align-items:center}
 
-/* ─── Tables ─── */
+/* Tables */
 .table-wrap{overflow-x:auto;border-radius:var(--radius-md);border:1px solid var(--border)}
-table{width:100%;border-collapse:collapse;font-size:0.8rem}
-thead th{text-align:left;padding:0.65rem 0.85rem;font-weight:600;color:var(--text3);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.015);white-space:nowrap}
-tbody td{padding:0.6rem 0.85rem;border-bottom:1px solid var(--border-subtle);vertical-align:middle}
+table{width:100%;border-collapse:collapse;font-size:0.78rem}
+thead th{text-align:left;padding:0.6rem 0.8rem;font-weight:600;color:var(--text3);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.015);white-space:nowrap}
+tbody td{padding:0.5rem 0.8rem;border-bottom:1px solid var(--border-subtle);vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
-tbody tr{transition:background 0.2s var(--ease-spring)}tbody tr:hover td{background:rgba(255,255,255,0.02)}
+tbody tr{transition:background 0.2s var(--ease-spring)}tbody tr:hover td{background:rgba(255,255,255,0.025)}
 
-/* ─── Forms ─── */
-.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.75rem}
-.form-group{margin-bottom:0.25rem}
-.form-group label{display:block;font-size:0.7rem;color:var(--text3);margin-bottom:0.25rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
-input,select,textarea{background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.55rem 0.75rem;color:var(--text);font-size:0.8rem;width:100%;transition:all 0.3s var(--ease-spring);font-family:var(--font-sans)}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,252,0.1)}
+/* Forms */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.65rem}
+.form-group{margin-bottom:0.3rem}
+.form-group label{display:block;font-size:0.65rem;color:var(--text3);margin-bottom:0.25rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+input,select,textarea{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem 0.7rem;color:var(--text);font-size:0.78rem;width:100%;transition:all 0.3s var(--ease-spring);font-family:var(--font-sans)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(108,92,231,0.12)}
 input::placeholder,textarea::placeholder{color:var(--text3)}
-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%239d9db0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:2rem}
-.cb{display:flex;align-items:center;gap:0.4rem;padding:0.25rem 0;font-size:0.8rem}
-.cb input[type=checkbox]{width:1rem;height:1rem;accent-color:var(--accent);flex-shrink:0;border-radius:3px}
-.form-actions{margin-top:1rem;display:flex;gap:0.5rem;align-items:center;padding-top:1rem;border-top:1px solid var(--border)}
-.form-actions:empty,.form-actions:has(.btn:only-child){border-top:none;padding-top:0}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2354556a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:2rem}
+.cb{display:flex;align-items:center;gap:0.35rem;padding:0.2rem 0;font-size:0.78rem}
+.cb input[type=checkbox]{width:0.9rem;height:0.9rem;accent-color:var(--accent);flex-shrink:0;border-radius:2px}
+.form-actions{margin-top:0.85rem;display:flex;gap:0.45rem;align-items:center;padding-top:0.85rem;border-top:1px solid var(--border)}
 
-/* ─── Tabs ─── */
-.tabs{display:flex;gap:2px;margin-bottom:1rem;background:rgba(255,255,255,0.03);border-radius:9999px;padding:3px;width:fit-content}
-.tab{padding:0.35rem 1rem;border-radius:9999px;font-size:0.75rem;font-weight:500;color:var(--text3);cursor:pointer;transition:all 0.3s var(--ease-spring);border:none;background:none;font-family:var(--font-sans)}
+/* Tabs */
+.tabs{display:flex;gap:2px;margin-bottom:0.85rem;background:rgba(255,255,255,0.025);border-radius:9999px;padding:3px;width:fit-content}
+.tab{padding:0.3rem 0.9rem;border-radius:9999px;font-size:0.72rem;font-weight:500;color:var(--text3);cursor:pointer;transition:all 0.3s var(--ease-spring);border:none;background:none;font-family:var(--font-sans)}
 .tab:hover{color:var(--text2)}
-.tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 8px rgba(0,0,0,0.2)}
+.tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,0.2)}
 .tab-content{display:none}.tab-content.active{display:block}
 
-/* ─── Toggle ─── */
-.toggle{position:relative;display:inline-block;width:2rem;height:1.125rem;flex-shrink:0;vertical-align:middle}
+/* Toggle */
+.toggle{position:relative;display:inline-block;width:1.75rem;height:1rem;flex-shrink:0;vertical-align:middle}
 .toggle input{opacity:0;width:0;height:0}
-.toggle .sl{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,0.1);transition:all 0.3s var(--ease-spring);border-radius:9999px}
-.toggle .sl:before{position:absolute;content:"";height:0.75rem;width:0.75rem;left:0.1875rem;bottom:0.1875rem;background:var(--text3);transition:all 0.3s var(--ease-spring);border-radius:50%}
+.toggle .sl{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,0.08);transition:all 0.3s var(--ease-spring);border-radius:9999px}
+.toggle .sl:before{position:absolute;content:"";height:0.65rem;width:0.65rem;left:0.175rem;bottom:0.175rem;background:var(--text3);transition:all 0.3s var(--ease-spring);border-radius:50%}
 .toggle input:checked+.sl{background:var(--accent)}
-.toggle input:checked+.sl:before{background:#fff;transform:translateX(0.875rem)}
+.toggle input:checked+.sl:before{background:#fff;transform:translateX(0.75rem)}
 
-/* ─── Modal ─── */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:200;align-items:center;justify-content:center;animation:fadeIn 0.2s var(--ease-out)}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(3,3,10,0.75);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:200;align-items:center;justify-content:center;animation:fadeIn 0.25s var(--ease-out)}
 .modal-overlay.active{display:flex}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:1.75rem;width:92%;max-width:640px;max-height:85vh;overflow-y:auto;box-shadow:0 25px 80px rgba(0,0,0,0.5);animation:modalIn 0.3s var(--ease-spring)}
-@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.modal h2{font-family:var(--font-heading);font-size:1.1rem;font-weight:700;margin-bottom:1rem;letter-spacing:-0.02em}
-.modal-actions{margin-top:1.25rem;display:flex;gap:0.5rem;justify-content:flex-end;padding-top:1rem;border-top:1px solid var(--border)}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:1.5rem;width:92%;max-width:620px;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-modal);animation:modalIn 0.35s var(--ease-spring)}
+@keyframes modalIn{from{opacity:0;transform:scale(0.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.modal h2{font-family:var(--font-heading);font-size:1rem;font-weight:700;margin-bottom:0.85rem;letter-spacing:-0.02em}
+.modal-actions{margin-top:1rem;display:flex;gap:0.45rem;justify-content:flex-end;padding-top:0.85rem;border-top:1px solid var(--border)}
 
-/* ─── Toast ─── */
-.toast-container{position:fixed;top:1rem;right:1rem;z-index:300;display:flex;flex-direction:column;gap:0.4rem;pointer-events:none}
-.toast{pointer-events:all;background:rgba(14,14,24,0.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-md);padding:0.7rem 1rem;font-size:0.8rem;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:toastIn 0.4s var(--ease-spring);min-width:180px;color:var(--text)}
+/* Toast */
+.toast-container{position:fixed;top:0.75rem;right:0.75rem;z-index:300;display:flex;flex-direction:column;gap:0.35rem;pointer-events:none}
+.toast{pointer-events:all;background:rgba(12,12,24,0.9);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius-md);padding:0.6rem 0.9rem;font-size:0.78rem;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:toastIn 0.4s var(--ease-spring);min-width:160px;color:var(--text)}
 .toast.ok{border-left:3px solid var(--green)}
 .toast.err{border-left:3px solid var(--red)}
 .toast.info{border-left:3px solid var(--accent)}
 @keyframes toastIn{from{transform:translateX(80px);opacity:0}to{transform:translateX(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.toast{animation:none}}
 
-/* Skeleton Loading */
+/* Skeleton */
 @keyframes shimmer{0%{background-position:200% 0}to{background-position:-200% 0}}
 .skeleton{background:linear-gradient(90deg,var(--border) 25%,rgba(255,255,255,0.06) 50%,var(--border) 75%);background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite;border-radius:var(--radius-xs)}
 
-/* ─── Login Overlay ─── */
-
-
-/* ─── Position Detail Grid ─── */
-.pos-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem}
-.pos-detail-grid .item{padding:0.7rem 0.85rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:0.8rem}
-.pos-detail-grid .item .lbl{color:var(--text3);font-size:0.65rem;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:600}
+/* Position Detail Grid */
+.pos-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.65rem}
+.pos-detail-grid .item{padding:0.65rem 0.8rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:0.78rem}
+.pos-detail-grid .item .lbl{color:var(--text3);font-size:0.6rem;margin-bottom:0.1rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:600}
 .pos-detail-grid .item .val{font-weight:600}
 
-/* ─── Log Viewer ─── */
-.log-line{padding:0.35rem 0;font-size:0.75rem;border-bottom:1px solid var(--border-subtle);display:flex;gap:0.5rem;align-items:flex-start;font-family:var(--font-mono)}
+/* Log Viewer */
+.log-line{padding:0.3rem 0;font-size:0.72rem;border-bottom:1px solid var(--border-subtle);display:flex;gap:0.45rem;align-items:flex-start;font-family:var(--font-mono)}
 .log-line:last-child{border-bottom:none}
-.log-time{color:var(--text3);flex-shrink:0;font-size:0.65rem}
-.log-lv{flex-shrink:0;font-weight:600;font-size:0.55rem;padding:0.05rem 0.35rem;border-radius:2px;text-transform:uppercase;letter-spacing:0.03em}
+.log-time{color:var(--text3);flex-shrink:0;font-size:0.6rem}
+.log-lv{flex-shrink:0;font-weight:600;font-size:0.5rem;padding:0.05rem 0.3rem;border-radius:2px;text-transform:uppercase;letter-spacing:0.03em}
 .log-lv.info{color:var(--accent);background:var(--accent-bg)}
 .log-lv.error{color:var(--red);background:var(--red-bg)}
 .log-lv.warn{color:var(--yellow);background:var(--yellow-bg)}
 .log-lv.success{color:var(--green);background:var(--green-bg)}
 
-/* ─── Empty State ─── */
-.empty-state{text-align:center;padding:3rem 1.5rem;color:var(--text3)}
-.empty-state .ico{font-size:2rem;margin-bottom:0.75rem;opacity:0.3}
-.empty-state h4{font-size:0.85rem;color:var(--text2);margin-bottom:0.3rem;font-weight:600}
-.empty-state p{font-size:0.8rem}
+/* Empty State */
+.empty-state{text-align:center;padding:2.5rem 1.25rem;color:var(--text3)}
+.empty-state .ico{font-size:1.75rem;margin-bottom:0.65rem;opacity:0.3}
+.empty-state h4{font-size:0.8rem;color:var(--text2);margin-bottom:0.25rem;font-weight:600}
+.empty-state p{font-size:0.75rem}
 
-/* ─── Sections ─── */
+/* Sections */
 .section{display:none}
 .section.active{display:block}
 
-/* ─── Joined Channels Picker ─── */
-/* ─── Quick Connect ─── */
-
-
-
-
-/* ─── Utilities ─── */
-.mono{font-family:var(--font-mono);font-size:0.75rem}
-.addr{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+/* Utilities */
+.mono{font-family:var(--font-mono);font-size:0.72rem}
+.addr{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
 .text-muted{color:var(--text3)}
-.text-sm{font-size:0.75rem}
+.text-sm{font-size:0.72rem}
 .mr{margin-right:0.25rem}.mb-8{margin-bottom:0.5rem}.mb-12{margin-bottom:0.75rem}.mt-12{margin-top:0.75rem}.mt-8{margin-top:0.5rem}
-.flex{display:flex}.gap-6{gap:0.375rem}.gap-8{gap:0.5rem}.items-center{align-items:center}.w-full{width:100%}.wrap{flex-wrap:wrap}.hide{display:none!important}
+.flex{display:flex}.gap-6{gap:0.35rem}.gap-8{gap:0.5rem}.items-center{align-items:center}
+.w-full{width:100%}.wrap{flex-wrap:wrap}.hide{display:none!important}
 
-/* ─── Scroll Reveal ─── */
-.will-reveal{opacity:0;transform:translateY(1.5rem);filter:blur(6px);transition:all 0.8s var(--ease-spring)}
+/* Scroll Reveal */
+.will-reveal{opacity:0;transform:translateY(1rem);filter:blur(4px);transition:all 0.7s var(--ease-spring)}
 .will-reveal.revealed{opacity:1;transform:translateY(0);filter:blur(0)}
 
-/* ─── Mobile ─── */
+/* Mobile */
 @media(max-width:768px){
-  .fluid-nav{top:0.75rem;padding:0.35rem;gap:0.125rem;max-width:calc(100vw - 1rem)}
-  .fluid-nav-brand{font-size:0.75rem;padding-left:0.25rem}
+  .fluid-nav{top:0.6rem;padding:0.3rem;max-width:calc(100vw - 1rem)}
+  .fluid-nav-brand{font-size:0.7rem;padding-left:0.15rem}
   .fluid-nav-items .nav-item{display:none}
   .hamburger{display:block}
-  .main{padding:4.5rem 1rem 2rem}
-  .page-header h2{font-size:1.5rem}
+  .main{padding:4rem 0.85rem 2rem}
+  .page-header h2{font-size:1.35rem}
   .stats{grid-template-columns:repeat(2,1fr)}
-  .card,.core{padding:1rem}
+  .core{padding:1rem}
   .form-grid{grid-template-columns:1fr}
   .pos-detail-grid{grid-template-columns:1fr}
-
   .table-wrap{margin:0 -0.75rem;border-radius:0;border-left:none;border-right:none}
 }
 </style>
@@ -331,7 +313,6 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   <div id="page-channels" class="section"></div>
   <div id="page-positions" class="section"></div>
   <div id="page-scraper" class="section"></div>
-
   <div id="page-wallets" class="section"></div>
   <div id="page-settings" class="section"></div>
 </div>
@@ -341,7 +322,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 
 <div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1.25rem">
   <img src="/logo.jpg" alt="SS" style="width:4rem;height:4rem;border-radius:9999px;object-fit:cover">
-  <h1 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em">The Scoop Sc(rape)r</h1>
+  <h1 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em">SniperBot</h1>
   <p class="text-sm text-muted" style="margin-top:-0.5rem">Connect your Telegram account</p>
   <div id="tg-login-step1" style="width:340px;max-width:90vw;display:flex;flex-direction:column;gap:0.6rem">
     <input id="tg-login-api-id" type="number" placeholder="API ID" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
@@ -365,14 +346,12 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   </div>
   <div id="tg-login-step3" style="display:none;flex-direction:column;align-items:center;gap:0.75rem">
     <div class="badge badge-g" style="font-size:1.2rem;padding:0.75rem 2rem">✅ Connected</div>
-    <p class="text-sm text-muted" id="tg-login-done-msg"></p></div>
-  <p style="margin-top:1rem;font-size:0.7rem;color:var(--text3);text-align:center;max-width:360px;line-height:1.4">🔒 All data stays local. API keys and session strings stored only on your device. Token data via GMGN API — no external database.</p>
-  <a href="#" onclick="skipLogin()" style="font-size:0.75rem;color:var(--text3)">Skip → Dashboard (read-only)</a>
+    <p class="text-sm text-muted" id="tg-login-done-msg"></p>
   </div>
   <p id="loginError" class="text-sm" style="color:var(--red);display:none"></p>
+  <p style="margin-top:1rem;font-size:0.65rem;color:var(--text3);text-align:center;max-width:360px;line-height:1.4">All data stays local. API keys and session strings stored only on your device. Token data via GMGN API.</p>
+  <a href="#" onclick="skipLogin()" style="font-size:0.7rem;color:var(--text3)">Skip to Dashboard (read-only)</a>
 </div>
-
-
 
 <script>
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
@@ -402,7 +381,6 @@ function showPage(n){
   $('#navOverlay').classList.remove('open');
   $('#hamburger').classList.remove('active');
   renderPage(n);
-  // Auto-refresh for real-time pages
   if (_autoRefresh) clearInterval(_autoRefresh);
   const autoPages = ['dashboard','positions','scraper'];
   if (autoPages.includes(n)) {
@@ -413,12 +391,10 @@ document.querySelectorAll('.nav-item').forEach(a=>{
   a.addEventListener('click',()=>showPage(a.dataset.p))
 });
 
-// ─── Hamburger ───
 $('#hamburger').addEventListener('click',()=>{
   $('#hamburger').classList.toggle('active');
   $('#navOverlay').classList.toggle('open');
 });
-// Close overlay on resize to desktop
 window.addEventListener('resize',()=>{
   if(window.innerWidth>768){
     $('#navOverlay').classList.remove('open');
@@ -426,7 +402,6 @@ window.addEventListener('resize',()=>{
   }
 });
 
-// ─── Scrol Reveal ───
 const revealObserver=new IntersectionObserver((entries)=>{
   entries.forEach(entry=>{
     if(entry.isIntersecting){
@@ -437,7 +412,7 @@ const revealObserver=new IntersectionObserver((entries)=>{
 },{threshold:0.05,rootMargin:'0px 0px -30px 0px'});
 
 function observeReveals(){
-  document.querySelectorAll('.card,.stat,.channel-card,.page-header,.shell,.modal .form-grid').forEach(el=>{
+  document.querySelectorAll('.shell,.stat,.channel-card,.page-header,.modal .form-grid').forEach(el=>{
     if(!el.classList.contains('revealed')&&!el.classList.contains('will-reveal')){
       el.classList.add('will-reveal');
       revealObserver.observe(el);
@@ -445,7 +420,6 @@ function observeReveals(){
   });
 }
 
-// ─── Page Renderer ───
 async function renderPage(n){
   const el=$('#page-'+n);if(!el)return;
   try{
@@ -489,43 +463,45 @@ async function renderDashboard(){
 // ═══ CHANNELS ───
 async function renderChannels(){
   const channels=await api('/channels');
-  return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules — TP/SL, fees, filters, multi-wallet</div></div>
-<div class="card"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add Channel</button></div>
+  return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules</div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add Channel</button></div>
 ${channels.length?channels.map(c=>renderChannelCard(c)).join(''):`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
-</div>`;}
+</div></div>`;}
 
 function renderChannelCard(c){
   const r=c.rule||{};
   let tpStr='';
   try{const tps=typeof r.tp_levels==='string'?JSON.parse(r.tp_levels):(r.tp_levels||[]);if(tps.length)tpStr=tps.map(t=>`TP${t.percent}%(${t.sell_ratio||100}%)`).join(', ')}catch{}
   const chips=[];
-  if(r.min_market_cap!=null)chips.push(`MC≥${fmtCur(r.min_market_cap)}`);
-  if(r.max_market_cap!=null)chips.push(`MC≤${fmtCur(r.max_market_cap)}`);
-  if(r.min_liquidity!=null)chips.push(`Liq≥${fmtCur(r.min_liquidity)}`);
+  if(r.min_market_cap!=null)chips.push(`MC &ge; ${fmtCur(r.min_market_cap)}`);
+  if(r.max_market_cap!=null)chips.push(`MC &le; ${fmtCur(r.max_market_cap)}`);
+  if(r.min_liquidity!=null)chips.push(`Liq &ge; ${fmtCur(r.min_liquidity)}`);
   if(r.take_profit_percent)chips.push(`TP:${r.take_profit_percent}%`);
   if(r.stop_loss_percent)chips.push(`SL:${r.stop_loss_percent}%`);
   if(tpStr)chips.push(tpStr);
-  if(r.auto_buy)chips.push(`💰${r.buy_amount_sol||0.01}SOL`);
-  if(r.priority_fee)chips.push(`⚡Fee:${r.priority_fee}`);
-  if(r.wallet_group_id>0)chips.push(`👥Group#${r.wallet_group_id}`);
+  if(r.auto_buy)chips.push(`&bull; ${r.buy_amount_sol||0.01}SOL`);
+  if(r.priority_fee)chips.push(`Fee:${r.priority_fee}`);
+  if(r.wallet_group_id>0)chips.push(`Group#${r.wallet_group_id}`);
 
   return`<div class="channel-card">
+  <div class="shell"><div class="core">
   <div class="top">
     <div class="name">
       <label class="toggle"><input type="checkbox" ${c.active?'checked':''} onchange="togCh(${c.id})"><span class="sl"></span></label>
       ${c.display_name||c.channel_username}
-      <span class="badge badge-o" style="font-size:0.65rem">${c.channel_username}</span>
+      <span class="badge badge-o" style="font-size:0.6rem">${c.channel_username}</span>
     </div>
     <div class="actions">
-      <button class="btn btn-sm btn-ghost" onclick="openChannelForm(${c.id})">✏️</button>
-      <button class="btn btn-sm btn-r" onclick="delCh(${c.id})">✕</button>
+      <button class="btn btn-sm btn-ghost" onclick="openChannelForm(${c.id})">Edit</button>
+      <button class="btn btn-sm btn-r" onclick="delCh(${c.id})">Remove</button>
     </div>
   </div>
-  ${chips.length?`<div class="chips">${chips.map(ch=>`<span class="chip ${ch.startsWith('TP')||ch.startsWith('SL')?'green':''} ${ch.startsWith('MC')||ch.startsWith('Liq')?'accent':''}">${esc(ch)}</span>`).join('')}</div>`:'<div class="text-muted text-sm mb-8">No filters — all tokens pass</div>'}
+  ${chips.length?`<div class="chips">${chips.map(ch=>`<span class="chip ${ch.startsWith('TP')||ch.startsWith('SL')?'green':''} ${ch.startsWith('MC')||ch.startsWith('Liq')?'accent':''}">${ch}</span>`).join('')}</div>`:'<div class="text-muted text-sm mb-8">No filters</div>'}
   <div class="stats-row">
-    <span>📊 ${c.signal_count||0} signals</span>
-    <span>⏱ ${c.last_signal_at?ago(c.last_signal_at):'—'}</span>
+    <span>${c.signal_count||0} signals</span>
+    <span>Last ${c.last_signal_at?ago(c.last_signal_at):'never'}</span>
   </div>
+  </div></div>
 </div>`;}
 
 window.togCh=async function(id){await api('/channels/'+id+'/toggle',{method:'PATCH'});renderPage('channels')};
@@ -545,39 +521,39 @@ window.openChannelForm=async function(id){
 
   openModal(`<h2>${isEdit?'Edit':'Add'} Channel</h2>
 <div class="form-grid">
-  <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="@channel or https://t.me/..."/></div>
+  <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="Channel username or link"/></div>
   <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/></div>
 </div>
-<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">🔍 Filters</h3>
+<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Filters</h3>
 <div class="form-grid">
   <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Max Market Cap ($)</label><input id="f-max-mc" type="number" value="${r.max_market_cap||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Min Liquidity ($)</label><input id="f-min-liq" type="number" value="${r.min_liquidity||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Max Liquidity ($)</label><input id="f-max-liq" type="number" value="${r.max_liquidity||''}" placeholder="Any"/></div>
 </div>
-<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">⚡ Execution</h3>
+<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Execution</h3>
 <div class="form-grid">
   <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-buy" type="number" step="0.001" value="${r.buy_amount_sol||0.01}"/></div>
   <div class="form-group"><label>Slippage (%)</label><input id="f-slip" type="number" value="${r.slippage||30}"/></div>
-  <div class="form-group"><label>Priority Fee (lamports)</label><input id="f-fee" type="number" value="${r.priority_fee||''}" placeholder="Auto"/></div>
-  <div class="form-group"><label>Tip Fee (lamports)</label><input id="f-tip" type="number" value="${r.tip_fee||''}" placeholder="Auto"/></div>
+  <div class="form-group"><label>Priority Fee</label><input id="f-fee" type="number" value="${r.priority_fee||''}" placeholder="Auto"/></div>
+  <div class="form-group"><label>Tip Fee</label><input id="f-tip" type="number" value="${r.tip_fee||''}" placeholder="Auto"/></div>
 </div>
 <label class="cb"><input type="checkbox" id="f-anti" ${(r.anti_mev||true)?'checked':''}/> Anti-MEV</label>
-<label class="cb mt-8"><input type="checkbox" id="f-track" ${r.track_only?'checked':''}/> 🧪 Track Only (experimental — log signals only, no auto-buy)</label>
-<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">📈 Take Profit Levels</h3>
+<label class="cb mt-8"><input type="checkbox" id="f-track" ${r.track_only?'checked':''}/> Track Only (no auto-buy)</label>
+<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Take Profit Levels</h3>
 <div id="tp-levels-container">${tps.map((tp,i)=>renderTPLevel(i,tp.percent,tp.sell_ratio)).join('')}</div>
 <div class="form-actions" style="padding-top:0.5rem;border:none;margin-top:0.25rem">
   <button class="btn btn-sm" onclick="addTPLevel()">+ Add TP Level</button>
 </div>
-<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">🛑 Stop Loss</h3>
+<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Stop Loss</h3>
 <div class="form-group"><label>Stop Loss (%)</label><input id="f-sl" type="number" value="${r.stop_loss_percent||''}" placeholder="Disabled"/></div>
-<h3 style="font-size:0.8rem;margin:1rem 0 0.65rem;color:var(--text2);font-weight:600">👥 Buy Wallet</h3>
+<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Buy Wallet</h3>
 <div class="form-grid">
-  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">— Active Wallet —</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select></div>
+  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select></div>
 </div>
-<label class="cb"><input type="checkbox" id="f-auto" ${r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'"/> ✅ Enable Auto-Buy</label>
+<label class="cb"><input type="checkbox" id="f-auto" ${r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'"/> Enable Auto-Buy</label>
 <div id="autobuy-fields" style="display:${r.auto_buy?'block':'none'}" class="mt-8">
-  <p class="text-sm text-muted">Auto-buy will execute when signal passes filters. TP/SL orders are placed on buy.</p>
+  <p class="text-sm text-muted">Auto-buy executes when signal passes filters.</p>
 </div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitChannelForm(${isEdit?ch.id:'null'})">${isEdit?'Update':'Save'}</button></div>`);
 }
@@ -585,15 +561,15 @@ window.openChannelForm=async function(id){
 function renderTPLevel(idx,percent,ratio){
   return`<div class="flex gap-6 items-center mb-8 wrap">
   <div style="flex:1;min-width:80px"><input type="number" class="tp-pct" value="${percent||''}" placeholder="% gain" style="font-size:0.75rem"/></div>
-  <span class="text-muted text-sm">→ sell</span>
+  <span class="text-muted text-sm">sell</span>
   <div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" value="${ratio||''}" placeholder="%" style="font-size:0.75rem"/></div>
-  <button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">✕</button>
+  <button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">X</button>
 </div>`;}
 
 window.addTPLevel=function(){
   const c=$('#tp-levels-container');
   const d=document.createElement('div');d.className='flex gap-6 items-center mb-8 wrap';
-  d.innerHTML=`<div style="flex:1;min-width:80px"><input type="number" class="tp-pct" placeholder="% gain" style="font-size:0.75rem"/></div><span class="text-muted text-sm">→ sell</span><div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" placeholder="%" style="font-size:0.75rem"/></div><button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">✕</button>`;
+  d.innerHTML=`<div style="flex:1;min-width:80px"><input type="number" class="tp-pct" placeholder="% gain" style="font-size:0.75rem"/></div><span class="text-muted text-sm">sell</span><div style="flex:1;min-width:70px"><input type="number" class="tp-ratio" placeholder="%" style="font-size:0.75rem"/></div><button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">X</button>`;
   c.appendChild(d);
 };
 
@@ -630,23 +606,23 @@ window.submitChannelForm=async function(id){
     auto_buy:$('#f-auto').checked,
     track_only:$('#f-track').checked,
   })});
-  closeModal();toast(isNew?'Channel added ✅':'Channel updated ✅','ok');renderPage('channels');
+  closeModal();toast(isNew?'Channel added':'Channel updated','ok');renderPage('channels');
 };
 
 // ═══ POSITIONS ───
 async function renderPositions(){
   const[open,all]=await Promise.all([api('/positions'),api('/positions/all')]);
   const closed=all.filter(t=>t.status==='closed');
-  return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view position details, sell or set TP/SL</div></div>
-<div class="card">
+  return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades and position details</div></div>
+<div class="shell"><div class="core">
   <div class="tabs"><div class="tab active" data-tab="pos-open">Open (${open.length})</div><div class="tab" data-tab="pos-closed">Closed (${closed.length})</div></div>
   <div id="pos-open" class="tab-content active">
-    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>MC</th><th>TP/SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">$${t.buy_price_usd?Number(t.buy_price_usd).toFixed(8):'?'}</td><td class="text-sm">${t.take_profit_percent?'TP '+t.take_profit_percent+'%':'-'}/${t.stop_loss_percent?'SL '+t.stop_loss_percent+'%':'-'}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No open positions</p></div>`}
+    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>TP/SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">${t.take_profit_percent?'TP '+t.take_profit_percent+'%':'-'}/${t.stop_loss_percent?'SL '+t.stop_loss_percent+'%':'-'}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No open positions</p></div>`}
   </div>
   <div id="pos-closed" class="tab-content">
     ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&L</th><th>ROI</th><th>Closed</th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No closed positions</p></div>`}
   </div>
-</div>`;}
+</div></div>`;}
 
 window.viewPosition=async function(id){
   const t=await api('/positions/'+id);
@@ -655,20 +631,20 @@ window.viewPosition=async function(id){
   const currentPrice=price?parseFloat(price):null;
   const unrealizedPnl=currentPrice&&t.buy_price_usd?((currentPrice-t.buy_price_usd)/t.buy_price_usd)*100:null;
   openModal(`<h2>Position Detail</h2>
-<p class="text-sm text-muted mb-8"><span class="mono">${t.token_symbol||addrShort(t.token_address)}</span> · ${t.source_channel||''}</p>
+<p class="text-sm text-muted mb-8"><span class="mono">${t.token_symbol||addrShort(t.token_address)}</span></p>
 <div class="pos-detail-grid">
   <div class="item"><div class="lbl">Token Address</div><div class="val mono text-sm">${t.token_address}</div></div>
   <div class="item"><div class="lbl">Buy Amount</div><div class="val">${t.buy_amount_sol||'-'} SOL</div></div>
   <div class="item"><div class="lbl">Buy Price</div><div class="val mono">$${t.buy_price_usd?Number(t.buy_price_usd).toFixed(8):'?'}</div></div>
-  <div class="item"><div class="lbl">Current Price</div><div class="val mono">${currentPrice?'$'+currentPrice.toFixed(8):'<span class="text-muted">—</span>'}</div></div>
-  <div class="item"><div class="lbl">Unrealized P&L</div><div class="val">${unrealizedPnl!=null?'<span class="badge '+(unrealizedPnl>=0?'badge-g':'badge-r')+'">'+(unrealizedPnl>=0?'+':'')+unrealizedPnl.toFixed(2)+'%</span>':'<span class="text-muted">—</span>'}</div></div>
+  <div class="item"><div class="lbl">Current Price</div><div class="val mono">${currentPrice?'$'+currentPrice.toFixed(8):'<span class="text-muted">-</span>'}</div></div>
+  <div class="item"><div class="lbl">Unrealized P&L</div><div class="val">${unrealizedPnl!=null?'<span class="badge '+(unrealizedPnl>=0?'badge-g':'badge-r')+'">'+(unrealizedPnl>=0?'+':'')+unrealizedPnl.toFixed(2)+'%</span>':'<span class="text-muted">-</span>'}</div></div>
   <div class="item"><div class="lbl">Order ID</div><div class="val mono text-sm">${t.buy_order_id||'-'}</div></div>
   <div class="item"><div class="lbl">TP Target</div><div class="val">${t.take_profit_percent?t.take_profit_percent+'%':'None'}</div></div>
   <div class="item"><div class="lbl">SL Target</div><div class="val">${t.stop_loss_percent?t.stop_loss_percent+'%':'None'}</div></div>
   <div class="item"><div class="lbl">Status</div><div class="val">${sb(t.buy_status)}</div></div>
   <div class="item"><div class="lbl">Created</div><div class="val text-sm">${fmtTime(t.created_at)}</div></div>
 </div>
-${t.strategy_orders?.length?`<h3 style="font-size:0.8rem;margin-top:1rem;color:var(--text2);font-weight:600;margin-bottom:0.4rem">Strategy Orders</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Target</th><th>Status</th></tr></thead><tbody>${t.strategy_orders.map(o=>`<tr><td>${o.sub_order_type||o.order_type}</td><td class="mono">$${o.check_price?Number(o.check_price).toFixed(8):'?'}</td><td>${sb(o.status)}</td></tr>`).join('')}</tbody></table></div>`:''}
+${t.strategy_orders?.length?`<h3 style="font-size:0.75rem;margin-top:0.85rem;color:var(--text2);font-weight:600;margin-bottom:0.35rem">Strategy Orders</h3><table><thead><tr><th>Type</th><th>Target</th><th>Status</th></tr></thead><tbody>${t.strategy_orders.map(o=>`<tr><td>${o.sub_order_type||o.order_type}</td><td class="mono">$${o.check_price?Number(o.check_price).toFixed(8):'?'}</td><td>${sb(o.status)}</td></tr>`).join('')}</tbody></table>`:''}
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button>${t.status==='open'?`<button class="btn btn-g" onclick="closeModal();openSell(${id})">Sell</button>`:''}</div>`);
 };
 
@@ -679,7 +655,7 @@ window.openSell=async function(tradeId){
   <div class="form-group"><label>Sell %</label><select id="f-s-pct"><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option></select></div>
   <div class="form-group"><label>Slippage</label><input id="f-s-slip" type="number" value="30"/></div>
 </div>
-<div class="form-group"><label>Or set Limit Price (USD)</label><input id="f-s-limit" type="number" step=".00000001" placeholder="Target price for limit order"/></div>
+<div class="form-group"><label>Limit Price (USD)</label><input id="f-s-limit" type="number" step=".00000001" placeholder="Target price for limit order"/></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-r" onclick="execSell(${tradeId})">Sell</button></div>`);
 };
 
@@ -691,13 +667,13 @@ window.execSell=async function(tradeId){
   if(limit){
     try{
       await api('/orders/limit-sell',{method:'POST',body:JSON.stringify({chain:t.chain,wallet_address:t.wallet_address,token_address:t.token_address,target_price:limit,percent:pct,token_symbol:t.token_symbol})});
-      closeModal();toast('Limit sell created ✅','ok');
+      closeModal();toast('Limit sell created','ok');
     }catch(err){toast(err.message,'err')}
   }else{
     try{
       const r=await api('/sell',{method:'POST',body:JSON.stringify({chain:t.chain,wallet_address:t.wallet_address,token_address:t.token_address,percent:pct,slippage:slip})});
       if(t.buy_order_id)await api('/positions/'+tradeId+'/close',{method:'POST',body:JSON.stringify({sell_order_id:r.order_id,percent:pct,slippage:slip})});
-      closeModal();toast('Sell executed ✅','ok');renderPage('positions');
+      closeModal();toast('Sell executed','ok');renderPage('positions');
     }catch(err){toast(err.message,'err')}
   }
 };
@@ -706,24 +682,22 @@ window.execSell=async function(tradeId){
 async function renderScraper(){
   const[status,logs]=await Promise.all([api('/scraper/status'),api('/scraper/logs?limit=300')]);
   return`<div class="page-header"><span class="eyebrow">Monitoring</span><h2>Scraper</h2><div class="sub">Monitor scraper status and activity logs</div></div>
-<div class="stats">${status.length?status.map(s=>`<div class="stat ${s.active?(s.error_count>0?'yellow':'green'):'red'}"><div class="num" style="font-size:1.25rem">${s.signal_count||0}</div><div class="lbl">${s.display_name||s.channel_username}<br><span class="text-muted" style="font-size:0.6rem">${s.active?(s.error_count>0?'⚠️ '+s.error_count+' errors':'🟢 active'):'⏸ paused'}</span></div></div>`):`<div class="stat"><div class="num" style="font-size:1.25rem">—</div><div class="lbl">No channels</div></div>`}</div>
-<div class="card"><div class="card-h"><h3>Activity</h3></div>
+<div class="stats">${Array.isArray(status)?status.map(s=>`<div class="stat ${s.active?(s.error_count>0?'yellow':'green'):'red'}"><div class="shell"><div class="core"><div class="num" style="font-size:1.25rem">${s.signal_count||0}</div><div class="lbl">${s.display_name||s.channel_username}<br><span class="text-muted" style="font-size:0.55rem">${s.active?(s.error_count>0?'Errors '+s.error_count:'Active'):'Paused'}</span></div></div></div></div>`):`<div class="stat"><div class="shell"><div class="core"><div class="num">0</div><div class="lbl">No channels</div></div></div></div>`}</div>
+<div class="shell"><div class="core"><div class="card-h"><h3>Activity</h3></div>
   ${logs.length?`<div style="max-height:350px;overflow-y:auto">${logs.map(l=>`<div class="log-line"><span class="log-time">${fmtShort(l.created_at)}</span><span class="log-lv ${l.level}">${l.level}</span><span class="log-msg">${l.channel_username?'['+esc(l.channel_username)+'] ':''}${esc(l.message)}</span></div>`).join('')}</div>`:`<div class="empty-state"><p>No activity</p></div>`}
-</div>`;}
-
-
+</div></div>`;}
 
 // ═══ WALLETS ───
 async function renderWallets(){
   const[data,groups]=await Promise.all([api('/wallets/portfolio'),api('/wallet-groups')]);
   const wallets=data.wallets||[];
-  return`<div class="page-header"><span class="eyebrow">Buy Wallets</span><h2>Wallets</h2><div class="sub">Import or generate wallets for auto-buy execution. Set active wallet or group in channel rules.</div></div>
-<div class="card"><div class="card-h"><h3>${wallets.length} Buy Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openGenerateWallet()">✨ Generate</button><button class="btn btn-sm btn-p" onclick="openImportBuyWallet()">+ Import</button></div></div>
-  ${wallets.length?`<div class="table-wrap"><table><thead><tr><th>Wallet</th><th>Balance</th><th>Status</th><th></th></tr></thead><tbody>${wallets.map(w=>`<tr><td><div class="mono addr" style="max-width:220px" title="${w.address}">${w.address}</div><div class="text-muted text-sm">${w.label||'Buy Wallet'}</div></td><td>${w.balance?`<span class="badge badge-g">${w.balance} SOL</span>`:'<span class="text-muted text-sm">—</span>'}</td><td>${w.active?'<span class="badge badge-g">Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW(${w.id})">Activate</button>'}</td><td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio(${w.id})">Portfolio</button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')">📋</button><button class="btn btn-sm btn-r" onclick="delW(${w.id})">✕</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">👛</div><h4>No buy wallets</h4><p>Import wallets to enable auto-buy on filtered signals.</p></div>`}
-</div>
-<div class="card"><div class="card-h"><h3>Wallet Groups</h3><button class="btn btn-sm" onclick="openGroupForm()">+ Group</button></div>
-  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.5rem">${groups.map(g=>`<span class="badge badge-o" style="cursor:pointer" onclick="viewGroup(${g.id})">${esc(g.name)} (${g.member_count||0})</span>`).join('')}</div>`:`<div class="text-muted text-sm">No groups — each channel rule buys from a single wallet or spread across a group.</div>`}
-</div>`;}
+  return`<div class="page-header"><span class="eyebrow">Buy Wallets</span><h2>Wallets</h2><div class="sub">Import or generate wallets for auto-buy execution</div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>${wallets.length} Buy Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openGenerateWallet()">Generate</button><button class="btn btn-sm btn-p" onclick="openImportBuyWallet()">+ Import</button></div></div>
+  ${wallets.length?`<div class="table-wrap"><table><thead><tr><th>Wallet</th><th>Balance</th><th>Status</th><th></th></tr></thead><tbody>${wallets.map(w=>`<tr><td><div class="mono addr" style="max-width:220px" title="${w.address}">${w.address}</div><div class="text-muted text-sm">${w.label||'Buy Wallet'}</div></td><td>${w.balance?`<span class="badge badge-g">${w.balance} SOL</span>`:'<span class="text-muted text-sm">-</span>'}</td><td>${w.active?'<span class="badge badge-g">Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW(${w.id})">Activate</button>'}</td><td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio(${w.id})">Portfolio</button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')">Copy</button><button class="btn btn-sm btn-r" onclick="delW(${w.id})">X</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">&#x1F91B;</div><h4>No buy wallets</h4><p>Import wallets to enable auto-buy on filtered signals.</p></div>`}
+</div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>Wallet Groups</h3><button class="btn btn-sm" onclick="openGroupForm()">+ Group</button></div>
+  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.5rem">${groups.map(g=>`<span class="badge badge-o" style="cursor:pointer" onclick="viewGroup(${g.id})">${esc(g.name)} (${g.member_count||0})</span>`).join('')}</div>`:`<div class="text-muted text-sm">No groups.</div>`}
+</div></div>`;}
 
 window.actW=async function(id){await api('/wallets/'+id+'/activate',{method:'POST'});toast('Activated','ok');renderPage('wallets')};
 window.delW=async function(id){if(!confirm('Remove this buy wallet?'))return;await api('/wallets/'+id,{method:'DELETE'});toast('Removed','info');renderPage('wallets')};
@@ -732,8 +706,8 @@ window.copyAddr=function(a){navigator.clipboard.writeText(a);toast('Copied!','in
 window.openGenerateWallet=async function(){
   const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
   if(!r)return toast('Failed to generate wallet','err');
-  openModal(`<h2>✨ Wallet Generated</h2>
-<p class="text-sm text-muted mb-12">New wallet created. Save the private key — it will only be shown once.</p>
+  openModal(`<h2>Wallet Generated</h2>
+<p class="text-sm text-muted mb-12">New wallet created. Save the private key.</p>
 <div class="form-group"><label>Address</label><input value="${r.address}" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer"/></div>
 <div class="form-group"><label>Private Key <span style="color:var(--red)">(save this!)</span></label><textarea rows="2" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;color:var(--yellow)">${r.privateKey}</textarea></div>
 <div class="form-group"><label>Label</label><input id="f-gl" placeholder="Generated Wallet"/></div>
@@ -742,7 +716,7 @@ window.openGenerateWallet=async function(){
 window.submitGeneratedWallet=async function(addr,pk){
   const lbl=$('#f-gl').value.trim()||'Generated Wallet';
   await api('/wallets',{method:'POST',body:JSON.stringify({address:addr,label:lbl,private_key:pk})});
-  closeModal();toast('Wallet saved ✅','ok');renderPage('wallets');
+  closeModal();toast('Wallet saved','ok');renderPage('wallets');
 };
 
 window.openImportBuyWallet=function(){
@@ -753,27 +727,26 @@ window.openImportBuyWallet=function(){
 <div class="form-group"><label>Address</label><input id="f-wa" placeholder="Auto-filled from private key if known"/></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitBuyWallet()">Import</button></div>`);
 };
-
 window.submitBuyWallet=async function(){
   const pk=$('#f-pk').value.trim();
   const addr=$('#f-wa').value.trim();
   const lbl=$('#f-wl').value.trim();
   if(!pk)return toast('Private key required to sign buys','err');
   await api('/wallets',{method:'POST',body:JSON.stringify({address:addr||'pending',label:lbl||'Buy Wallet',private_key:pk})});
-  closeModal();toast('Buy wallet imported ✅','ok');renderPage('wallets')
+  closeModal();toast('Buy wallet imported','ok');renderPage('wallets')
 };
 
 window.viewPortfolio=async function(id){
   const w=(await api('/wallets/portfolio')).wallets.find(x=>x.id===id);
   if(!w)return toast('Wallet not found','err');
-  const pf=await api(`/wallets/${id}/portfolio`).catch(()=>null);
+  const pf=await api('/wallets/'+id+'/portfolio').catch(()=>null);
   const balance=w.balance||'0';
   const stats=pf?.stats;
   const holdings=pf?.holdings?.holdings||[];
   const activities=pf?.activity?.activities||[];
-  const realized = stats?.realized_profit ? Number(stats.realized_profit).toFixed(2) : '—';
-  const winrate = stats?.winrate ? Number(stats.winrate*100).toFixed(0)+'%' : '—';
-  openModal(`<h2>Portfolio · ${w.label||'Buy Wallet'}</h2>
+  const realized = stats?.realized_profit ? Number(stats.realized_profit).toFixed(2) : '-';
+  const winrate = stats?.winrate ? Number(stats.winrate*100).toFixed(0)+'%' : '-';
+  openModal(`<h2>Portfolio - ${w.label||'Buy Wallet'}</h2>
 <p class="text-sm text-muted mb-8 mono" style="word-break:break-all">${w.address}</p>
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:1rem">
   <div style="padding:0.7rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Balance</div><div style="font-weight:700;font-size:1.1rem">${balance} SOL</div></div>
@@ -803,60 +776,6 @@ window.switchPfTab=function(t){
   ['holdings','activity'].forEach(x=>document.getElementById('pf-'+x).classList.toggle('active',x===t));
 };
 
-// ═══ TOKEN DETAIL ───
-window.openTokenDetail=async function(address, caughtMc){
-  const d=await fetch('/api/token/detail?chain=sol&address='+address).then(r=>r.json()).catch(()=>null);
-  if(!d)return toast('Failed to fetch token data','err');
-  const info=d.info||{};
-  const sec=d.security||{};
-  const holders=d.holders||{};
-  const holdersList=holders.holders||holders.list||[];
-  const price=info.price?.price?parseFloat(info.price.price):(info.price?parseFloat(info.price):0);
-  const circ=info.circulating_supply?parseFloat(info.circulating_supply):0;
-  const mcNow=price*circ||info.market_cap||0;
-  const liq=info.liquidity?parseFloat(info.liquidity):0;
-  const vol=info.price?.volume_24h?parseFloat(info.price.volume_24h):0;
-  const rug=sec.rug_ratio!==undefined?parseFloat(sec.rug_ratio):-1;
-  const bun=sec.bundler_trader_amount_rate!==undefined?parseFloat(sec.bundler_trader_amount_rate):0;
-  const top10=sec.top_10_holder_rate!==undefined?parseFloat(sec.top_10_holder_rate):0;
-  const hp=sec.is_honeypot||'';
-  const dev=sec.creator_token_status||'';
-  const dex=sec.creator_address||'';
-  const smart=info.wallet_tags_stat?.smart_wallets||0;
-
-  openModal(`<h2 style="display:flex;align-items:center;gap:0.5rem"><span class="mono">${esc(info.symbol||'?')}</span><span class="text-sm text-muted" style="font-weight:400">${esc(info.name||'')}</span></h2>
-<p class="mono text-sm text-muted mb-12" style="word-break:break-all">${address}</p>
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:1rem">
-  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Price</div><div style="font-weight:600">$${price?price.toFixed(8):'?'}</div></div>
-  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">MC Now</div><div style="font-weight:600;color:var(--green)">${mcNow?fmtCur(mcNow):'?'}</div></div>
-  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Catched at MC</div><div style="font-weight:600;color:var(--accent)">${caughtMc?fmtCur(caughtMc):'?'}</div></div>
-</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem">
-  <div>
-    <div class="text-sm text-muted mb-8" style="font-weight:600">📊 Market</div>
-    <div style="display:grid;gap:0.3rem">${[
-      ['Liquidity','$'+liq.toFixed(0),liq>50000?'badge-g':liq>10000?'badge-y':'badge-r'],
-      ['Volume 24h','$'+vol.toFixed(0)],
-      ['Smart Money',String(smart),smart>=3?'badge-g':smart>0?'badge-y':'badge-gr'],
-      ['Holders',String(info.holder_count||holders.total||0)],
-    ].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.75rem"><span class="text-muted">${l}</span><span class="badge ${c||'badge-gr'}">${v}</span></div>`).join('')}</div>
-  </div>
-  <div>
-    <div class="text-sm text-muted mb-8" style="font-weight:600">🛡️ Security</div>
-    <div style="display:grid;gap:0.3rem">${[
-      ['Honeypot',hp==='yes'?'⚠️ Yes':'✅ No',hp==='yes'?'badge-r':'badge-g'],
-      ['Rug Ratio',rug>=0?(rug*100).toFixed(0)+'%':'?',rug>0.3?'badge-r':rug>0.1?'badge-y':'badge-g'],
-      ['Bundler Rate',(bun*100).toFixed(0)+'%',bun>0.3?'badge-r':bun>0.1?'badge-y':'badge-g'],
-      ['Top 10 Holders',(top10*100).toFixed(0)+'%',top10>0.5?'badge-r':top10>0.2?'badge-y':'badge-g'],
-      ['Dev Status',dev==='creator_close'?'✅ Closed':'📦 Holding',dev==='creator_close'?'badge-g':'badge-y'],
-    ].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.75rem"><span class="text-muted">${l}</span><span class="badge ${c||'badge-gr'}">${v}</span></div>`).join('')}</div>
-  </div>
-</div>
-${dex?`<div class="text-xs text-muted mb-8">Dev: <span class="mono" style="font-size:0.7rem">${dex}</span></div>`:''}
-${holdersList.length?`<div class="text-sm text-muted mb-8" style="font-weight:600">👥 Top Holders</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Address</th><th>%</th><th>Value</th></tr></thead><tbody>${holdersList.slice(0,10).map((h,i)=>`<tr><td>${i+1}</td><td><span class="mono addr">${h.address||h.owner||''}</span></td><td>${h.percent!==undefined?(h.percent*100).toFixed(2):h.amount_percentage?(h.amount_percentage*100).toFixed(2):'?'}%</td><td>$${h.usd_value?Number(h.usd_value).toFixed(0):'?'}</td></tr>`).join('')}</tbody></table></div>`:''}
-<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
-};
-
 window.openGroupForm=async function(){
   const w=await api('/wallets');
   openModal(`<h2>Create Wallet Group</h2><div class="form-group"><label>Group Name</label><input id="f-gn" placeholder="My Group"/></div><div class="form-group"><label>Description</label><input id="f-gd" placeholder="Optional"/></div><div class="form-group"><label>Add Wallets</label><div style="display:flex;flex-wrap:wrap;gap:0.25rem">${w.map(w=>`<label class="cb" style="font-size:0.75rem"><input type="checkbox" class="gw" value="${w.id}"/> ${w.label||addrShort(w.address)}</label>`).join('')}</div></div>
@@ -872,7 +791,7 @@ window.viewGroup=async function(id){
   const g=await api('/wallet-groups/'+id+'/wallets');
   const info=await api('/wallet-groups').then(gs=>gs.find(gg=>gg.id===id));
   openModal(`<h2>${esc(info?.name||'Group')}</h2><p class="text-muted text-sm mb-8">${g.length} wallet${g.length!==1?'s':''}</p>
-  ${g.length?g.map(w=>`<div class="flex items-center gap-6 mb-8"><span class="mono addr" style="flex:1">${w.address}</span><span class="text-muted text-sm">${w.label||''}</span><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')">📋</button></div>`).join(''):'<div class="text-muted">No wallets</div>'}
+  ${g.length?g.map(w=>`<div class="flex items-center gap-6 mb-8"><span class="mono addr" style="flex:1">${w.address}</span><span class="text-muted text-sm">${w.label||''}</span><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')">Copy</button></div>`).join(''):'<div class="text-muted">No wallets</div>'}
   <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
 };
 
@@ -881,33 +800,31 @@ async function renderSettings(){
   const[settings,setup,tg]=await Promise.all([api('/settings'),api('/setup'),api('/telegram/status')]);
   return`<div class="page-header"><span class="eyebrow">Configuration</span><h2>Settings</h2></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-  <div class="card"><div class="card-h"><h3>⚙️ Config</h3></div>
+  <div class="shell"><div class="core"><div class="card-h"><h3>Config</h3></div>
     <div class="form-grid">
       <div class="form-group"><label>Default Buy (SOL)</label><input id="s-buy" value="${settings.default_buy_amount||'0.01'}" type="number" step=".001"/></div>
       <div class="form-group"><label>Default Slippage (%)</label><input id="s-slip" value="${settings.default_slippage||'30'}" type="number"/></div>
       <div class="form-group"><label>Anti-MEV</label><select id="s-anti"><option value="true" ${settings.default_anti_mev==='true'?'selected':''}>On</option><option value="false" ${settings.default_anti_mev==='false'?'selected':''}>Off</option></select></div>
     </div>
     <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveSettings()">Save</button></div>
-  </div>
-  <div class="card"><div class="card-h"><h3>🔐 Status</h3></div>
-    <div style="display:grid;gap:0.35rem">${[
-      ['API Key',setup.gmgnConfigured,'✅','❌'],
-      ['Channels',setup.hasChannels,setup.hasChannels?'✅':'0','Add'],
-      ['Telegram',tg.connected,'✅ Connected','⏸ '+(!tg.hasSession?'Not set up':'Disconnected')],
-    ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;padding:0.45rem 0.65rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.75rem"><span>${l}</span><span class="${ok?'badge-g':'badge-gr'} badge">${ok?y:n}</span></div>`).join('')}</div>
-  </div>
+  </div></div>
+  <div class="shell"><div class="core"><div class="card-h"><h3>Status</h3></div>
+    <div style="display:grid;gap:0.3rem">${[
+      ['API Key',setup.gmgnConfigured,'ok','no'],
+      ['Channels',setup.hasChannels,setup.hasChannels?'ok':'0','Add'],
+      ['Telegram',tg.connected,'Connected','Off '+(tg.hasSession?'(saved)':'(not set)')],
+    ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.72rem"><span>${l}</span><span class="badge ${ok?'badge-g':'badge-gr'}">${ok?y:n}</span></div>`).join('')}</div>
+  </div></div>
 </div>
-  <div class="card"><div class="card-h"><h3>📡 Telegram</h3>${tg.connected?'<button class="btn btn-sm btn-r" onclick="tgDisconnect()">Disconnect</button>':'<button class="btn btn-sm btn-p" onclick="showLogin()">Connect</button>'}</div>
-  <div class="text-sm text-muted">${tg.connected?'Bot is connected to Telegram and listening for signals.':(tg.hasSession?'Session saved but not connected. Click Connect.':'No Telegram session. Set up via API ID + OTP.')}</div>
-</div>
-<div class="card"><div class="card-h"><h3>📝 Environment</h3></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>Telegram</h3>${tg.connected?'<button class="btn btn-sm btn-r" onclick="tgDisconnect()">Disconnect</button>':'<button class="btn btn-sm btn-p" onclick="showLogin()">Connect</button>'}</div>
+  <div class="text-sm text-muted">${tg.connected?'Connected and listening.':(tg.hasSession?'Session saved but not connected.':'No Telegram session.')}</div>
+</div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>Environment</h3></div>
     <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key||'Not set'}</span></div>
-</div>`;}
+</div></div>`;}
 
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
-
 window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'POST'});toast('Disconnected','info');renderPage('settings')};
-window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 
 // ═══ LOGIN ───
 let tgLoginToken = null;
@@ -940,8 +857,8 @@ window.tgLoginSendCode=async function(){
     localStorage.setItem('tg_phone',phone);
     localStorage.setItem('tg_dc',$('#tg-login-dc').value);
   }
+  const dcId=parseInt($('#tg-login-dc').value)||0;
   try{
-    const dcId=parseInt($('#tg-login-dc').value)||0;
     const r=await fetch('/api/telegram/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiId:Number(apiId),apiHash,phone,dcId})}).then(x=>x.json());
     if(r.error)return tgLoginError(r.error);
     tgLoginToken=r.loginToken;
@@ -1001,20 +918,6 @@ window.skipLogin=async function(){
   renderPage('dashboard');
 };
 
-let _autoRefresh = null;
-
-async function refreshCurrentPage() {
-  if (!$('#modal').classList.contains('active')) {
-    const el = $('#page-'+cp);
-    if (el) {
-      try {
-        const fns = {dashboard:renderDashboard,positions:renderPositions,scraper:renderScraper};
-        if (fns[cp]) el.innerHTML = await fns[cp]();
-      } catch {}
-    }
-  }
-}
-
 // ═══ SSE Real-time ───
 function connectSSE(){
   const ev = new EventSource('/api/events');
@@ -1045,6 +948,74 @@ function connectSSE(){
   ev.onerror = () => { ev.close(); setTimeout(connectSSE, 2000); };
 }
 
+// ═══ TOKEN DETAIL ───
+window.openTokenDetail=async function(address, caughtMc){
+  const d=await fetch('/api/token/detail?chain=sol&address='+address).then(r=>r.json()).catch(()=>null);
+  if(!d)return toast('Failed to fetch token data','err');
+  const info=d.info||{};
+  const sec=d.security||{};
+  const holders=d.holders||{};
+  const holdersList=holders.holders||holders.list||[];
+  const price=info.price?.price?parseFloat(info.price.price):(info.price?parseFloat(info.price):0);
+  const circ=info.circulating_supply?parseFloat(info.circulating_supply):0;
+  const mcNow=price*circ||info.market_cap||0;
+  const liq=info.liquidity?parseFloat(info.liquidity):0;
+  const vol=info.price?.volume_24h?parseFloat(info.price.volume_24h):0;
+  const rug=sec.rug_ratio!==undefined?parseFloat(sec.rug_ratio):-1;
+  const bun=sec.bundler_trader_amount_rate!==undefined?parseFloat(sec.bundler_trader_amount_rate):0;
+  const top10=sec.top_10_holder_rate!==undefined?parseFloat(sec.top_10_holder_rate):0;
+  const hp=sec.is_honeypot||'';
+  const dev=sec.creator_token_status||'';
+  const dex=sec.creator_address||'';
+  const smart=info.wallet_tags_stat?.smart_wallets||0;
+
+  openModal(`<h2 style="display:flex;align-items:center;gap:0.5rem"><span class="mono">${esc(info.symbol||'?')}</span><span class="text-sm text-muted" style="font-weight:400">${esc(info.name||'')}</span></h2>
+<p class="mono text-sm text-muted mb-12" style="word-break:break-all">${address}</p>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:1rem">
+  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Price</div><div style="font-weight:600">$${price?price.toFixed(8):'?'}</div></div>
+  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">MC Now</div><div style="font-weight:600;color:var(--green)">${mcNow?fmtCur(mcNow):'?'}</div></div>
+  <div style="padding:0.6rem;text-align:center;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid var(--border)"><div class="text-muted text-sm">Catched at MC</div><div style="font-weight:600;color:var(--accent)">${caughtMc?fmtCur(caughtMc):'?'}</div></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem">
+  <div>
+    <div class="text-sm text-muted mb-8" style="font-weight:600">Market</div>
+    <div style="display:grid;gap:0.3rem">${[
+      ['Liquidity','$'+liq.toFixed(0),liq>50000?'badge-g':liq>10000?'badge-y':'badge-r'],
+      ['Volume 24h','$'+vol.toFixed(0)],
+      ['Smart Money',String(smart),smart>=3?'badge-g':smart>0?'badge-y':'badge-gr'],
+      ['Holders',String(info.holder_count||holders.total||0)],
+    ].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.72rem"><span class="text-muted">${l}</span><span class="badge ${c||'badge-gr'}">${v}</span></div>`).join('')}</div>
+  </div>
+  <div>
+    <div class="text-sm text-muted mb-8" style="font-weight:600">Security</div>
+    <div style="display:grid;gap:0.3rem">${[
+      ['Honeypot',hp==='yes'?'Yes '+'&#x26A0;':'No',hp==='yes'?'badge-r':'badge-g'],
+      ['Rug Ratio',rug>=0?(rug*100).toFixed(0)+'%':'?',rug>0.3?'badge-r':rug>0.1?'badge-y':'badge-g'],
+      ['Bundler Rate',(bun*100).toFixed(0)+'%',bun>0.3?'badge-r':bun>0.1?'badge-y':'badge-g'],
+      ['Top 10 Holders',(top10*100).toFixed(0)+'%',top10>0.5?'badge-r':top10>0.2?'badge-y':'badge-g'],
+      ['Dev Status',dev==='creator_close'?'Closed':'Holding',dev==='creator_close'?'badge-g':'badge-y'],
+    ].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.72rem"><span class="text-muted">${l}</span><span class="badge ${c||'badge-gr'}">${v}</span></div>`).join('')}</div>
+  </div>
+</div>
+${dex?`<div class="text-xs text-muted mb-8">Dev: <span class="mono" style="font-size:0.65rem">${dex}</span></div>`:''}
+${holdersList.length?`<div class="text-sm text-muted mb-8" style="font-weight:600">Top Holders</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Address</th><th>%</th><th>Value</th></tr></thead><tbody>${holdersList.slice(0,10).map((h,i)=>`<tr><td>${i+1}</td><td><span class="mono addr">${h.address||h.owner||''}</span></td><td>${h.percent!==undefined?(h.percent*100).toFixed(2):h.amount_percentage?(h.amount_percentage*100).toFixed(2):'?'}%</td><td>$${h.usd_value?Number(h.usd_value).toFixed(0):'?'}</td></tr>`).join('')}</tbody></table></div>`:''}
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+};
+
+// ═══ AUTO REFRESH ───
+let _autoRefresh = null;
+
+async function refreshCurrentPage() {
+  if (!$('#modal').classList.contains('active')) {
+    const el = $('#page-'+cp);
+    if (el) {
+      try {
+        const fns = {dashboard:renderDashboard,positions:renderPositions,scraper:renderScraper};
+        if (fns[cp]) el.innerHTML = await fns[cp]();
+      } catch {}
+    }
+  }
+}
 
 // ═══ INIT ───
 async function initDashboard(){
