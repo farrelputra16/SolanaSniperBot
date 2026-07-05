@@ -205,16 +205,19 @@ async function handleMessage(sourceChannel, event) {
   if (!message || !message.text) return;
 
   const text = message.text;
-  const senderUsername = await getSenderUsername(event);
 
-  console.log(`[Signal] ${sourceChannel}${senderUsername ? ' (@' + senderUsername + ')' : ''}: ${text.slice(0, 120)}`);
+  console.log(`[Signal] ${sourceChannel}: ${text.slice(0, 120)}`);
 
   if (onForwardCallback) {
     onForwardCallback(sourceChannel, message);
   }
 
   if (onSignalCallback) {
-    onSignalCallback(sourceChannel, text, message, senderUsername);
+    // Fire signal ASAP, sender in background
+    onSignalCallback(sourceChannel, text, message, null);
+    getSenderUsername(event).then(username => {
+      if (username) console.log(`[Signal] ${sourceChannel} @${username}`);
+    }).catch(() => {});
   }
 }
 

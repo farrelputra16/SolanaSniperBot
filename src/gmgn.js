@@ -393,4 +393,11 @@ export function generateSolanaWallet() {
   return { address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])) };
 }
 
+// ───── Connection Warmup ─────
+export async function warmupConnection() {
+  try {
+    await request('GET', '/v1/market/rank', { chain: 'sol', limit: 1 });
+  } catch {}
+}
+
 export { CHAIN_CURRENCIES };

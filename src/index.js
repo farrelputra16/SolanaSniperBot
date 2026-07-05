@@ -6,6 +6,7 @@ import * as db from './database.js';
 import { onSignal } from './telegram.js';
 import { processSignal } from './router.js';
 import { createWebServer, startWebServer } from './web-server.js';
+import { warmupConnection } from './gmgn.js';
 
 async function loadTelegramId() {
   const savedTid = await db.getSetting('telegram_id', '');
@@ -31,6 +32,7 @@ async function main() {
 
   await initDatabase();
   await loadTelegramId();
+  warmupConnection().then(() => console.log('   GMGN: 🔥 Connection warmed up')).catch(() => {});
 
   onSignal(async (sourceChannel, text, message, senderUsername) => {
     await processSignal(sourceChannel, text, message, senderUsername);
