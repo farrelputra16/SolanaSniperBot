@@ -452,11 +452,11 @@ async function renderDashboard(){
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
   <div class="shell"><div class="core" style="padding:1.25rem"><div class="card-h"><h3>Signals</h3></div>
-    ${act.signals.length?('<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Latency</th><th>Time</th></tr></thead><tbody>' + act.signals.map(s=>'<tr style="cursor:pointer" onclick="openTokenDetail(\''+s.token_address+'\','+(s.market_cap||0)+')"><td><span class="mono addr" title="'+s.token_address+'">'+(s.token_symbol||addrShort(s.token_address))+'</span></td><td>'+(s.source_channel||'-')+'</td><td>'+fmtCur(s.market_cap)+'</td><td class="text-sm">'+(s.latency_ms?s.latency_ms+'ms':'-')+'</td><td class="text-muted text-sm">'+fmtShort(s.created_at)+'</td></tr>').join('')+'</tbody></table></div>'
+    ${act.signals.length?('<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Latency</th><th>Time</th></tr></thead><tbody>' + act.signals.map(s=>'<tr style="cursor:pointer" onclick="openTokenDetail(\''+s.token_address+'\','+(s.market_cap||0)+')"><td><span class="mono addr" title="'+s.token_address+'">'+(s.token_symbol||addrShort(s.token_address))+'</span></td><td>'+(s.source_channel||'-')+'</td><td>'+fmtCur(s.market_cap)+'</td><td class="text-sm">'+(s.latency_ms!=null?s.latency_ms+'ms':'-')+'</td><td class="text-muted text-sm">'+fmtShort(s.created_at)+'</td></tr>').join('')+'</tbody></table></div>'
 + '<div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">' + act.signals.slice(0,6).map(s=>'<div class="shell" style="cursor:pointer;border-radius:var(--radius-md)" onclick="openTokenDetail(\''+s.token_address+'\','+(s.market_cap||0)+')"><div class="core" style="padding:0.65rem 0.75rem;border-radius:calc(var(--radius-md) - 0.25rem)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">'+(s.token_symbol||addrShort(s.token_address))+'</span><span class="text-sm text-muted">'+(s.latency_ms?s.latency_ms+'ms':'')+'</span></div><div style="display:flex;justify-content:space-between;font-size:0.72rem"><span class="text-muted">MC</span><span>'+fmtCur(s.market_cap)+'</span></div><div style="display:flex;justify-content:space-between;font-size:0.72rem;margin-bottom:0.2rem"><span class="text-muted">Chan</span><span>'+(s.source_channel||'-')+'</span></div><div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-top:0.25rem"><span class="badge badge-b">'+(s.latency_ms?s.latency_ms+'ms':'?')+'</span></div></div></div>').join('')+'</div>'):'<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>'}
   </div></div>
   <div class="shell"><div class="core" style="padding:1.25rem"><div class="card-h"><h3>Trades</h3></div>
-    ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>Amt</th><th>P&L</th><th>Signal</th><th>Buy</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.signal_latency_ms?t.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${t.buy_latency_ms?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
+    ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>Amt</th><th>P&L</th><th>Signal</th><th>Buy</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.signal_latency_ms!=null?t.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${t.buy_latency_ms!=null?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
   </div></div>
 </div>`;}
 
@@ -928,7 +928,7 @@ function connectSSE(){
       const tr = document.createElement('tr');
       tr.style.cursor='pointer';
       tr.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
-      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${esc(d.source_channel)}</td><td>${fmtCur(d.market_cap)}</td><td class="text-sm">${d.latency_ms?d.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(d.created_at)}</td>`;
+      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${esc(d.source_channel)}</td><td>${fmtCur(d.market_cap)}</td><td class="text-sm">${d.latency_ms!=null?d.latency_ms+'ms':'-'}</td><td class="text-muted text-sm">${fmtShort(d.created_at)}</td>`;
       tbl.prepend(tr);
       if (tbl.children.length > 50) tbl.lastElementChild?.remove();
     }
@@ -939,7 +939,7 @@ function connectSSE(){
     const tbl = $('#page-dashboard .trade-tbl');
     if (tbl) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${d.amount||'-'}</td><td>-</td><td class="text-sm">${d.signal_latency_ms?d.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${d.buy_latency_ms?d.buy_latency_ms+'ms':'-'}</td><td>${sb(d.status)}</td>`;
+      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${d.amount||'-'}</td><td>-</td><td class="text-sm">${d.signal_latency_ms!=null?d.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${d.buy_latency_ms?d.buy_latency_ms+'ms':'-'}</td><td>${sb(d.status)}</td>`;
       tbl.prepend(tr);
       if (tbl.children.length > 50) tbl.lastElementChild?.remove();
     }
