@@ -57,35 +57,36 @@ export async function processSignal(sourceChannel, text, message, senderUsername
 }
 
 async function processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0) {
+  // 1. Match rules by channel ONLY — no data needed
+  const matchingRules = allRules.filter(r => r.channel_username === sourceChannel);
+  const hasRules = matchingRules.length > 0;
+
+  // 2. Execute buys IMMEDIATELY (if any rule matches channel)
+  for (const rule of matchingRules) {
+    executeAutoBuy(address, chain, { token_address: address, chain, source_channel: sourceChannel, price: 0, token_symbol: '' }, rule, sourceChannel, t0);
+  }
+
+  // 3. Fetch data in background for display/cache
   let tokenInfo, tokenSecurity;
   const cached = getTokenCached(chain, address);
   const isCacheHit = !!cached;
 
-  try {
-    // Cache hit: use immediately, refresh in background
-    if (cached) {
-      tokenInfo = cached.info;
-      tokenSecurity = cached.security;
-      // background refresh
-      Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address)])
-        .then(([info, sec]) => setTokenCache(chain, address, info, sec))
-        .catch(() => {});
-    } else {
-      [tokenInfo, tokenSecurity] = await Promise.all([
-        getTokenInfo(chain, address),
-        getTokenSecurity(chain, address).catch(() => null),
-      ]);
-      setTokenCache(chain, address, tokenInfo, tokenSecurity);
-    }
-  } catch (err) {
-    console.error(`[Router] Fetch error ${address}:`, err.message);
-    db.addScraperLog(sourceChannel, 'error', `Fetch error ${address}: ${err.message}`).catch(() => {});
-    return;
+  if (cached) {
+    tokenInfo = cached.info;
+    tokenSecurity = cached.security;
+    Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address)])
+      .then(([info, sec]) => setTokenCache(chain, address, info, sec))
+      .catch(() => {});
+  } else {
+    [tokenInfo, tokenSecurity] = await Promise.all([
+      getTokenInfo(chain, address),
+      getTokenSecurity(chain, address).catch(() => null),
+    ]);
+    setTokenCache(chain, address, tokenInfo, tokenSecurity);
   }
 
   const tFetch = Date.now();
   const signalLatency = tFetch - t0;
-
   const data = parseTokenData(tokenInfo, tokenSecurity, chain, address, sourceChannel, text);
   data.sender_username = senderUsername || '';
   data.latency_ms = signalLatency;
@@ -97,21 +98,8 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     sender_username: senderUsername, created_at: Math.floor(Date.now() / 1000),
   });
 
-  const matchingRules = allRules.filter(r => {
-    if (r.channel_username !== sourceChannel) return false;
-    if (r.min_market_cap && data.market_cap < r.min_market_cap) return false;
-    if (r.max_market_cap && data.market_cap > r.max_market_cap) return false;
-    if (r.min_liquidity && data.liquidity < r.min_liquidity) return false;
-    if (r.max_liquidity && data.liquidity > r.max_liquidity) return false;
-    return true;
-  });
-
   const totalLatency = Date.now() - t0;
-  console.log(`⚡ SIGNAL ${data.token_symbol||address} | fetch=${signalLatency}ms total=${totalLatency}ms MC=$${data.market_cap?data.market_cap.toFixed(0):'?'} ${matchingRules.length?'🟢 auto-buy':'⏸️ no-rule'}${isCacheHit?' 🟡 cache-hit':''}`);
-
-  for (const rule of matchingRules) {
-    executeAutoBuy(address, chain, data, rule, sourceChannel, t0);
-  }
+  console.log(`⚡ SIGNAL ${data.token_symbol||address} | swap=${hasRules?'🟢':'⏸️'} fetch=${signalLatency}ms total=${totalLatency}ms${isCacheHit?' 🟡 cache-hit':''}`);
 
   forwardSignal(sourceChannel, address, data, text, null);
 }
