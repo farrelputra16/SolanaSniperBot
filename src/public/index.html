@@ -1040,17 +1040,20 @@ async function refreshCurrentPage() {
 }
 
 // ═══ INIT ───
+let _initRetries = 0;
 async function initDashboard(){
   const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':localStorage.getItem('auth_token')||''}}).then(r=>r.json()).catch(()=>({}));
   if(tg.token){localStorage.setItem('auth_token',tg.token)}
   if(!tg.connected){
-    if(tg.hasSession){
-      setTimeout(initDashboard, 2000);
+    if(tg.hasSession && _initRetries < 15){
+      _initRetries++;
+      setTimeout(initDashboard, 3000);
       return;
     }
     showLogin();
     return;
   }
+  _initRetries = 0;
   renderPage('dashboard');
   connectSSE();
   setInterval(async()=>{
