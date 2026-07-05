@@ -43,7 +43,8 @@ export async function processSignal(sourceChannel, text, message, senderUsername
   const found = extractAddresses(text);
   if (found.length === 0) return;
   const tCapture = Date.now();
-  console.log(`📡 CA captured in ${tCapture - t0}ms | ${found.length} address(es)`);
+  const captureLatency = tCapture - t0;
+  console.log(`📡 CA captured in ${captureLatency}ms | ${found.length} address(es)`);
 
   const allRules = await getCachedRules();
 
@@ -86,10 +87,9 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   }
 
   const tFetch = Date.now();
-  const signalLatency = tFetch - t0;
   const data = parseTokenData(tokenInfo, tokenSecurity, chain, address, sourceChannel, text);
   data.sender_username = senderUsername || '';
-  data.latency_ms = signalLatency;
+  data.latency_ms = captureLatency;
 
   db.saveSignal(data).catch(() => {});
   liveEvents.emit('signal', {
