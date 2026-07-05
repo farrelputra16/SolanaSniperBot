@@ -103,6 +103,9 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     return true;
   });
 
+  const totalLatency = Date.now() - t0;
+  console.log(`⚡ SIGNAL ${data.token_symbol||address} | fetch=${signalLatency}ms total=${totalLatency}ms MC=$${data.market_cap?data.market_cap.toFixed(0):'?'} ${matchingRules.length?'🟢 auto-buy':'⏸️ no-rule'}${isCacheHit?' 🟡 cache-hit':''}`);
+
   for (const rule of matchingRules) {
     executeAutoBuy(address, chain, data, rule, sourceChannel, t0);
   }
