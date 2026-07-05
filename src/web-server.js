@@ -500,6 +500,7 @@ export function createWebServer() {
       const telegramId = String(me?.id || '');
       const sessionToken = crypto.randomUUID();
       SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId });
+      db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
       res.json({ ok: true, token: sessionToken, telegramId });
@@ -533,6 +534,9 @@ export function createWebServer() {
       state.state = 'done';
       await db.setSetting('telegram_session', state.sessionStr);
       await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
+      const { getClient: gC } = await import('./telegram.js');
+      const me2 = gC() ? await gC().getMe() : null;
+      if (me2) { db.setTelegramId(String(me2.id)); await db.setSetting('telegram_id', String(me2.id)); }
       PENDING_LOGIN.delete(loginToken);
       res.json({ ok: true });
     } catch (err) {
