@@ -114,7 +114,7 @@ async function nextId(seqName) {
 // ───── Channels ─────
 export async function getActiveChannels() {
   if (!sqliteMode && mdb) return collections.channels.find({ active: 1 }).toArray();
-  return sqliteDb.prepare('SELECT * FROM channels WHERE active = 1 AND telegram_id = ?').all(_tid());
+  return sqliteDb.prepare('SELECT * FROM channels WHERE active = 1').all();
 }
 export async function getAllChannels() {
   if (!sqliteMode && mdb) {
@@ -124,7 +124,7 @@ export async function getAllChannels() {
       { $project: { sd: 0 } }, { $sort: { added_at: -1 } }
     ]).toArray();
   }
-  return sqliteDb.prepare(`SELECT c.*, (SELECT COUNT(*) FROM signals s WHERE s.source_channel = c.channel_username AND s.telegram_id = ?) as signal_count, (SELECT MAX(created_at) FROM signals s WHERE s.source_channel = c.channel_username AND s.telegram_id = ?) as last_signal_at FROM channels c WHERE c.telegram_id = ? ORDER BY c.added_at DESC`).all(_tid(), _tid(), _tid());
+  return sqliteDb.prepare(`SELECT c.*, (SELECT COUNT(*) FROM signals s WHERE s.source_channel = c.channel_username) as signal_count, (SELECT MAX(created_at) FROM signals s WHERE s.source_channel = c.channel_username) as last_signal_at FROM channels c ORDER BY c.added_at DESC`).all();
 }
 export async function addChannel(username, displayName) {
   if (!sqliteMode && mdb) {
@@ -243,11 +243,11 @@ export async function getAutoBuyRules() {
 // ───── Wallets ─────
 export async function getAllWallets() {
   if (!sqliteMode && mdb) return collections.wallets.find().sort({ created_at: -1 }).toArray();
-  return sqliteDb.prepare('SELECT * FROM wallets WHERE telegram_id = ? ORDER BY created_at DESC').all(_tid());
+  return sqliteDb.prepare('SELECT * FROM wallets ORDER BY created_at DESC').all();
 }
 export async function getActiveWallet() {
   if (!sqliteMode && mdb) return collections.wallets.findOne({ active: 1 });
-  return sqliteDb.prepare('SELECT * FROM wallets WHERE active = 1 AND telegram_id = ? LIMIT 1').get(_tid()) || null;
+  return sqliteDb.prepare('SELECT * FROM wallets WHERE active = 1 LIMIT 1').get() || null;
 }
 export async function addWallet(address, label, privateKey) {
   if (!sqliteMode && mdb) {
@@ -260,7 +260,7 @@ export async function addWallet(address, label, privateKey) {
     } catch (e) { if (e.code !== 11000) throw e; }
     return;
   }
-  const ex = sqliteDb.prepare(`SELECT id FROM wallets WHERE telegram_id = ?`).get(_tid());
+  const ex = sqliteDb.prepare('SELECT id FROM wallets LIMIT 1').get();
   sqliteDb.prepare('INSERT OR IGNORE INTO wallets (address, label, private_key, active, telegram_id) VALUES (?,?,?,?,?)').run(address, label || '', privateKey || '', ex ? 0 : 1, _tid());
 }
 export async function importWallets(wallets) {
@@ -374,12 +374,12 @@ export async function saveSignal(data) {
 }
 export async function getRecentSignals(limit) {
   if (!sqliteMode && mdb) return collections.signals.find().sort({ created_at: -1 }).limit(limit).toArray();
-  return sqliteDb.prepare('SELECT * FROM signals WHERE telegram_id = ? ORDER BY created_at DESC LIMIT ?').all(_tid(), limit);
+  return sqliteDb.prepare('SELECT * FROM signals ORDER BY created_at DESC LIMIT ?').all(limit);
 }
 export async function getSignalCountToday() {
   const start = sqliteNow() - 86400;
   if (!sqliteMode && mdb) return collections.signals.countDocuments({ created_at: { $gte: start } });
-  return sqliteDb.prepare('SELECT COUNT(*) as cnt FROM signals WHERE created_at >= ? AND telegram_id = ?').get(start, _tid()).cnt;
+  return sqliteDb.prepare('SELECT COUNT(*) as cnt FROM signals WHERE created_at >= ?').get(start).cnt;
 }
 
 // ───── Trades ─────
@@ -411,11 +411,11 @@ export async function createTrade(data) {
 }
 export async function getOpenTrades() {
   if (!sqliteMode && mdb) return collections.trades.find({ status: 'open' }).sort({ created_at: -1 }).toArray();
-  return sqliteDb.prepare("SELECT * FROM trades WHERE status = 'open' AND telegram_id = ? ORDER BY created_at DESC").all(_tid());
+  return sqliteDb.prepare("SELECT * FROM trades WHERE status = 'open' ORDER BY created_at DESC").all();
 }
 export async function getTradeHistory(limit) {
   if (!sqliteMode && mdb) return collections.trades.find().sort({ created_at: -1 }).limit(limit).toArray();
-  return sqliteDb.prepare('SELECT * FROM trades WHERE telegram_id = ? ORDER BY created_at DESC LIMIT ?').all(_tid(), limit);
+  return sqliteDb.prepare('SELECT * FROM trades ORDER BY created_at DESC LIMIT ?').all(limit);
 }
 export async function getTrade(id) {
   if (!sqliteMode && mdb) return collections.trades.findOne({ id: Number(id) });
