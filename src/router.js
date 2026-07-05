@@ -69,9 +69,10 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
         .then(([info, sec]) => setTokenCache(chain, address, info, sec))
         .catch(() => {});
     } else {
-      // Fetch info only (fast path). Security fetched async.
-      tokenInfo = await getTokenInfo(chain, address);
-      tokenSecurity = await getTokenSecurity(chain, address).catch(() => null);
+      [tokenInfo, tokenSecurity] = await Promise.all([
+        getTokenInfo(chain, address),
+        getTokenSecurity(chain, address).catch(() => null),
+      ]);
       setTokenCache(chain, address, tokenInfo, tokenSecurity);
     }
   } catch (err) {
