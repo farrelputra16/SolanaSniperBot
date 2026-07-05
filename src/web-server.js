@@ -546,11 +546,14 @@ export function createWebServer() {
 
   app.get('/api/telegram/status', async (req, res) => {
     try {
-      const { getClient } = await import('./telegram.js');
-      const c = getClient();
-      const connected = !!(c && c.connected);
       const sessionStr = await db.getSetting('telegram_session', '');
       const tgId = await db.getSetting('telegram_id', '');
+      let connected = false;
+      try {
+        const { getClient } = await import('./telegram.js');
+        const c = getClient();
+        connected = !!(c && c.connected);
+      } catch {}
       let token = null;
       if (connected && tgId) {
         const h = req.headers['x-auth-token'];

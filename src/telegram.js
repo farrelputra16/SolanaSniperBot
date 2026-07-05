@@ -240,20 +240,12 @@ export async function resolveAndJoin(identifier) {
     console.log(`[Telegram] ImportChatInvite: ${e.errorMessage || e.message}`);
   }
 
-  // Try 2: CheckChatInvite → use the Chat object as-is, skip getEntity
+  // Try 2: CheckChatInvite
   try {
     const check = await client.invoke(new Api.messages.CheckChatInvite({ hash }));
     const chat = check.chat || check.chats?.[0];
     if (chat) {
       chatTitle = chat.title || hash;
-      const cache = client._entityCache;
-      if (cache) cache.set(String(chat.id), chat);
-      client.addEventHandler(
-        () => {},
-        new (await import('telegram')).events.NewMessage({ chats: [chat.id] })
-      );
-      client.removeAllEventHandlers?.();
-      console.log(`[Telegram] Cached entity: ${chatTitle}`);
       const entity = await client.getEntity(chat);
       if (entity) {
         console.log(`[Telegram] Resolved via CheckChatInvite: ${chatTitle}`);
