@@ -86,7 +86,6 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     setTokenCache(chain, address, tokenInfo, tokenSecurity);
   }
 
-  const tFetch = Date.now();
   const data = parseTokenData(tokenInfo, tokenSecurity, chain, address, sourceChannel, text);
   data.sender_username = senderUsername || '';
   data.latency_ms = captureLatency;
@@ -94,12 +93,12 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   db.saveSignal(data).catch(() => {});
   liveEvents.emit('signal', {
     token_symbol: data.token_symbol, token_address: address, source_channel: sourceChannel,
-    market_cap: data.market_cap, latency_ms: signalLatency,
+    market_cap: data.market_cap, latency_ms: captureLatency,
     sender_username: senderUsername, created_at: Math.floor(Date.now() / 1000),
   });
 
   const totalLatency = Date.now() - t0;
-  console.log(`⚡ SIGNAL ${data.token_symbol||address} | swap=${hasRules?'🟢':'⏸️'} fetch=${signalLatency}ms total=${totalLatency}ms${isCacheHit?' 🟡 cache-hit':''}`);
+  console.log(`⚡ SIGNAL ${data.token_symbol||address} | capture=${captureLatency}ms fetch=${totalLatency}ms ${hasRules?'🟢 swap ✅':'⏸️'}${isCacheHit?' 🟡 cache-hit':''}`);
 
   forwardSignal(sourceChannel, address, data, text, null);
 }
