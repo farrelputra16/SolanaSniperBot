@@ -42,6 +42,8 @@ export async function processSignal(sourceChannel, text, message, senderUsername
 
   const found = extractAddresses(text);
   if (found.length === 0) return;
+  const tCapture = Date.now();
+  console.log(`📡 CA captured in ${tCapture - t0}ms | ${found.length} address(es)`);
 
   const allRules = await getCachedRules();
 
