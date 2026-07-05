@@ -297,20 +297,29 @@ export function createWebServer() {
     try {
       const wallets = await db.getAllWallets();
       if (wallets.length === 0) return res.json({ wallets: [] });
+      const walletMap = {};
+      const pf = await gmgn.getPortfolioInfo().catch(() => null);
+      const pfData = pf?.data || pf || {};
+      for (const w of wallets) {
+        walletMap[w.address] = pfData[w.address];
+      }
       const results = await Promise.all(wallets.map(async (w) => {
-        let balance = null;
-        try {
-          const r = await gmgn.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
-          const d = r?.data || r || {};
-          const raw = parseFloat(d.balance);
-          balance = raw > 1e8 ? (raw / 1e9).toFixed(6) : raw ? raw.toFixed(6) : null;
-        } catch {}
-        if (balance == null) {
+        let balance = walletMap[w.address] || null;
+        if (!balance) {
+          try {
+            const r = await gmgn.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
+            const d = r?.data || r || {};
+            const raw = parseFloat(d.balance);
+            if (raw > 0) balance = raw > 1e8 ? (raw / 1e9).toFixed(6) : raw.toFixed(6);
+          } catch {}
+        }
+        if (!balance) {
           try {
             const rpc = await fetch('https://api.mainnet-beta.solana.com', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [w.address] }),
+              signal: AbortSignal.timeout(5000),
             });
             const j = await rpc.json();
             if (j.result?.value != null) balance = (j.result.value / 1e9).toFixed(6);
@@ -327,6 +336,26 @@ export function createWebServer() {
     try {
       const { address, privateKey } = gmgn.generateSolanaWallet();
       res.json({ success: true, address, privateKey });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ───── Wallet Analysis (for Smart Money / KOL) ─────
+  app.get('/api/wallet/analysis', async (req, res) => {
+    const { wallet, chain } = req.query;
+    if (!wallet) return res.status(400).json({ error: 'wallet required' });
+    try {
+      const [info, holdings, stats] = await Promise.allSettled([
+        gmgn.getPortfolioInfo().catch(() => null),
+        gmgn.getWalletHoldings(chain || 'sol', wallet).catch(() => null),
+        gmgn.getWalletStats(chain || 'sol', wallet).catch(() => null),
+      ]);
+      const infoData = info.status === 'fulfilled' ? (info.value?.data || info.value) : null;
+      const walletBalance = infoData?.[wallet] || null;
+      res.json({
+        balance: walletBalance,
+        holdings: holdings.status === 'fulfilled' ? (holdings.value?.data || holdings.value) : null,
+        stats: stats.status === 'fulfilled' ? (stats.value?.data || stats.value) : null,
+      });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
