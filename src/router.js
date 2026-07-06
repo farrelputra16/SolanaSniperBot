@@ -38,10 +38,10 @@ function setTokenCache(chain, address, info, security) {
 
 export async function processSignal(sourceChannel, text, message, senderUsername) {
   const t0 = Date.now();
-  db.addScraperLog(sourceChannel, 'info', `Signal${senderUsername ? ' @'+senderUsername : ''}: ${text.slice(0, 80)}`).catch(() => {});
 
   const found = extractAddresses(text);
   if (found.length === 0) return;
+  db.addScraperLog(sourceChannel, 'info', `CA ${found.map(f=>f.address).join(', ')}`).catch(() => {});
   const tCapture = Date.now();
   const captureLatency = tCapture - t0;
   console.log(`📡 CA captured in ${captureLatency}ms | ${found.length} address(es)`);
