@@ -292,7 +292,17 @@ export function extractAddresses(text) {
   const solMatches = text.match(BASE58_REGEX) || [];
   const evmMatches = text.match(EVM_ADDRESS_REGEX) || [];
 
+  // Filter out addresses found inside URLs
+  const urlRegex = /https?:\/\/\S+/g;
+  const urls = text.match(urlRegex) || [];
+  const urlSet = new Set();
+  for (const u of urls) {
+    const m = u.match(BASE58_REGEX);
+    if (m) for (const a of m) urlSet.add(a);
+  }
+
   for (const addr of solMatches) {
+    if (urlSet.has(addr)) continue;
     if (isValidSolAddress(addr)) {
       addresses.push({ address: addr, chain: 'sol' });
     }

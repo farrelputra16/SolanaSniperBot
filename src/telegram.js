@@ -206,8 +206,6 @@ async function handleMessage(sourceChannel, event) {
 
   const text = message.text;
 
-  console.log(`[Signal] ${sourceChannel}: ${text.slice(0, 120)}`);
-
   if (onForwardCallback) {
     onForwardCallback(sourceChannel, message);
   }
