@@ -9,17 +9,61 @@ function loadEnvFile(filepath) {
   if (!existsSync(filepath)) return {};
   const content = readFileSync(filepath, 'utf-8');
   const env = {};
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
+  const lines = content.split('\n');
+  let currentKey = null;
+  let currentVal = null;
+  let inQuotes = false;
+  let quoteChar = null;
+  for (const raw of lines) {
+    const trimmed = raw.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
+    if (currentKey !== null) {
+      // We're inside a multi-line value
+      if (inQuotes) {
+        currentVal += '\n' + trimmed;
+        if (trimmed.endsWith(quoteChar)) {
+          inQuotes = false;
+          currentVal = currentVal.slice(1, -1); // strip surrounding quotes
+          currentVal = currentVal.replace(/\\n/g, '\n');
+          env[currentKey] = currentVal;
+          currentKey = null;
+          currentVal = null;
+        }
+      } else {
+        // Unquoted multi-line (PEM without quotes)
+        currentVal += '\n' + trimmed;
+        if (trimmed.includes('-----END')) {
+          currentVal = currentVal.replace(/\\n/g, '\n');
+          env[currentKey] = currentVal;
+          currentKey = null;
+          currentVal = null;
+        }
+      }
+      continue;
+    }
     const eq = trimmed.indexOf('=');
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
     let val = trimmed.slice(eq + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
+    if (!val) continue;
+    // Check if value starts a multi-line block
+    if ((val.startsWith('"') && !val.endsWith('"')) || (val.startsWith("'") && !val.endsWith("'"))) {
+      currentKey = key;
+      currentVal = val;
+      inQuotes = true;
+      quoteChar = val[0];
+      continue;
     }
+    if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+    else if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+    val = val.replace(/\\n/g, '\n');
     env[key] = val;
+  }
+  // If we have an unclosed multi-line value, still save it
+  if (currentKey !== null && currentVal !== null) {
+    if (inQuotes) currentVal = currentVal.slice(1);
+    currentVal = currentVal.replace(/\\n/g, '\n');
+    env[currentKey] = currentVal;
   }
   return env;
 }

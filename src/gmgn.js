@@ -1,7 +1,14 @@
 import * as crypto from 'crypto';
+import https from 'https';
 import { config } from './config.js';
 
 const { apiKey, privateKey, host } = config.gmgn;
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  timeout: 15000,
+});
 
 let algorithm = null;
 
@@ -59,10 +66,10 @@ async function request(method, path, params = {}, body = null, signed = false) {
     'User-Agent': 'sniper-bot/1.0',
   };
 
+  const bodyStr = body ? JSON.stringify(body) : '';
+
   if (signed && privateKey) {
-    const bodyStr = body ? JSON.stringify(body) : '';
-    const sortedQs = buildSortedQS(allParams);
-    const message = `${path}:${sortedQs}:${bodyStr}:${authQuery.timestamp}`;
+    const message = `${path}:${qs}:${bodyStr}:${authQuery.timestamp}`;
     headers['X-Signature'] = signMessage(message);
   }
 
@@ -73,8 +80,9 @@ async function request(method, path, params = {}, body = null, signed = false) {
     const res = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: bodyStr || undefined,
       signal: controller.signal,
+      agent: httpsAgent,
     });
     clearTimeout(timeout);
 
@@ -93,6 +101,10 @@ async function request(method, path, params = {}, body = null, signed = false) {
       err.status = res.status;
       err.code = json.code;
       err.body = json;
+      if (res.status === 400) {
+        const reqUrl = url.slice(0, 300);
+        console.error(`[GMGN] 400 error — ${json.code} ${json.error} — ${json.message}\n  body: ${bodyStr ? bodyStr.slice(0, 500) : '(no body)'}\n  url: ${reqUrl}`);
+      }
       throw err;
     }
 
@@ -152,25 +164,27 @@ export async function getSmartMoneyTrades(chain = 'sol', limit = 100) {
 // ───── Swap / Trade ─────
 export async function getQuote(chain, from, inputToken, outputToken, amount, slippage = 30) {
   return request('GET', '/v1/trade/quote', {
-    chain, from, input_token: inputToken, output_token: outputToken,
-    amount: String(amount), slippage: String(slippage),
+    chain, from_address: from, input_token: inputToken, output_token: outputToken,
+    input_amount: String(amount), slippage,
   });
 }
 
 export async function executeSwap(chain, from, inputToken, outputToken, amount, opts = {}) {
   const body = {
     chain,
-    from,
+    from_address: from,
     input_token: inputToken,
     output_token: outputToken,
-    amount: String(amount),
-    slippage: String(opts.slippage ?? config.sniper.defaultSlippage),
-    anti_mev: opts.antiMev !== undefined ? opts.antiMev : config.sniper.defaultAntiMev,
+    input_amount: String(amount),
   };
+  if (opts.slippage != null) body.slippage = Number(opts.slippage);
+  else body.slippage = Number(config.sniper.defaultSlippage);
   if (opts.autoSlippage) body.auto_slippage = true;
+  if (opts.minOutputAmount) body.min_output_amount = opts.minOutputAmount;
+  if (opts.antiMev !== undefined) body.is_anti_mev = opts.antiMev;
   if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
   if (opts.tipFee) body.tip_fee = String(opts.tipFee);
-  if (opts.percent !== undefined) body.percent = opts.percent;
+  if (opts.percent !== undefined) body.input_amount_bps = String(Math.round(opts.percent * 100));
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
   if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
 
@@ -180,17 +194,18 @@ export async function executeSwap(chain, from, inputToken, outputToken, amount, 
 export async function executeSell(chain, from, tokenAddress, percent = 100, opts = {}) {
   const body = {
     chain,
-    from,
+    from_address: from,
     input_token: tokenAddress,
     output_token: 'So11111111111111111111111111111111111111112',
-    amount: '0',
-    percent: percent > 0 ? percent : 100,
-    slippage: String(opts.slippage ?? config.sniper.defaultSlippage),
-    anti_mev: opts.antiMev !== undefined ? opts.antiMev : config.sniper.defaultAntiMev,
+    input_amount: '0',
+    input_amount_bps: String(Math.round(percent * 100)),
   };
-  if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
+  if (opts.slippage != null) body.slippage = Number(opts.slippage);
+  else body.slippage = Number(config.sniper.defaultSlippage);
+  if (opts.antiMev !== undefined) body.is_anti_mev = opts.antiMev;
   if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
   if (opts.tipFee) body.tip_fee = String(opts.tipFee);
+  if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
   if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
   return request('POST', '/v1/trade/swap', {}, body, true);
 }
@@ -221,9 +236,10 @@ export async function executeMultiSwap(chain, accounts, inputToken, outputToken,
     input_token: inputToken,
     output_token: outputToken,
     input_amount: inputAmounts,
-    slippage: String(opts.slippage ?? config.sniper.defaultSlippage),
-    anti_mev: opts.antiMev !== undefined ? opts.antiMev : config.sniper.defaultAntiMev,
   };
+  if (opts.slippage != null) body.slippage = Number(opts.slippage);
+  else body.slippage = Number(config.sniper.defaultSlippage);
+  if (opts.antiMev !== undefined) body.is_anti_mev = opts.antiMev;
   if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
   if (opts.tipFee) body.tip_fee = String(opts.tipFee);
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
@@ -239,7 +255,7 @@ export async function getOrder(chain, orderId) {
 export async function createStrategyOrder(chain, from, baseToken, quoteToken, opts = {}) {
   const body = {
     chain,
-    from,
+    from_address: from,
     base_token: baseToken,
     quote_token: quoteToken,
     order_type: opts.orderType || 'limit_order',
@@ -260,7 +276,7 @@ export async function listStrategyOrders(chain, groupTag = null) {
 }
 
 export async function cancelStrategyOrder(chain, from, orderId) {
-  const body = { chain, from, order_id: orderId };
+  const body = { chain, from_address: from, order_id: orderId };
   return request('POST', '/v1/order/strategy/cancel', {}, body, true);
 }
 
@@ -344,21 +360,21 @@ export async function getPortfolioInfo() {
 }
 
 export async function getWalletHoldings(chain, wallet, opts = {}) {
-  const params = { chain, wallet, limit: opts.limit || 50, order_by: opts.orderBy || 'usd_value', direction: opts.direction || 'desc' };
+  const params = { chain, wallet_address: wallet, limit: opts.limit || 50, order_by: opts.orderBy || 'usd_value', direction: opts.direction || 'desc' };
   if (opts.sellOut) params['sell_out'] = true;
   return request('GET', '/v1/user/wallet_holdings', params, null, true);
 }
 
 export async function getWalletStats(chain, wallet, period = '7d') {
-  return request('GET', '/v1/user/wallet_stats', { chain, wallet, period });
+  return request('GET', '/v1/user/wallet_stats', { chain, wallet_address: wallet, period });
 }
 
 export async function getWalletTokenBalance(chain, wallet, token) {
-  return request('GET', '/v1/user/wallet_token_balance', { chain, wallet, token });
+  return request('GET', '/v1/user/wallet_token_balance', { chain, wallet_address: wallet, token_address: token });
 }
 
 export async function getWalletActivity(chain, wallet, opts = {}) {
-  const params = { chain, wallet, limit: opts.limit || 20 };
+  const params = { chain, wallet_address: wallet, limit: opts.limit || 20 };
   if (opts.token) params.token = opts.token;
   if (opts.cursor) params.cursor = opts.cursor;
   return request('GET', '/v1/user/wallet_activity', params);
@@ -401,6 +417,17 @@ export function generateSolanaWallet() {
   const pub = Buffer.from(publicKey).subarray(-32);
   const seed = Buffer.from(privateKey).subarray(-32);
   return { address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])) };
+}
+
+export function deriveAddressFromPrivateKey(pkBase58) {
+  try {
+    const decoded = bs58Decode(pkBase58);
+    const pubkey = decoded.length === 64 ? decoded.subarray(32) : decoded;
+    if (pubkey.length !== 32) return null;
+    return bs58Encode(pubkey);
+  } catch {
+    return null;
+  }
 }
 
 // ───── Connection Warmup ─────

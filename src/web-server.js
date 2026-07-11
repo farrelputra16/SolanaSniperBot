@@ -74,16 +74,22 @@ export function createWebServer() {
     res.write(':ok\n\n');
 
     const onSignal = (data) => res.write(`event: signal\ndata: ${JSON.stringify(data)}\n\n`);
+    const onSignalUpdate = (data) => res.write(`event: signal_update\ndata: ${JSON.stringify(data)}\n\n`);
     const onTrade = (data) => res.write(`event: trade\ndata: ${JSON.stringify(data)}\n\n`);
+    const onTradeUpdate = (data) => res.write(`event: trade_update\ndata: ${JSON.stringify(data)}\n\n`);
     const onStatus = (data) => res.write(`event: status\ndata: ${JSON.stringify(data)}\n\n`);
 
     liveEvents.on('signal', onSignal);
+    liveEvents.on('signal_update', onSignalUpdate);
     liveEvents.on('trade', onTrade);
+    liveEvents.on('trade_update', onTradeUpdate);
     liveEvents.on('status', onStatus);
 
     req.on('close', () => {
       liveEvents.off('signal', onSignal);
+      liveEvents.off('signal_update', onSignalUpdate);
       liveEvents.off('trade', onTrade);
+      liveEvents.off('trade_update', onTradeUpdate);
       liveEvents.off('status', onStatus);
     });
   });
@@ -139,8 +145,16 @@ export function createWebServer() {
   app.patch('/api/channels/:id/toggle', async (req, res) => {
     const ch = await db.getChannel(req.params.id);
     if (!ch) return res.status(404).json({ error: 'not found' });
-    await db.toggleChannel(req.params.id, !ch.active);
-    res.json({ success: true, active: !ch.active });
+    const newActive = !ch.active;
+    await db.toggleChannel(req.params.id, newActive);
+    try {
+      const { addChannelListener, removeChannelListener } = await import('./telegram.js');
+      if (newActive) await addChannelListener(ch.channel_username);
+      else await removeChannelListener(ch.channel_username);
+    } catch (e) {
+      console.error('[Channel] toggle listener error:', e.message);
+    }
+    res.json({ success: true, active: newActive });
   });
 
   // ───── Rules ─────
@@ -159,11 +173,20 @@ export function createWebServer() {
     res.json({ success: true, imported: list.length });
   });
   app.post('/api/wallets', async (req, res) => {
-    if (!req.body.address) return res.status(400).json({ error: 'address required' });
-    await db.addWallet(req.body.address, req.body.label, req.body.private_key);
-    res.json({ success: true });
+    let { address, label, private_key } = req.body;
+    if (!address || address === 'pending') {
+      if (private_key) {
+        const derived = gmgn.deriveAddressFromPrivateKey(private_key);
+        if (derived) address = derived;
+      }
+    }
+    if (!address || address === 'pending') return res.status(400).json({ error: 'address required — provide address or valid private key' });
+    await db.addWallet(address, label || '', private_key || '');
+    res.json({ success: true, address });
   });
   app.delete('/api/wallets/:id', async (req, res) => {
+    const existing = await db.getWallet(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'wallet not found' });
     await db.removeWallet(req.params.id);
     res.json({ success: true });
   });
@@ -278,17 +301,24 @@ export function createWebServer() {
     const wallet = await db.getWallet(req.params.id);
     if (!wallet) return res.status(404).json({ error: 'wallet not found' });
     try {
-      const [info, holdings, stats, activity] = await Promise.allSettled([
-        gmgn.getPortfolioInfo(),
-        gmgn.getWalletHoldings('sol', wallet.address),
-        gmgn.getWalletStats('sol', wallet.address),
-        gmgn.getWalletActivity('sol', wallet.address),
+      const [balanceRes, holdingsRes, statsRes, activityRes] = await Promise.allSettled([
+        gmgn.getWalletTokenBalance('sol', wallet.address, 'So11111111111111111111111111111111111111112'),
+        gmgn.getWalletHoldings('sol', wallet.address, { limit: 50 }),
+        gmgn.getWalletStats('sol', wallet.address, '30d'),
+        gmgn.getWalletActivity('sol', wallet.address, { limit: 30 }),
       ]);
+      const balanceData = balanceRes.status === 'fulfilled' ? (balanceRes.value?.data || balanceRes.value) : null;
+      const balance = balanceData?.balance ? (parseFloat(balanceData.balance) > 1e8 ? parseFloat(balanceData.balance) / 1e9 : parseFloat(balanceData.balance)) : null;
+      const holdingsData = holdingsRes.status === 'fulfilled' ? (holdingsRes.value?.data || holdingsRes.value) : null;
+      const statsData = statsRes.status === 'fulfilled' ? (statsRes.value?.data || statsRes.value) : null;
+      const activityData = activityRes.status === 'fulfilled' ? (activityRes.value?.data || activityRes.value) : null;
       res.json({
-        info: info.status === 'fulfilled' ? info.value?.data || info.value : null,
-        holdings: holdings.status === 'fulfilled' ? holdings.value?.data || holdings.value : null,
-        stats: stats.status === 'fulfilled' ? stats.value?.data || stats.value : null,
-        activity: activity.status === 'fulfilled' ? activity.value?.data || activity.value : null,
+        address: wallet.address,
+        label: wallet.label,
+        balance,
+        holdings: holdingsData?.holdings || holdingsData || [],
+        stats: statsData,
+        activity: activityData?.activities || activityData || [],
       });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -297,35 +327,29 @@ export function createWebServer() {
     try {
       const wallets = await db.getAllWallets();
       if (wallets.length === 0) return res.json({ wallets: [] });
-      const walletMap = {};
-      const pf = await gmgn.getPortfolioInfo().catch(() => null);
-      const pfData = pf?.data || pf || {};
-      for (const w of wallets) {
-        walletMap[w.address] = pfData[w.address];
-      }
       const results = await Promise.all(wallets.map(async (w) => {
-        let balance = walletMap[w.address] || null;
-        if (!balance) {
-          try {
-            const r = await gmgn.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
-            const d = r?.data || r || {};
-            const raw = parseFloat(d.balance);
-            if (raw > 0) balance = raw > 1e8 ? (raw / 1e9).toFixed(6) : raw.toFixed(6);
-          } catch {}
+        if (!w.address || w.address === 'pending' || w.address.length < 32) {
+          return { ...w, balance: null, error: 'invalid address' };
         }
-        if (!balance) {
+        let balance = null;
+        try {
+          const r = await gmgn.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
+          const d = r?.data || r || {};
+          const raw = parseFloat(d.balance);
+          if (!isNaN(raw) && raw > 0) balance = raw > 1e8 ? (raw / 1e9) : raw;
+        } catch {}
+        if (balance === null || balance === 0) {
           try {
             const rpc = await fetch('https://api.mainnet-beta.solana.com', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [w.address] }),
               signal: AbortSignal.timeout(5000),
             });
             const j = await rpc.json();
-            if (j.result?.value != null) balance = (j.result.value / 1e9).toFixed(6);
+            if (j.result?.value != null) balance = j.result.value / 1e9;
           } catch {}
         }
-        return { ...w, balance };
+        return { ...w, balance: balance != null ? Number(balance.toFixed(4)) : null };
       }));
       res.json({ wallets: results });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -378,7 +402,6 @@ export function createWebServer() {
   // ───── Scraper ─────
   app.get('/api/scraper/status', async (req, res) => res.json(await db.getScraperStatus()));
   app.get('/api/scraper/logs', async (req, res) => res.json(await db.getScraperLogs(Math.min(parseInt(req.query.limit) || 200, 500))));
-
   // ───── Token Detail (Info + Security + Holders) ─────
   app.get('/api/token/detail', async (req, res) => {
     const { chain, address } = req.query;
@@ -419,6 +442,12 @@ export function createWebServer() {
       db.getActiveChannels(), db.getOpenTrades(), db.getSignalCountToday(),
       db.getAllWallets(), db.getActiveWallet(), db.getActiveStrategyOrders(), db.getWalletGroups(),
     ]);
+    let tgConnected = false;
+    try {
+      const { getClient } = await import('./telegram.js');
+      const c = getClient();
+      tgConnected = !!(c && c.connected);
+    } catch {}
     res.json({
       channelCount: activeChannels.length,
       openTrades: openTrades.length,
@@ -428,6 +457,7 @@ export function createWebServer() {
       activeOrders: activeOrders.length,
       walletGroups: walletGroups.length,
       uptime: process.uptime(),
+      tgConnected,
     });
   });
 
@@ -551,15 +581,19 @@ export function createWebServer() {
   app.get('/api/telegram/status', async (req, res) => {
     try {
       const sessionStr = await db.getSetting('telegram_session', '');
-      const tgId = await db.getSetting('telegram_id', '');
+      let tgId = await db.getSetting('telegram_id', '');
       let connected = false;
       try {
         const { getClient } = await import('./telegram.js');
         const c = getClient();
         connected = !!(c && c.connected);
+        if (connected && !tgId && c) {
+          const me = await c.getMe().catch(() => null);
+          if (me) { tgId = String(me.id); db.setSetting('telegram_id', tgId).catch(()=>{}); }
+        }
       } catch {}
       let token = null;
-      if (connected && tgId) {
+      if (connected) {
         const h = req.headers['x-auth-token'];
         if (h && SESSIONS.has(h)) { token = h; }
         else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: tgId }); }

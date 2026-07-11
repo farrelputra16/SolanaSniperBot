@@ -10,7 +10,7 @@ const CURRENCY_ADDRESSES = {
 
 let _rulesCache = null;
 let _rulesCacheTs = 0;
-const _tokenCache = new Map();
+const _walletCache = new Map();
 
 async function getCachedRules() {
   const now = Date.now();
@@ -20,20 +20,18 @@ async function getCachedRules() {
   return _rulesCache;
 }
 
-function getTokenCached(chain, address) {
-  const key = `${chain}:${address}`;
-  const hit = _tokenCache.get(key);
-  if (!hit) return null;
-  _tokenCache.delete(key);
-  return hit;
-}
-
-function setTokenCache(chain, address, info, security) {
-  _tokenCache.set(`${chain}:${address}`, { info, security, ts: Date.now() });
-  if (_tokenCache.size > 500) {
-    const oldest = _tokenCache.entries().next().value;
-    if (oldest) _tokenCache.delete(oldest[0]);
+function getCachedWallet(key, fetcher) {
+  const hit = _walletCache.get(key);
+  if (hit && Date.now() - hit.ts < 10000) return hit.data;
+  const data = fetcher();
+  if (data && typeof data.then === 'function') {
+    return data.then(w => {
+      if (w) _walletCache.set(key, { data: w, ts: Date.now() });
+      return w;
+    });
   }
+  if (data) _walletCache.set(key, { data, ts: Date.now() });
+  return data;
 }
 
 export async function processSignal(sourceChannel, text, message, senderUsername) {
@@ -42,15 +40,10 @@ export async function processSignal(sourceChannel, text, message, senderUsername
   const found = extractAddresses(text);
   if (found.length === 0) return;
   db.addScraperLog(sourceChannel, 'info', `CA ${found.map(f=>f.address).join(', ')}`).catch(() => {});
-  const tCapture = Date.now();
-  const captureLatency = tCapture - t0;
+  const captureLatency = Date.now() - t0;
   console.log(`📡 CA captured in ${captureLatency}ms | ${found.length} address(es)`);
 
   const allRules = await getCachedRules();
-
-  // Clean expired cache entries (lazy)
-  const now = Date.now();
-  for (const [k, v] of _tokenCache) if (now - v.ts > 30000) _tokenCache.delete(k);
 
   await Promise.allSettled(found.map(({ address, chain }) =>
     processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0)
@@ -58,149 +51,89 @@ export async function processSignal(sourceChannel, text, message, senderUsername
 }
 
 async function processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0) {
-  // 1. Match rules by channel ONLY — no data needed
   const matchingRules = allRules.filter(r => r.channel_username === sourceChannel);
-  const hasRules = matchingRules.length > 0;
 
-  // 2. Execute buys IMMEDIATELY (if any rule matches channel)
   for (const rule of matchingRules) {
-    executeAutoBuy(address, chain, { token_address: address, chain, source_channel: sourceChannel, price: 0, token_symbol: '' }, rule, sourceChannel, t0);
+    executeAutoBuy(address, chain, rule, sourceChannel, t0);
   }
 
-  // 3. Fetch data in background for display/cache
-  let tokenInfo, tokenSecurity;
-  const cached = getTokenCached(chain, address);
-  const isCacheHit = !!cached;
+  // Save signal IMMEDIATELY — minimal data, appears on dashboard right away
+  const now = Math.floor(Date.now() / 1000);
+  const placeholder = { token_address: address, token_symbol: '', chain, source_channel: sourceChannel, source_text: text, price: 0, market_cap: 0, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
+  const signalId = await db.saveSignal(placeholder).catch(() => null);
 
-  if (cached) {
-    tokenInfo = cached.info;
-    tokenSecurity = cached.security;
-    Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address)])
-      .then(([info, sec]) => setTokenCache(chain, address, info, sec))
-      .catch(() => {});
-  } else {
-    [tokenInfo, tokenSecurity] = await Promise.all([
-      getTokenInfo(chain, address),
-      getTokenSecurity(chain, address).catch(() => null),
-    ]);
-    setTokenCache(chain, address, tokenInfo, tokenSecurity);
-  }
-
-  const data = parseTokenData(tokenInfo, tokenSecurity, chain, address, sourceChannel, text);
-  data.sender_username = senderUsername || '';
-  data.latency_ms = captureLatency;
-
-  db.saveSignal(data).catch(() => {});
   liveEvents.emit('signal', {
-    token_symbol: data.token_symbol, token_address: address, source_channel: sourceChannel,
-    market_cap: data.market_cap, latency_ms: captureLatency,
-    sender_username: senderUsername, created_at: Math.floor(Date.now() / 1000),
+    token_symbol: '', id: signalId, token_address: address, source_channel: sourceChannel,
+    market_cap: 0, latency_ms: Date.now() - t0,
+    sender_username: senderUsername, created_at: now,
   });
 
-  const totalLatency = Date.now() - t0;
-  console.log(`⚡ SIGNAL ${data.token_symbol||address} | capture=${captureLatency}ms fetch=${totalLatency}ms ${hasRules?'🟢 swap ✅':'⏸️'}${isCacheHit?' 🟡 cache-hit':''}`);
+  // Fire-and-forget: fetch token data, update signal + trades
+  Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address).catch(() => null)])
+    .then(([info, security]) => {
+      const data = parseTokenData(info, security, chain, address, sourceChannel, text);
+      data.sender_username = senderUsername || '';
+      data.latency_ms = Date.now() - t0;
 
-  forwardSignal(sourceChannel, address, data, text, null);
+      if (signalId) db.updateSignal(signalId, data).catch(() => {});
+
+      liveEvents.emit('signal_update', {
+        id: signalId, token_symbol: data.token_symbol, token_address: address, source_channel: sourceChannel,
+        market_cap: data.market_cap, price: data.price, liquidity: data.liquidity, volume_24h: data.volume_24h,
+        rug_ratio: data.rug_ratio, smart_degen_count: data.smart_degen_count,
+        latency_ms: data.latency_ms, sender_username: senderUsername, created_at: now,
+      });
+
+      forwardSignal(sourceChannel, address, data, text, null);
+
+      const totalLatency = Date.now() - t0;
+      console.log(`⚡ SIGNAL ${data.token_symbol||address} | fetch=${totalLatency}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
+    })
+    .catch(() => {
+      if (signalId) db.updateSignal(signalId, { token_symbol: 'UNKNOWN' }).catch(() => {});
+    });
 }
 
-function parseTokenData(info, security, chain, address, sourceChannel, text) {
-  const data = info?.data || info || {};
-  const sec = security?.data || security || {};
-  const price = data.price?.price ? parseFloat(data.price.price) : (data.price ? parseFloat(data.price) : 0);
-  const circSupply = data.circulating_supply ? parseFloat(data.circulating_supply) : 0;
-
-  return {
-    token_address: address,
-    token_symbol: data.symbol || 'UNKNOWN',
-    token_name: data.name || '',
-    chain,
-    source_channel: sourceChannel,
-    source_text: text,
-    price,
-    market_cap: price * circSupply || 0,
-    liquidity: data.liquidity ? parseFloat(data.liquidity) : 0,
-    volume_24h: data.price?.volume_24h ? parseFloat(data.price.volume_24h) : 0,
-    rug_ratio: sec.rug_ratio !== undefined ? parseFloat(sec.rug_ratio) : -1,
-    smart_degen_count: data.wallet_tags_stat?.smart_wallets || 0,
-    bundler_rate: sec.bundler_trader_amount_rate !== undefined ? parseFloat(sec.bundler_trader_amount_rate) : 0,
-    top10_rate: sec.top_10_holder_rate !== undefined ? parseFloat(sec.top_10_holder_rate) : 0,
-    creator_status: sec.creator_token_status || '',
-    is_honeypot: sec.is_honeypot,
-  };
+function forwardSignal(sourceChannel, address, data, text, error) {
+  db.getSetting('forward_to_chat', '').then(target => {
+    if (!target) return;
+    let msg;
+    if (error && !data) {
+      msg = `⚠️ ${sourceChannel}\n${address}\nError: ${error}`;
+    } else if (error) {
+      msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n🔗 gmgn.ai/chain/sol/token/${address}\n❌ ${error}`;
+    } else {
+      msg = `📡 *${sourceChannel}*\n\`${address}\`\n💰 ${data.token_symbol || '?'} | $${data.market_cap ? data.market_cap.toFixed(0) : '?'} MC\n💧 $${data.liquidity ? data.liquidity.toFixed(0) : '?'} Liq\n🔗 gmgn.ai/chain/sol/token/${address}`;
+    }
+    sendToChat(target, msg).catch(() => {});
+  }).catch(() => {});
 }
 
-async function forwardSignal(sourceChannel, address, data, text, error) {
-  const target = await db.getSetting('forward_to_chat', '');
-  if (!target) return;
-
-  let msg;
-  if (error && !data) {
-    msg = `⚠️ ${sourceChannel}\n${address}\nError: ${error}`;
-  } else if (error) {
-    msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n🔗 gmgn.ai/chain/sol/token/${address}\n❌ ${error}`;
-  } else {
-    msg = `📡 *${sourceChannel}*\n`;
-    msg += `\`${address}\`\n`;
-    msg += `💰 ${data.token_symbol || '?'} | $${data.market_cap ? data.market_cap.toFixed(0) : '?'} MC\n`;
-    msg += `💧 $${data.liquidity ? data.liquidity.toFixed(0) : '?'} Liq\n`;
-    msg += `🛡️ Rug: ${data.rug_ratio >= 0 ? (data.rug_ratio * 100).toFixed(0) : '?'}% | SM: ${data.smart_degen_count}\n`;
-    msg += `🔗 gmgn.ai/chain/sol/token/${address}`;
-  }
-
-  try {
-    await sendToChat(target, msg);
-  } catch (err) {
-    console.error(`[Router] Forward error: ${err.message}`);
-  }
-}
-
-function evaluateSecurity(data, security) {
-  const reasons = [];
-  const sec = security?.data || security || {};
-  if (sec.is_honeypot === 'yes') reasons.push('honeypot');
-  if (data.rug_ratio > 0.3 && data.rug_ratio !== -1) reasons.push(`rug_ratio ${data.rug_ratio.toFixed(2)}`);
-  if (data.bundler_rate > 0.3) reasons.push(`bundler ${(data.bundler_rate * 100).toFixed(0)}%`);
-  if (data.top10_rate > 0.5) reasons.push(`top10_holder ${(data.top10_rate * 100).toFixed(0)}%`);
-  if (sec.creator_token_status === 'creator_hold') reasons.push('dev hold');
-  return reasons;
-}
-
-async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
-  if (rule.track_only) {
-    console.log(`[Router] Track-only ${address} — skipping auto-buy`);
-    return;
-  }
-
-  let wallets = [];
+function resolveWallets(rule) {
   if (rule.wallet_group_id && rule.wallet_group_id > 0) {
-    wallets = await db.getGroupWallets(rule.wallet_group_id);
-    if (wallets.length === 0) {
-      console.log('[Router] Wallet group', rule.wallet_group_id, 'is empty');
-      db.addScraperLog(sourceChannel, 'error', `Auto-buy ${address} failed: wallet group empty`).catch(() => {});
-      return;
-    }
-  } else if (rule.wallet_group_id && rule.wallet_group_id < 0) {
-    const wallet = await db.getWallet(Math.abs(rule.wallet_group_id));
-    if (!wallet) {
-      console.log('[Router] Wallet', Math.abs(rule.wallet_group_id), 'not found');
-      db.addScraperLog(sourceChannel, 'error', `Auto-buy ${address} failed: wallet not found`).catch(() => {});
-      return;
-    }
-    wallets = [wallet];
-  } else {
-    const wallet = await db.getActiveWallet();
-    if (!wallet) {
-      console.log('[Router] No active wallet for auto-buy');
-      db.addScraperLog(sourceChannel, 'error', `Auto-buy ${address} failed: no active wallet`).catch(() => {});
-      return;
-    }
-    wallets = [wallet];
+    return getCachedWallet(`group:${rule.wallet_group_id}`, () => db.getGroupWallets(rule.wallet_group_id));
+  }
+  if (rule.wallet_group_id && rule.wallet_group_id < 0) {
+    return getCachedWallet(`wallet:${Math.abs(rule.wallet_group_id)}`, () => db.getWallet(Math.abs(rule.wallet_group_id)))
+      .then(w => w ? [w] : []);
+  }
+  return getCachedWallet('active', () => db.getActiveWallet())
+    .then(w => w ? [w] : []);
+}
+
+async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
+  if (!rule.auto_buy || rule.track_only) return;
+
+  const wallets = await resolveWallets(rule);
+  if (wallets.length === 0) {
+    db.addScraperLog(sourceChannel, 'error', `Auto-buy ${address} failed: no wallets`).catch(() => {});
+    return;
   }
 
   const totalLamports = Math.floor(rule.buy_amount_sol * 1_000_000_000);
   const perWallet = Math.floor(totalLamports / wallets.length);
-
   const tBuy = Date.now();
+
   await Promise.allSettled(wallets.map(async (wallet) => {
     try {
       console.log(`[Router] Swap ${perWallet} lamports -> ${address} (${wallet.address})`);
@@ -209,9 +142,15 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
       if (rule.take_profit_percent) conditionOrders.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(rule.take_profit_percent), sell_ratio: '100' });
       if (rule.stop_loss_percent) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(rule.stop_loss_percent)), sell_ratio: '100' });
 
+      const hasFee = rule.priority_fee && rule.tip_fee;
+      if (conditionOrders.length && !hasFee) {
+        db.addScraperLog(sourceChannel, 'warn', `TP/SL set for ${address} but no priority_fee+tip_fee — skipping condition orders (swap only)`).catch(() => {});
+        conditionOrders.length = 0;
+      }
+
       const result = await executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, perWallet, {
         slippage: rule.slippage,
-        antiMev: rule.anti_mev,
+        antiMev: !!rule.anti_mev,
         priorityFee: rule.priority_fee || undefined,
         tipFee: rule.tip_fee || undefined,
         conditionOrders: conditionOrders.length > 0 ? conditionOrders : undefined,
@@ -221,17 +160,18 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
       const orderId = orderRes.order_id;
       const strategyId = orderRes.strategy_order_id;
       const buyLatency = Date.now() - tBuy;
-      console.log(`[Router] Swap submitted: ${orderId}${strategyId ? ' strategy='+strategyId : ''}`);
-      db.addScraperLog(sourceChannel, 'info', `Auto-buy ${data.token_symbol || address}: order=${orderId}`).catch(() => {});
+      const totalLatency = Date.now() - t0;
+      console.log(`⚡ SIGNAL ${address.slice(0,8)}... | capture=${Date.now()-t0}ms | swap-exec=${buyLatency}ms | order=${orderId}`);
+      db.addScraperLog(sourceChannel, 'info', `Auto-buy ${address}: order=${orderId}`).catch(() => {});
 
       const tradeId = await db.createTrade({
         wallet_address: wallet.address,
         token_address: address,
-        token_symbol: data.token_symbol,
+        token_symbol: 'PENDING',
         chain,
         buy_amount_sol: perWallet / 1e9,
-        buy_price: data.price,
-        buy_price_usd: data.price,
+        buy_price: 0,
+        buy_price_usd: 0,
         buy_order_id: orderId,
         signal_latency_ms: t0 ? Date.now() - t0 : 0,
         buy_latency_ms: buyLatency,
@@ -245,7 +185,7 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
           trade_id: tradeId,
           wallet_address: wallet.address,
           token_address: address,
-          token_symbol: data.token_symbol,
+          token_symbol: 'PENDING',
           chain,
           order_type: 'condition_order',
           sub_order_type: 'mix_trade',
@@ -255,22 +195,29 @@ async function executeAutoBuy(address, chain, data, rule, sourceChannel, t0) {
       }
 
       liveEvents.emit('trade', {
-        token_symbol: data.token_symbol, token_address: address, wallet: wallet.address,
+        token_symbol: 'PENDING', token_address: address, wallet: wallet.address,
         amount: perWallet / 1e9, signal_latency_ms: t0 ? Date.now() - t0 : 0,
-        buy_latency_ms: buyLatency, status: 'pending',
+        buy_latency_ms: buyLatency, status: 'pending', trade_id: tradeId,
       });
+
       pollOrder(orderId, chain, tradeId);
-      notifyBuy(wallet.address, address, data, rule, orderId, sourceChannel, perWallet / 1e9);
+      notifyBuy(wallet.address, address, rule, orderId, sourceChannel, perWallet / 1e9);
     } catch (err) {
-      console.error(`[Router] Gagal auto-buy ${address} (${wallet.address}):`, err.message);
-      db.addScraperLog(sourceChannel, 'error', `Auto-buy ${data.token_symbol || address} failed: ${err.message}`).catch(() => {});
+      const errCode = err.code ? `[${err.code}] ` : '';
+      let detail = err.body?.message || err.body?.error || err.message || '';
+      if (!detail || detail === err.message) {
+        try { detail = JSON.stringify(err.response?.data || err.data || err).slice(0,300); } catch {}
+      }
+      if (!detail || detail === '{}') detail = err.message || 'Unknown error';
+      console.error(`[Router] Gagal auto-buy ${address} (${wallet.address}):`, detail);
+      db.addScraperLog(sourceChannel, 'error', `Swap ${address} gagal: ${String(detail).slice(0,200)}`).catch(() => {});
     }
   }));
 }
 
 async function pollOrder(orderId, chain, tradeId) {
   let attempts = 0;
-  const maxAttempts = 15;
+  const maxAttempts = 30;
 
   while (attempts < maxAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -285,12 +232,14 @@ async function pollOrder(orderId, chain, tradeId) {
           buy_tx: report?.hash || result.data?.hash || result.hash,
           buy_price_usd: report?.price_usd ? parseFloat(report.price_usd) : undefined,
         });
+        liveEvents.emit('trade_update', { trade_id: tradeId, status: 'confirmed', buy_tx: report?.hash || result.data?.hash || result.hash });
         console.log(`[Router] ✅ Buy confirmed: ${orderId}`);
         return;
       }
 
       if (status === 'failed' || status === 'expired') {
         await db.updateTrade(tradeId, { buy_status: 'failed', status: 'failed' });
+        liveEvents.emit('trade_update', { trade_id: tradeId, status: 'failed' });
         console.log(`[Router] ❌ Buy failed: ${orderId}`);
         return;
       }
@@ -302,20 +251,18 @@ async function pollOrder(orderId, chain, tradeId) {
   }
 
   await db.updateTrade(tradeId, { buy_status: 'timeout' });
-  console.log(`[Router] ⏰ Buy polling timeout: ${orderId}`);
+  liveEvents.emit('trade_update', { trade_id: tradeId, status: 'timeout' });
+  console.log(`[Router] ⏰ Buy polling timeout: ${orderId} (order still may confirm later)`);
 }
 
-async function notifyBuy(wallet, address, data, rule, orderId, sourceChannel, amountSol) {
+function notifyBuy(wallet, address, rule, orderId, sourceChannel, amountSol) {
   const lines = [
-    `🟢 *AUTO BUY* ${data.token_symbol || address}`,
+    `🟢 *AUTO BUY* ${address.slice(0, 8)}...`,
     `💰 ${amountSol} SOL | ${wallet.slice(0, 6)}...${wallet.slice(-4)}`,
     `🔗 https://solscan.io/tx/${orderId}`,
     `📊 gmgn.ai/chain/sol/token/${address}`,
   ];
   if (rule.take_profit_percent) lines.push(`📈 TP: ${rule.take_profit_percent}%`);
   if (rule.stop_loss_percent) lines.push(`📉 SL: ${rule.stop_loss_percent}%`);
-
-  try {
-    await sendToChat(sourceChannel, lines.join('\n'));
-  } catch {}
+  sendToChat(sourceChannel, lines.join('\n')).catch(() => {});
 }

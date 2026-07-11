@@ -69,11 +69,14 @@ async function main() {
       console.warn('   Telegram: ⏸️  No session — login from dashboard');
     }
   } catch (err) {
-    if (err.message && err.message !== 'dashboard-only mode') {
-      console.warn('   Telegram: ⏸️  ' + err.message + ' — reconnect from dashboard');
+    const msg = err?.message || '';
+    if (msg && msg !== 'dashboard-only mode') {
+      console.warn('   Telegram: ⏸️  ' + msg);
     }
-    // Clear corrupted session
-    try { await db.setSetting('telegram_session', ''); } catch {}
+    // Only clear corrupted session on explicit session errors
+    if (msg.includes('Session') || msg.includes('AUTH_KEY') || msg.includes('connection') || msg.includes('expired')) {
+      try { await db.setSetting('telegram_session', ''); } catch {}
+    }
   }
 
   console.log(`\n✅ The Scoop Sc(rape)r running!`);

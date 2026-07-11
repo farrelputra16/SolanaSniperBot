@@ -293,6 +293,7 @@ export async function addChannelListener(identifier) {
       client.removeEventHandler(_listeners.get(chatId));
       _listeners.delete(chatId);
     }
+    setEntityId(identifier, entity.id);
     const handler = async (event) => handleMessage(identifier, event);
     client.addEventHandler(handler, new NewMessage({ chats: [entity.id] }));
     _listeners.set(chatId, handler);
@@ -306,6 +307,28 @@ export async function addChannelListener(identifier) {
   }
 }
 
+export async function removeChannelListener(identifier) {
+  if (!client) return;
+  let chatId = _entityIdMap.get(identifier);
+  if (!chatId) {
+    try {
+      const entity = await resolveAndJoin(identifier);
+      chatId = String(entity.id);
+    } catch {
+      return;
+    }
+  }
+  chatId = String(chatId);
+  if (_listeners.has(chatId)) {
+    client.removeEventHandler(_listeners.get(chatId));
+    _listeners.delete(chatId);
+    _entityIdMap.delete(identifier);
+    const label = identifier || chatId;
+    console.log(`[Telegram] Stopped listening: ${label}`);
+    db.addScraperLog(identifier, 'info', `Stopped listening: ${label}`);
+  }
+}
+
 export async function forwardToChat(targetChatId, text) {
   if (!client) return;
   try {
@@ -315,10 +338,17 @@ export async function forwardToChat(targetChatId, text) {
   }
 }
 
+const _entityIdMap = new Map();
+
+export function setEntityId(identifier, id) {
+  _entityIdMap.set(identifier, id);
+}
+
 export async function sendToChat(target, text) {
   if (!client) return;
   try {
-    await client.sendMessage(target, { message: text });
+    const chatId = _entityIdMap.get(target) || target;
+    await client.sendMessage(chatId, { message: text });
   } catch (err) {
     console.error('[Telegram] Send error:', err.message);
   }

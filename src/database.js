@@ -67,7 +67,7 @@ export async function initDatabase() {
   await ensureSqlite();
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_username TEXT UNIQUE, display_name TEXT DEFAULT '', active INTEGER DEFAULT 1, added_at INTEGER DEFAULT (strftime('%s','now')));
-    CREATE TABLE IF NOT EXISTS rules (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER UNIQUE, min_market_cap REAL, max_market_cap REAL, min_liquidity REAL, max_liquidity REAL, auto_buy INTEGER DEFAULT 0, buy_amount_sol REAL DEFAULT 0.01, slippage INTEGER DEFAULT 30, anti_mev INTEGER DEFAULT 1, take_profit_percent REAL, stop_loss_percent REAL, tp_levels TEXT DEFAULT '[]', priority_fee INTEGER, tip_fee INTEGER, wallet_group_id INTEGER DEFAULT 0, track_only INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS rules (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER UNIQUE, min_market_cap REAL, max_market_cap REAL, min_liquidity REAL, max_liquidity REAL, auto_buy INTEGER DEFAULT 0, buy_amount_sol REAL DEFAULT 0.01, slippage INTEGER DEFAULT 30, anti_mev INTEGER DEFAULT 1, take_profit_percent REAL, stop_loss_percent REAL, tp_levels TEXT DEFAULT '[]', priority_fee REAL, tip_fee REAL, wallet_group_id INTEGER DEFAULT 0, track_only INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY AUTOINCREMENT, token_address TEXT, token_symbol TEXT, token_name TEXT, chain TEXT DEFAULT 'sol', source_channel TEXT, source_text TEXT, price REAL, market_cap REAL, liquidity REAL, volume_24h REAL, rug_ratio REAL, smart_degen_count INTEGER DEFAULT 0, bundler_rate REAL, top10_rate REAL, creator_status TEXT, is_honeypot TEXT, sender_username TEXT DEFAULT '', created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY AUTOINCREMENT, signal_id INTEGER, wallet_address TEXT, token_address TEXT, token_symbol TEXT, chain TEXT DEFAULT 'sol', buy_amount_sol REAL, buy_price REAL, buy_price_usd REAL, buy_order_id TEXT, buy_status TEXT DEFAULT 'pending', buy_tx TEXT DEFAULT '', take_profit_percent REAL, stop_loss_percent REAL, source_channel TEXT DEFAULT '', status TEXT DEFAULT 'open', pnl REAL, pnl_percent REAL, sell_amount_sol REAL, sell_price REAL, sell_price_usd REAL, sell_tx TEXT, sell_order_id TEXT, closed_at INTEGER, created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS wallets (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT UNIQUE, label TEXT DEFAULT '', private_key TEXT DEFAULT '', active INTEGER DEFAULT 0, created_at INTEGER DEFAULT (strftime('%s','now')));
@@ -284,7 +284,12 @@ export async function importWallets(wallets) {
   }
 }
 export async function removeWallet(id) {
-  if (!sqliteMode && mdb) { await collections.wallets.deleteOne({ id: Number(id) }); return; }
+  if (!sqliteMode && mdb) {
+    await collections.wallet_group_members.deleteMany({ wallet_id: Number(id) });
+    await collections.wallets.deleteOne({ id: Number(id) });
+    return;
+  }
+  sqliteDb.prepare('DELETE FROM wallet_group_members WHERE wallet_id = ?').run(Number(id));
   sqliteDb.prepare('DELETE FROM wallets WHERE id = ?').run(Number(id));
 }
 export async function setActiveWallet(id) {
@@ -351,7 +356,7 @@ export async function removeWalletFromGroup(groupId, walletId) {
 // ───── Signals ─────
 export async function saveSignal(data) {
   if (!sqliteMode && mdb) {
-    await collections.signals.insertOne({
+    const r = await collections.signals.insertOne({
       token_address: data.token_address, token_symbol: data.token_symbol || '',
       token_name: data.token_name || '', chain: data.chain || 'sol',
       source_channel: data.source_channel, source_text: data.source_text || '',
@@ -362,15 +367,44 @@ export async function saveSignal(data) {
       creator_status: data.creator_status || '', is_honeypot: data.is_honeypot || '',
       sender_username: data.sender_username || '', created_at: sqliteNow()
     });
-    return;
+    return r.insertedId?.toString ? r.insertedId.toString() : null;
   }
-  sqliteDb.prepare(`INSERT INTO signals (token_address, token_symbol, token_name, chain, source_channel, source_text, price, market_cap, liquidity, volume_24h, rug_ratio, smart_degen_count, bundler_rate, top10_rate, creator_status, is_honeypot, sender_username, latency_ms, telegram_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  const info = sqliteDb.prepare(`INSERT INTO signals (token_address, token_symbol, token_name, chain, source_channel, source_text, price, market_cap, liquidity, volume_24h, rug_ratio, smart_degen_count, bundler_rate, top10_rate, creator_status, is_honeypot, sender_username, latency_ms, telegram_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     data.token_address, data.token_symbol || '', data.token_name || '', data.chain || 'sol',
     data.source_channel, data.source_text || '', data.price || 0, data.market_cap || 0,
     data.liquidity || 0, data.volume_24h || 0, data.rug_ratio ?? -1, data.smart_degen_count || 0,
     data.bundler_rate || 0, data.top10_rate || 0, data.creator_status || '', data.is_honeypot || '',
     data.sender_username || '', data.latency_ms || 0, _tid(), sqliteNow()
   );
+  return Number(info.lastInsertRowid);
+}
+
+export async function updateSignal(id, data) {
+  if (!sqliteMode && mdb) {
+    const update = {};
+    if (data.token_symbol !== undefined) update.token_symbol = data.token_symbol;
+    if (data.token_name !== undefined) update.token_name = data.token_name;
+    if (data.price !== undefined) update.price = data.price;
+    if (data.market_cap !== undefined) update.market_cap = data.market_cap;
+    if (data.liquidity !== undefined) update.liquidity = data.liquidity;
+    if (data.volume_24h !== undefined) update.volume_24h = data.volume_24h;
+    if (data.rug_ratio !== undefined) update.rug_ratio = data.rug_ratio;
+    if (data.smart_degen_count !== undefined) update.smart_degen_count = data.smart_degen_count;
+    if (data.bundler_rate !== undefined) update.bundler_rate = data.bundler_rate;
+    if (data.top10_rate !== undefined) update.top10_rate = data.top10_rate;
+    if (data.creator_status !== undefined) update.creator_status = data.creator_status;
+    if (data.is_honeypot !== undefined) update.is_honeypot = data.is_honeypot;
+    if (data.latency_ms !== undefined) update.latency_ms = data.latency_ms;
+    if (data.sender_username !== undefined) update.sender_username = data.sender_username;
+    if (Object.keys(update).length) await collections.signals.updateOne({ _id: typeof id === 'string' ? id : Number(id) }, { $set: update });
+    return;
+  }
+  const sets = [];
+  const vals = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) { sets.push(`${k}=?`); vals.push(v); }
+  }
+  if (sets.length) sqliteDb.prepare(`UPDATE signals SET ${sets.join(',')} WHERE id=?`).run(...vals, Number(id));
 }
 export async function getRecentSignals(limit) {
   if (!sqliteMode && mdb) return collections.signals.find().sort({ created_at: -1 }).limit(limit).toArray();
