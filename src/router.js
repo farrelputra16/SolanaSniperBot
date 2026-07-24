@@ -1,4 +1,5 @@
 import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder } from './gmgn.js';
+import { getDexScreenerInfo } from './dexscreener.js';
 import * as db from './database.js';
 import { config } from './config.js';
 import { sendToChat } from './telegram.js';
@@ -50,13 +51,29 @@ export async function processSignal(sourceChannel, text, message, senderUsername
   ));
 }
 
+function parseTokenData(info, security, chain, address, sourceChannel, text, dexFallback) {
+  const tokenData = info.data || info || {};
+  const securityData = security?.data || security || {};
+
+  return {
+    token_symbol: tokenData.symbol || dexFallback?.tokenSymbol || '',
+    token_name: tokenData.name || dexFallback?.tokenName || '',
+    price: parseFloat(tokenData.price_usd) || dexFallback?.priceUsd || 0,
+    market_cap: parseFloat(tokenData.market_cap) || dexFallback?.marketCap || 0,
+    liquidity: parseFloat(tokenData.liquidity) || dexFallback?.liquidity || 0,
+    volume_24h: parseFloat(tokenData.volume_24h) || dexFallback?.volume24h || 0,
+    rug_ratio: securityData.rug_ratio !== undefined ? securityData.rug_ratio : -1,
+    smart_degen_count: securityData.smart_degen_count || tokenData.smart_degen_count || 0,
+    bundler_rate: securityData.bundler_rate || 0,
+    top10_rate: securityData.top10_rate || 0,
+    creator_status: securityData.creator_status || tokenData.creator_status || '',
+    is_honeypot: securityData.is_honeypot !== undefined ? String(securityData.is_honeypot) : '',
+  };
+}
+
 async function processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0) {
   const matchingRules = allRules.filter(r => r.channel_username === sourceChannel);
-
-  for (const rule of matchingRules) {
-    executeAutoBuy(address, chain, rule, sourceChannel, t0);
-  }
-
+  
   // Save signal IMMEDIATELY — minimal data, appears on dashboard right away
   const now = Math.floor(Date.now() / 1000);
   const placeholder = { token_address: address, token_symbol: '', chain, source_channel: sourceChannel, source_text: text, price: 0, market_cap: 0, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
@@ -68,10 +85,53 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     sender_username: senderUsername, created_at: now,
   });
 
-  // Fire-and-forget: fetch token data, update signal + trades
+  for (const rule of matchingRules) {
+    executeAutoBuy(address, chain, rule, sourceChannel, t0);
+  }
+
+  // Step 1: DexScreener (fast) — basic info, appears on dashboard ASAP
+  let dexData = null;
+  try {
+    dexData = await getDexScreenerInfo(chain, address);
+  } catch (e) {
+    // ignore, fall through to GMGN
+  }
+
+  if (dexData) {
+    const dexUpdate = {
+      token_symbol: dexData.tokenSymbol,
+      token_name: dexData.tokenName,
+      price: dexData.priceUsd,
+      market_cap: dexData.marketCap,
+      liquidity: dexData.liquidity,
+      volume_24h: dexData.volume24h,
+      sender_username: senderUsername || '',
+      latency_ms: Date.now() - t0,
+    };
+
+    if (signalId) db.updateSignal(signalId, dexUpdate).catch(() => {});
+
+    liveEvents.emit('signal_update', {
+      id: signalId, token_symbol: dexData.tokenSymbol, token_address: address, source_channel: sourceChannel,
+      market_cap: dexData.marketCap, price: dexData.priceUsd, liquidity: dexData.liquidity,
+      volume_24h: dexData.volume24h, rug_ratio: -1, smart_degen_count: 0,
+      latency_ms: Date.now() - t0, sender_username: senderUsername, created_at: now,
+    });
+
+    forwardSignal(sourceChannel, address, dexUpdate, text, null);
+
+    console.log(`⚡ SIGNAL ${dexData.tokenSymbol||address} | DexScreener=${Date.now()-t0}ms`);
+  }
+
+  // Step 2: GMGN (slower, detailed) — fire-and-forget enrichment
   Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address).catch(() => null)])
     .then(([info, security]) => {
-      const data = parseTokenData(info, security, chain, address, sourceChannel, text);
+      if (!info || (info.code && info.code !== 0)) {
+        if (!dexData) console.warn(`[Router] Could not fetch metadata for ${address}, skipping update.`);
+        return;
+      }
+
+      const data = parseTokenData(info, security, chain, address, sourceChannel, text, dexData);
       data.sender_username = senderUsername || '';
       data.latency_ms = Date.now() - t0;
 
@@ -84,13 +144,13 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
         latency_ms: data.latency_ms, sender_username: senderUsername, created_at: now,
       });
 
-      forwardSignal(sourceChannel, address, data, text, null);
+      if (!dexData) forwardSignal(sourceChannel, address, data, text, null);
 
       const totalLatency = Date.now() - t0;
-      console.log(`⚡ SIGNAL ${data.token_symbol||address} | fetch=${totalLatency}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
+      console.log(`⚡ SIGNAL ${data.token_symbol||address} | GMGN=${totalLatency}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
     })
-    .catch(() => {
-      if (signalId) db.updateSignal(signalId, { token_symbol: 'UNKNOWN' }).catch(() => {});
+    .catch((err) => {
+      if (!dexData) console.error(`[Router] Failed to fetch token data for ${address}:`, err.message);
     });
 }
 
@@ -217,7 +277,7 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
 
 async function pollOrder(orderId, chain, tradeId) {
   let attempts = 0;
-  const maxAttempts = 30;
+  const maxAttempts = 60;
 
   while (attempts < maxAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
