@@ -925,7 +925,7 @@ async function renderSettings(){
 
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 window.saveGmgnKeys=async function(){const key=$('#s-gmgn-key').value.trim();const pk=$('#s-gmgn-pk').value.trim();const body={};if(key)body.usr_gmgn_api_key=key;if(pk)body.usr_gmgn_private_key=pk;if(!key&&!pk)return toast('Enter at least one key','err');await api('/settings',{method:'POST',body:JSON.stringify(body)});toast('GMGN keys saved','ok');renderPage('settings')};
-window.testGmgn=async function(){const btn=event.target;btn.disabled=true;btn.textContent='Testing...';try{const r=await api('/test-gmgn',{method:'POST'});if(r.ok){toast('GMGN OK! '+JSON.stringify(r.data?.data?.symbol||'connected'),'ok')}else{toast('Failed: '+(r.error||'unknown'),'err')}}catch(e){toast('Error: '+e.message,'err')}finally{btn.disabled=false;btn.textContent='Test Connection'}};
+window.testGmgn=async function(){const btn=event.target;btn.disabled=true;btn.textContent='Testing...';try{const r=await api('/test-gmgn',{method:'POST'});if(r.ok){toast('GMGN OK! '+JSON.stringify(r.data?.data?.symbol||'connected'),'ok')}else{toast('Failed: '+(r.error||JSON.stringify(r)||'unknown'),'err')}}catch(e){toast('Error: '+e.message,'err')}finally{btn.disabled=false;btn.textContent='Test Connection'}};
 window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'POST'});toast('Disconnected','info');renderPage('settings')};
 
 // ═══ LOGIN ───

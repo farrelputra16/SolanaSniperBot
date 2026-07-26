@@ -471,7 +471,8 @@ export function createWebServer() {
       const result = await g.getTokenInfo('sol', 'So11111111111111111111111111111111111111112');
       res.json({ ok: true, data: result });
     } catch (err) {
-      res.status(400).json({ ok: false, error: err.message });
+      console.error('[test-gmgn]', err.message, err.status, err.code, err.stack?.slice(0, 200));
+      res.status(400).json({ ok: false, error: err.message || String(err), code: err.code, status: err.status });
     }
   });
 
