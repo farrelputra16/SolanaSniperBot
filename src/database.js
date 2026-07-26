@@ -19,8 +19,18 @@ async function ensureSqlite() {
   if (sqliteDb) return;
   const Database = (await import('better-sqlite3')).default;
   const { join } = await import('path');
-  const { existsSync, mkdirSync } = await import('fs');
-  const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data');
+  const { existsSync, mkdirSync, accessSync } = await import('fs');
+  let dataDir = process.env.DATA_DIR || '';
+  if (dataDir) {
+    try {
+      if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+      accessSync(dataDir, constants.W_OK);
+    } catch {
+      console.warn(`[DB] DATA_DIR '${dataDir}' not writable, falling back to ./data`);
+      dataDir = '';
+    }
+  }
+  if (!dataDir) dataDir = join(process.cwd(), 'data');
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   sqliteDb = new Database(join(dataDir, 'sniper.db'));
   sqliteDb.pragma('journal_mode = WAL');

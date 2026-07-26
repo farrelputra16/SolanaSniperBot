@@ -24,7 +24,13 @@ async function main() {
     for (const err of errors) console.warn(`ℹ️  ${err}`);
   }
 
-  const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data');
+  let dataDir = process.env.DATA_DIR || '';
+  if (dataDir) {
+    try {
+      if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+    } catch { dataDir = ''; }
+  }
+  if (!dataDir) dataDir = join(process.cwd(), 'data');
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
   await initDatabase();

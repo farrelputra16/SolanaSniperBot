@@ -14,16 +14,10 @@ services:
         value: "10000"
       - key: HOST
         value: "0.0.0.0"
+      # Opsional — semua bisa diisi user via dashboard:
+      # - GMGN_API_KEY + GMGN_PRIVATE_KEY → Settings > GMGN API
+      # - TELEGRAM_API_ID + TELEGRAM_API_HASH → form login
       - key: DATA_DIR
-        value: "/data"
-      # Optional — users can set their own via dashboard
-      - key: GMGN_API_KEY
-        value: ""
-      - key: GMGN_PRIVATE_KEY
-        value: ""
-      - key: TELEGRAM_API_ID
-        value: ""
-      - key: TELEGRAM_API_HASH
         value: ""
     disk:
       name: data
