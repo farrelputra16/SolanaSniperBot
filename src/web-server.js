@@ -74,7 +74,7 @@ export function createWebServer() {
 
   app.post('/api/guest-login', (req, res) => {
     const token = crypto.randomUUID();
-    SESSIONS.set(token, Date.now() + 86400000);
+    SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '' });
     res.json({ ok: true, token });
   });
 
@@ -620,9 +620,13 @@ export function createWebServer() {
       await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
       const { getClient: gC } = await import('./telegram.js');
       const me2 = gC() ? await gC().getMe() : null;
-      if (me2) { db.setTelegramId(String(me2.id)); await db.setSetting('telegram_id', String(me2.id)); }
+      const telegramId = String(me2?.id || '');
+      const sessionToken = crypto.randomUUID();
+      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId });
+      db.setTelegramId(telegramId);
+      await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true });
+      res.json({ ok: true, token: sessionToken, telegramId });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });
@@ -648,7 +652,11 @@ export function createWebServer() {
       } catch {}
       let token = null;
       const h = req.headers['x-auth-token'];
-      if (h && SESSIONS.has(h)) { token = h; }
+      if (h && SESSIONS.has(h)) {
+        token = h;
+        const s = SESSIONS.get(h);
+        if (typeof s === 'object') s.telegramId = tgId;
+      }
       else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: tgId }); }
       if (tgId) db.setTelegramId(tgId);
       res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId });
