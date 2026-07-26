@@ -265,8 +265,9 @@ export async function getAllWallets() {
   return sqliteDb.prepare('SELECT * FROM wallets WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC').all(...(_tid() ? [_tid()] : []));
 }
 export async function getActiveWallet() {
-  if (!sqliteMode && mdb) return collections.wallets.findOne({ active: 1 });
-  return sqliteDb.prepare('SELECT * FROM wallets WHERE active = 1 LIMIT 1').get() || null;
+  if (!_tid()) return null;
+  if (!sqliteMode && mdb) return collections.wallets.findOne({ active: 1, telegram_id: _tid() });
+  return sqliteDb.prepare('SELECT * FROM wallets WHERE active = 1' + _tidFilter()).get(...(_tid() ? [_tid()] : [])) || null;
 }
 export async function addWallet(address, label, privateKey) {
   if (!sqliteMode && mdb) {
@@ -560,6 +561,7 @@ export async function getScraperStatus() {
 // ───── Per-User Settings (scoped by telegram_id) ─────
 export async function getUserSetting(key, dv = null, forTelegramId = null) {
   const tid = forTelegramId || _tid();
+  if (!tid) return dv;
   if (!sqliteMode && mdb) { const d = await collections.settings.findOne({ key, telegram_id: tid }); return d ? d.value : dv; }
   const r = sqliteDb.prepare('SELECT value FROM settings WHERE key = ? AND telegram_id = ?').get(key, tid);
   return r ? r.value : dv;
@@ -575,12 +577,12 @@ export async function setUserSetting(key, value, forTelegramId = null) {
 // ───── Settings (global) ─────
 export async function getAllSettings() {
   if (!sqliteMode && mdb) {
-    const docs = await collections.settings.find().toArray();
+    const docs = await collections.settings.find({ telegram_id: { $exists: false } }).toArray();
     const s = {};
     for (const d of docs) s[d.key] = d.value;
     return s;
   }
-  return sqliteDb.prepare('SELECT * FROM settings').all();
+  return sqliteDb.prepare('SELECT * FROM settings WHERE telegram_id IS NULL').all();
 }
 export async function getSetting(key, dv = null) {
   if (!sqliteMode && mdb) { const d = await collections.settings.findOne({ key }); return d ? d.value : dv; }

@@ -668,6 +668,7 @@ export function createWebServer() {
       const { destroyClient } = await import('./telegram.js');
       await destroyClient();
       await db.setSetting('telegram_session', '');
+      await db.setSetting('telegram_id', '');
       db.setTelegramId('');
       res.json({ ok: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
