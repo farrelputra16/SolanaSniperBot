@@ -569,7 +569,7 @@ export async function getUserSetting(key, dv = null, forTelegramId = null) {
 export async function setUserSetting(key, value, forTelegramId = null) {
   const tid = forTelegramId || _tid();
   if (tid == null) return;
-  if (!sqliteMode && mdb) { await collections.settings.updateOne({ key, telegram_id: tid }, { $set: { key, value: String(value), telegram_id: tid } }, { upsert: true }); return; }
+  if (!sqliteMode && mdb) { await collections.settings.updateOne({ key, telegram_id: tid }, { $set: { id: key, key, value: String(value), telegram_id: tid } }, { upsert: true }); return; }
   sqliteDb.prepare('DELETE FROM settings WHERE key = ? AND telegram_id = ?').run(key, tid);
   sqliteDb.prepare('INSERT INTO settings (key, value, telegram_id) VALUES (?,?,?)').run(key, String(value), tid);
 }
@@ -590,7 +590,7 @@ export async function getSetting(key, dv = null) {
   return r ? r.value : dv;
 }
 export async function setSetting(key, value) {
-  if (!sqliteMode && mdb) { await collections.settings.updateOne({ key }, { $set: { key, value: String(value) } }, { upsert: true }); return; }
+  if (!sqliteMode && mdb) { await collections.settings.updateOne({ key }, { $set: { id: key, key, value: String(value) } }, { upsert: true }); return; }
   sqliteDb.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)').run(key, String(value));
 }
 
