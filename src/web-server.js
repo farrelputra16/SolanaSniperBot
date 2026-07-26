@@ -59,6 +59,12 @@ export function createWebServer() {
     res.status(401).json({ error: 'unauthorized' });
   });
 
+  // Isolate data per-request: set _currentTgId from the session, not global state
+  app.use('/api', (req, res, next) => {
+    db.setTelegramId(req.telegramId || '');
+    next();
+  });
+
   app.post('/api/login', (req, res) => {
     if (req.body.password === config.server.password) {
       const token = crypto.randomUUID();
@@ -654,11 +660,8 @@ export function createWebServer() {
       const h = req.headers['x-auth-token'];
       if (h && SESSIONS.has(h)) {
         token = h;
-        const s = SESSIONS.get(h);
-        if (typeof s === 'object') s.telegramId = tgId;
       }
-      else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: tgId }); }
-      if (tgId) db.setTelegramId(tgId);
+      else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '' }); }
       res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
