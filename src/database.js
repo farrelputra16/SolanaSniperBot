@@ -561,10 +561,17 @@ export async function getScraperStatus() {
 // ───── Per-User Settings (scoped by telegram_id) ─────
 export async function getUserSetting(key, dv = null, forTelegramId = null) {
   const tid = forTelegramId || _tid();
-  if (!tid) return dv;
-  if (!sqliteMode && mdb) { const d = await collections.settings.findOne({ key, telegram_id: tid }); return d ? d.value : dv; }
+  if (tid == null) return dv;
+  if (!sqliteMode && mdb) {
+    const d = await collections.settings.findOne({ key, telegram_id: tid });
+    if (d) return d.value;
+    const fallback = await collections.settings.findOne({ key, telegram_id: '' });
+    return fallback ? fallback.value : dv;
+  }
   const r = sqliteDb.prepare('SELECT value FROM settings WHERE key = ? AND telegram_id = ?').get(key, tid);
-  return r ? r.value : dv;
+  if (r) return r.value;
+  const fb = sqliteDb.prepare('SELECT value FROM settings WHERE key = ? AND telegram_id = ?').get(key, '');
+  return fb ? fb.value : dv;
 }
 export async function setUserSetting(key, value, forTelegramId = null) {
   const tid = forTelegramId || _tid();
