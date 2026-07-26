@@ -62,7 +62,7 @@ export function createWebServer() {
   app.post('/api/login', (req, res) => {
     if (req.body.password === config.server.password) {
       const token = crypto.randomUUID();
-      SESSIONS.set(token, Date.now() + 86400000);
+      SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '' });
       return res.json({ ok: true, token });
     }
     res.status(401).json({ error: 'wrong password' });
@@ -647,12 +647,10 @@ export function createWebServer() {
         }
       } catch {}
       let token = null;
-      if (connected) {
-        const h = req.headers['x-auth-token'];
-        if (h && SESSIONS.has(h)) { token = h; }
-        else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: tgId }); }
-        if (tgId) db.setTelegramId(tgId);
-      }
+      const h = req.headers['x-auth-token'];
+      if (h && SESSIONS.has(h)) { token = h; }
+      else { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: tgId }); }
+      if (tgId) db.setTelegramId(tgId);
       res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
