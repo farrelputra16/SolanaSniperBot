@@ -1183,7 +1183,7 @@ async function initDashboard(){
   // Check Telegram status first
   const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':localStorage.getItem('auth_token')||''}}).then(r=>r.json()).catch(()=>({}));
   if(tg.token){localStorage.setItem('auth_token',tg.token)}
-  if(tg.connected){
+  if(tg.connected && tg.authenticated){
     _initRetries = 0;
     showDashboard();
     return;
@@ -1192,18 +1192,6 @@ async function initDashboard(){
     _initRetries++;
     setTimeout(initDashboard, 2000);
     return;
-  }
-  // Telegram not connected - check if saved token still works (read-only mode)
-  const savedToken = localStorage.getItem('auth_token');
-  if (savedToken) {
-    try {
-      const r = await fetch('/api/status', { headers: { 'x-auth-token': savedToken } });
-      if (r.ok || r.status === 200) {
-        showDashboard();
-        return;
-      }
-      if (r.status === 401) localStorage.removeItem('auth_token');
-    } catch {}
   }
   showLogin();
 }

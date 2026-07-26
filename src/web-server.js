@@ -675,7 +675,7 @@ export function createWebServer() {
         }
       }
       if (!token) { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '', source: 'guest' }); }
-      res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId });
+      res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId, authenticated: !!req.telegramId });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
 
