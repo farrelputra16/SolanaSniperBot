@@ -48,7 +48,7 @@ function signMessage(message, privateKey) {
 }
 
 export async function getUserCredentials(telegramId) {
-  if (!telegramId) return { apiKey: envApiKey, privateKey: envPrivateKey };
+  if (telegramId == null) return { apiKey: envApiKey, privateKey: envPrivateKey };
   const userKey = await db.getUserSetting('gmgn_api_key_usr', '', telegramId);
   const userPk = await db.getUserSetting('gmgn_private_key_usr', '', telegramId);
   return {
