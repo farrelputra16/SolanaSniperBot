@@ -80,7 +80,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   const signalId = await db.saveSignal(placeholder).catch(() => null);
 
   liveEvents.emit('signal', {
-    token_symbol: '', id: signalId, token_address: address, source_channel: sourceChannel,
+    _tid: db.getTelegramId(), token_symbol: '', id: signalId, token_address: address, source_channel: sourceChannel,
     market_cap: 0, latency_ms: Date.now() - t0,
     sender_username: senderUsername, created_at: now,
   });
@@ -112,7 +112,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     if (signalId) db.updateSignal(signalId, dexUpdate).catch(() => {});
 
     liveEvents.emit('signal_update', {
-      id: signalId, token_symbol: dexData.tokenSymbol, token_address: address, source_channel: sourceChannel,
+      _tid: db.getTelegramId(), id: signalId, token_symbol: dexData.tokenSymbol, token_address: address, source_channel: sourceChannel,
       market_cap: dexData.marketCap, price: dexData.priceUsd, liquidity: dexData.liquidity,
       volume_24h: dexData.volume24h, rug_ratio: -1, smart_degen_count: 0,
       latency_ms: Date.now() - t0, sender_username: senderUsername, created_at: now,
@@ -138,7 +138,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
       if (signalId) db.updateSignal(signalId, data).catch(() => {});
 
       liveEvents.emit('signal_update', {
-        id: signalId, token_symbol: data.token_symbol, token_address: address, source_channel: sourceChannel,
+        _tid: db.getTelegramId(), id: signalId, token_symbol: data.token_symbol, token_address: address, source_channel: sourceChannel,
         market_cap: data.market_cap, price: data.price, liquidity: data.liquidity, volume_24h: data.volume_24h,
         rug_ratio: data.rug_ratio, smart_degen_count: data.smart_degen_count,
         latency_ms: data.latency_ms, sender_username: senderUsername, created_at: now,
@@ -255,7 +255,7 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       }
 
       liveEvents.emit('trade', {
-        token_symbol: 'PENDING', token_address: address, wallet: wallet.address,
+        _tid: db.getTelegramId(), token_symbol: 'PENDING', token_address: address, wallet: wallet.address,
         amount: perWallet / 1e9, signal_latency_ms: t0 ? Date.now() - t0 : 0,
         buy_latency_ms: buyLatency, status: 'pending', trade_id: tradeId,
       });
@@ -292,14 +292,14 @@ async function pollOrder(orderId, chain, tradeId) {
           buy_tx: report?.hash || result.data?.hash || result.hash,
           buy_price_usd: report?.price_usd ? parseFloat(report.price_usd) : undefined,
         });
-        liveEvents.emit('trade_update', { trade_id: tradeId, status: 'confirmed', buy_tx: report?.hash || result.data?.hash || result.hash });
+        liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: tradeId, status: 'confirmed', buy_tx: report?.hash || result.data?.hash || result.hash });
         console.log(`[Router] ✅ Buy confirmed: ${orderId}`);
         return;
       }
 
       if (status === 'failed' || status === 'expired') {
         await db.updateTrade(tradeId, { buy_status: 'failed', status: 'failed' });
-        liveEvents.emit('trade_update', { trade_id: tradeId, status: 'failed' });
+        liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: tradeId, status: 'failed' });
         console.log(`[Router] ❌ Buy failed: ${orderId}`);
         return;
       }
@@ -311,7 +311,7 @@ async function pollOrder(orderId, chain, tradeId) {
   }
 
   await db.updateTrade(tradeId, { buy_status: 'timeout' });
-  liveEvents.emit('trade_update', { trade_id: tradeId, status: 'timeout' });
+  liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: tradeId, status: 'timeout' });
   console.log(`[Router] ⏰ Buy polling timeout: ${orderId} (order still may confirm later)`);
 }
 

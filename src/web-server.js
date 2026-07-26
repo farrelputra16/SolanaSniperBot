@@ -85,7 +85,10 @@ export function createWebServer() {
   });
 
   // ───── Real-time Events (SSE) ─────
+  const sseClients = new Set();
+
   app.get('/api/events', (req, res) => {
+    const clientId = req.telegramId || '';
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -94,11 +97,16 @@ export function createWebServer() {
     });
     res.write(':ok\n\n');
 
-    const onSignal = (data) => res.write(`event: signal\ndata: ${JSON.stringify(data)}\n\n`);
-    const onSignalUpdate = (data) => res.write(`event: signal_update\ndata: ${JSON.stringify(data)}\n\n`);
-    const onTrade = (data) => res.write(`event: trade\ndata: ${JSON.stringify(data)}\n\n`);
-    const onTradeUpdate = (data) => res.write(`event: trade_update\ndata: ${JSON.stringify(data)}\n\n`);
-    const onStatus = (data) => res.write(`event: status\ndata: ${JSON.stringify(data)}\n\n`);
+    const sendIfMatch = (event, data) => {
+      if (data._tid && data._tid !== clientId) return;
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const onSignal = (data) => sendIfMatch('signal', data);
+    const onSignalUpdate = (data) => sendIfMatch('signal_update', data);
+    const onTrade = (data) => sendIfMatch('trade', data);
+    const onTradeUpdate = (data) => sendIfMatch('trade_update', data);
+    const onStatus = (data) => sendIfMatch('status', data);
 
     liveEvents.on('signal', onSignal);
     liveEvents.on('signal_update', onSignalUpdate);
