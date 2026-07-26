@@ -1,8 +1,9 @@
 import * as crypto from 'crypto';
 import https from 'https';
 import { config } from './config.js';
+import * as db from './database.js';
 
-const { apiKey, privateKey, host } = config.gmgn;
+const { apiKey: envApiKey, privateKey: envPrivateKey, host } = config.gmgn;
 
 const httpsAgent = new https.Agent({
   keepAlive: true,
@@ -10,15 +11,17 @@ const httpsAgent = new https.Agent({
   timeout: 15000,
 });
 
-let algorithm = null;
+let _algorithmCache = new Map();
 
-function detectAlgorithm() {
-  if (algorithm) return algorithm;
-  if (!privateKey) return null;
+function detectAlgorithm(key) {
+  if (!key) return null;
+  const cached = _algorithmCache.get(key);
+  if (cached) return cached;
   try {
-    const key = crypto.createPrivateKey(privateKey.trim());
-    algorithm = key.asymmetricKeyType === 'ed25519' ? 'Ed25519' : 'RSA-SHA256';
-    return algorithm;
+    const k = crypto.createPrivateKey(key.trim());
+    const algo = k.asymmetricKeyType === 'ed25519' ? 'Ed25519' : 'RSA-SHA256';
+    _algorithmCache.set(key, algo);
+    return algo;
   } catch {
     return null;
   }
@@ -28,8 +31,8 @@ function buildAuthQuery() {
   return { timestamp: Math.floor(Date.now() / 1000), client_id: crypto.randomUUID() };
 }
 
-function signMessage(message) {
-  const algo = detectAlgorithm();
+function signMessage(message, privateKey) {
+  const algo = detectAlgorithm(privateKey);
   if (!algo) throw new Error('Private key invalid or not found');
   const msgBuf = Buffer.from(message, 'utf-8');
   if (algo === 'Ed25519') {
@@ -44,7 +47,18 @@ function signMessage(message) {
   return sig.toString('base64');
 }
 
-async function request(method, path, params = {}, body = null, signed = false) {
+export async function getUserCredentials(telegramId) {
+  if (!telegramId) return { apiKey: envApiKey, privateKey: envPrivateKey };
+  const userKey = await db.getUserSetting('gmgn_api_key_usr', '', telegramId);
+  const userPk = await db.getUserSetting('gmgn_private_key_usr', '', telegramId);
+  return {
+    apiKey: userKey || envApiKey,
+    privateKey: userPk || envPrivateKey,
+  };
+}
+
+async function request(method, path, params = {}, body = null, signed = false, overrideCreds = null) {
+  const creds = overrideCreds || { apiKey: envApiKey, privateKey: envPrivateKey };
   const authQuery = buildAuthQuery();
   const allParams = { ...params, ...authQuery };
 
@@ -61,16 +75,16 @@ async function request(method, path, params = {}, body = null, signed = false) {
   const qs = buildSortedQS(allParams);
   const url = `${host}${path}?${qs}`;
   const headers = {
-    'X-APIKEY': apiKey,
+    'X-APIKEY': creds.apiKey,
     'Content-Type': 'application/json',
     'User-Agent': 'sniper-bot/1.0',
   };
 
   const bodyStr = body ? JSON.stringify(body) : '';
 
-  if (signed && privateKey) {
+  if (signed && creds.privateKey) {
     const message = `${path}:${qs}:${bodyStr}:${authQuery.timestamp}`;
-    headers['X-Signature'] = signMessage(message);
+    headers['X-Signature'] = signMessage(message, creds.privateKey);
   }
 
   const controller = new AbortController();
@@ -93,7 +107,7 @@ async function request(method, path, params = {}, body = null, signed = false) {
       const resetAt = json.reset_at || Math.floor(Date.now() / 1000) + 30;
       const wait = Math.max(1000, (resetAt - Math.floor(Date.now() / 1000)) * 1000);
       await new Promise(r => setTimeout(r, Math.min(wait, 5000)));
-      return request(method, path, params, body, signed);
+      return request(method, path, params, body, signed, overrideCreds);
     }
 
     if (!res.ok) {
@@ -428,6 +442,78 @@ export function deriveAddressFromPrivateKey(pkBase58) {
   } catch {
     return null;
   }
+}
+
+// ───── User-scoped client ─────
+export async function createUserClient(telegramId) {
+  const creds = await getUserCredentials(telegramId);
+  const req = (method, path, params, body, signed) => request(method, path, params, body, signed, creds);
+  return {
+    getTokenInfo: (chain, address) => req('GET', '/v1/token/info', { chain, address }),
+    getTokenSecurity: (chain, address) => req('GET', '/v1/token/security', { chain, address }),
+    getTokenHolders: (chain, address, opts = {}) => req('GET', '/v1/token/holders', { chain, address, order_by: opts.orderBy || 'amount_percentage', direction: opts.direction || 'desc', limit: opts.limit || 50 }),
+    executeSwap: (chain, from, inputToken, outputToken, amount, opts = {}) => {
+      const body = {
+        chain, from_address: from, input_token: inputToken, output_token: outputToken,
+        input_amount: String(amount),
+        slippage: opts.slippage != null ? Number(opts.slippage) : Number(config.sniper.defaultSlippage),
+      };
+      if (opts.autoSlippage) body.auto_slippage = true;
+      if (opts.minOutputAmount) body.min_output_amount = opts.minOutputAmount;
+      if (opts.antiMev !== undefined) body.is_anti_mev = opts.antiMev;
+      if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
+      if (opts.tipFee) body.tip_fee = String(opts.tipFee);
+      if (opts.percent !== undefined) body.input_amount_bps = String(Math.round(opts.percent * 100));
+      if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
+      if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
+      return req('POST', '/v1/trade/swap', {}, body, true);
+    },
+    executeSell: (chain, from, tokenAddress, percent = 100, opts = {}) => {
+      const body = {
+        chain, from_address: from, input_token: tokenAddress,
+        output_token: 'So11111111111111111111111111111111111111112',
+        input_amount: '0', input_amount_bps: String(Math.round(percent * 100)),
+        slippage: opts.slippage != null ? Number(opts.slippage) : Number(config.sniper.defaultSlippage),
+      };
+      if (opts.antiMev !== undefined) body.is_anti_mev = opts.antiMev;
+      if (opts.priorityFee) body.priority_fee = String(opts.priorityFee);
+      if (opts.tipFee) body.tip_fee = String(opts.tipFee);
+      return req('POST', '/v1/trade/swap', {}, body, true);
+    },
+    getWalletTokenBalance: (chain, wallet, token) => req('GET', '/v1/user/wallet_token_balance', { chain, wallet_address: wallet, token_address: token }),
+    getWalletHoldings: (chain, wallet, opts = {}) => req('GET', '/v1/user/wallet_holdings', { chain, wallet_address: wallet, limit: opts.limit || 50, order_by: opts.orderBy || 'usd_value', direction: opts.direction || 'desc' }, null, true),
+    getWalletStats: (chain, wallet, period = '7d') => req('GET', '/v1/user/wallet_stats', { chain, wallet_address: wallet, period }),
+    getWalletActivity: (chain, wallet, opts = {}) => req('GET', '/v1/user/wallet_activity', { chain, wallet_address: wallet, limit: opts.limit || 20 }),
+    createLimitSell: (chain, from, tokenAddress, targetPriceUsd, percent = 100) => {
+      const b = {
+        chain, from_address: from, base_token: tokenAddress,
+        quote_token: 'So11111111111111111111111111111111111111112',
+        order_type: 'limit_order', sub_order_type: 'take_profit',
+        check_price: String(targetPriceUsd), amount_in_percent: percent,
+        group_tag: 'LimitOrder',
+      };
+      return req('POST', '/v1/order/strategy/create', {}, b, true);
+    },
+    cancelStrategyOrder: (chain, from, orderId) => req('POST', '/v1/order/strategy/cancel', {}, { chain, from_address: from, order_id: orderId }, true),
+    getPortfolioInfo: () => req('GET', '/v1/user/info'),
+    executeBuyWithTP: (chain, from, tokenAddress, amountLamports, opts = {}) => {
+      const conditions = [];
+      if (opts.takeProfitPercent) conditions.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(opts.takeProfitPercent), sell_ratio: '100' });
+      if (opts.stopLossPercent) conditions.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(opts.stopLossPercent)), sell_ratio: '100' });
+      if (opts.takeProfitPartialPercent) conditions.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(opts.takeProfitPartialPercent), sell_ratio: String(opts.takeProfitPartialRatio || '50') });
+      const swapBody = {
+        chain, from_address: from, input_token: 'So11111111111111111111111111111111111111112',
+        output_token: tokenAddress, input_amount: String(amountLamports),
+        slippage: opts.slippage != null ? Number(opts.slippage) : Number(config.sniper.defaultSlippage),
+        sell_ratio_type: 'hold_amount',
+      };
+      if (conditions.length) swapBody.condition_orders = conditions;
+      if (opts.antiMev !== undefined) swapBody.is_anti_mev = opts.antiMev;
+      if (opts.priorityFee) swapBody.priority_fee = String(opts.priorityFee);
+      if (opts.tipFee) swapBody.tip_fee = String(opts.tipFee);
+      return req('POST', '/v1/trade/swap', {}, swapBody, true);
+    },
+  };
 }
 
 // ───── Connection Warmup ─────

@@ -23,6 +23,21 @@ export function createWebServer() {
   app.use(express.json());
   app.use(express.static(join(__dirname, 'public')));
 
+  // Extract telegramId from session for all routes
+  app.use('/api', (req, res, next) => {
+    const token = req.headers['x-auth-token'];
+    if (token && SESSIONS.has(token)) {
+      const s = SESSIONS.get(token);
+      if (typeof s === 'object' && s.expires > Date.now()) {
+        s.expires = Date.now() + 3600000;
+        req.telegramId = s.telegramId;
+      } else if (typeof s === 'number' && s > Date.now()) {
+        SESSIONS.set(token, Date.now() + 3600000);
+      }
+    }
+    next();
+  });
+
   app.use('/api', (req, res, next) => {
     if (!config.server.password) return next();
     if (req.path === '/login' || req.path === '/login-check') return next();
@@ -234,7 +249,8 @@ export function createWebServer() {
     if (!trade) return res.status(404).json({ error: 'not found' });
     if (trade.status === 'closed') return res.status(400).json({ error: 'already closed' });
     try {
-      const result = await gmgn.executeSell(trade.chain, trade.wallet_address, trade.token_address, req.body.percent || 100, { slippage: req.body.slippage || config.sniper.defaultSlippage });
+      const g = await gmgn.createUserClient(req.telegramId);
+      const result = await g.executeSell(trade.chain, trade.wallet_address, trade.token_address, req.body.percent || 100, { slippage: req.body.slippage || config.sniper.defaultSlippage });
       const orderId = result.data?.order_id || result.order_id;
       await db.closeTrade(req.params.id, { sell_amount_sol: req.body.sell_amount_sol, sell_price: req.body.sell_price, sell_price_usd: req.body.sell_price_usd, sell_tx: req.body.sell_tx || '', sell_order_id: orderId });
       res.json({ success: true, order_id: orderId });
@@ -250,7 +266,8 @@ export function createWebServer() {
     const { chain, wallet_address, token_address, target_price, percent, token_symbol } = req.body;
     if (!wallet_address || !token_address || !target_price) return res.status(400).json({ error: 'required: wallet_address, token_address, target_price' });
     try {
-      const result = await gmgn.createLimitSell(chain || 'sol', wallet_address, token_address, target_price, percent || 100);
+      const g = await gmgn.createUserClient(req.telegramId);
+      const result = await g.createLimitSell(chain || 'sol', wallet_address, token_address, target_price, percent || 100);
       const oid = result.data?.order_id || result.order_id;
       const localId = await db.saveStrategyOrder({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', order_type: 'limit_order', sub_order_type: 'take_profit', check_price: target_price, amount_in_percent: percent || 100, group_tag: 'LimitOrder', remote_order_id: oid });
       res.json({ success: true, id: localId, remote_order_id: oid });
@@ -261,7 +278,8 @@ export function createWebServer() {
     const { chain, wallet_address, token_address, amount_lamports, take_profit_percent, stop_loss_percent, slippage, token_symbol } = req.body;
     if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
     try {
-      const result = await gmgn.executeBuyWithTP(chain || 'sol', wallet_address, token_address, amount_lamports, { takeProfitPercent: take_profit_percent, stopLossPercent: stop_loss_percent, slippage });
+      const g = await gmgn.createUserClient(req.telegramId);
+      const result = await g.executeBuyWithTP(chain || 'sol', wallet_address, token_address, amount_lamports, { takeProfitPercent: take_profit_percent, stopLossPercent: stop_loss_percent, slippage });
       const oid = result.data?.order_id || result.order_id;
       const tradeId = await db.createTrade({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', buy_amount_sol: amount_lamports / 1e9, buy_order_id: oid, take_profit_percent, stop_loss_percent, status: 'open' });
       res.json({ success: true, trade_id: tradeId, order_id: oid });
@@ -272,7 +290,10 @@ export function createWebServer() {
     const orders = await db.getStrategyOrders();
     const o = orders.find(x => x.id == req.params.id);
     if (!o) return res.status(404).json({ error: 'not found' });
-    try { if (o.remote_order_id) await gmgn.cancelStrategyOrder(o.chain, o.wallet_address, o.remote_order_id); } catch {}
+    try {
+      const g = await gmgn.createUserClient(req.telegramId);
+      if (o.remote_order_id) await g.cancelStrategyOrder(o.chain, o.wallet_address, o.remote_order_id);
+    } catch {}
     await db.cancelStrategyOrderLocal(req.params.id);
     res.json({ success: true });
   });
@@ -282,7 +303,8 @@ export function createWebServer() {
     const { chain, wallet_address, token_address, percent, slippage } = req.body;
     if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
     try {
-      const result = await gmgn.executeSell(chain || 'sol', wallet_address, token_address, percent || 100, { slippage });
+      const g = await gmgn.createUserClient(req.telegramId);
+      const result = await g.executeSell(chain || 'sol', wallet_address, token_address, percent || 100, { slippage });
       res.json({ success: true, order_id: result.data?.order_id || result.order_id });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -291,7 +313,8 @@ export function createWebServer() {
     const { chain, wallet_address, token_address, amount_lamports, slippage } = req.body;
     if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
     try {
-      const result = await gmgn.executeSwap(chain || 'sol', wallet_address, 'So11111111111111111111111111111111111111112', token_address, amount_lamports, { slippage });
+      const g = await gmgn.createUserClient(req.telegramId);
+      const result = await g.executeSwap(chain || 'sol', wallet_address, 'So11111111111111111111111111111111111111112', token_address, amount_lamports, { slippage });
       res.json({ success: true, order_id: result.data?.order_id || result.order_id });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -301,11 +324,12 @@ export function createWebServer() {
     const wallet = await db.getWallet(req.params.id);
     if (!wallet) return res.status(404).json({ error: 'wallet not found' });
     try {
+      const g = await gmgn.createUserClient(req.telegramId);
       const [balanceRes, holdingsRes, statsRes, activityRes] = await Promise.allSettled([
-        gmgn.getWalletTokenBalance('sol', wallet.address, 'So11111111111111111111111111111111111111112'),
-        gmgn.getWalletHoldings('sol', wallet.address, { limit: 50 }),
-        gmgn.getWalletStats('sol', wallet.address, '30d'),
-        gmgn.getWalletActivity('sol', wallet.address, { limit: 30 }),
+        g.getWalletTokenBalance('sol', wallet.address, 'So11111111111111111111111111111111111111112'),
+        g.getWalletHoldings('sol', wallet.address, { limit: 50 }),
+        g.getWalletStats('sol', wallet.address, '30d'),
+        g.getWalletActivity('sol', wallet.address, { limit: 30 }),
       ]);
       const balanceData = balanceRes.status === 'fulfilled' ? (balanceRes.value?.data || balanceRes.value) : null;
       const balance = balanceData?.balance ? (parseFloat(balanceData.balance) > 1e8 ? parseFloat(balanceData.balance) / 1e9 : parseFloat(balanceData.balance)) : null;
@@ -327,13 +351,14 @@ export function createWebServer() {
     try {
       const wallets = await db.getAllWallets();
       if (wallets.length === 0) return res.json({ wallets: [] });
+      const g = await gmgn.createUserClient(req.telegramId);
       const results = await Promise.all(wallets.map(async (w) => {
         if (!w.address || w.address === 'pending' || w.address.length < 32) {
           return { ...w, balance: null, error: 'invalid address' };
         }
         let balance = null;
         try {
-          const r = await gmgn.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
+          const r = await g.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
           const d = r?.data || r || {};
           const raw = parseFloat(d.balance);
           if (!isNaN(raw) && raw > 0) balance = raw > 1e8 ? (raw / 1e9) : raw;
@@ -368,10 +393,11 @@ export function createWebServer() {
     const { wallet, chain } = req.query;
     if (!wallet) return res.status(400).json({ error: 'wallet required' });
     try {
+      const g = await gmgn.createUserClient(req.telegramId);
       const [info, holdings, stats] = await Promise.allSettled([
-        gmgn.getPortfolioInfo().catch(() => null),
-        gmgn.getWalletHoldings(chain || 'sol', wallet).catch(() => null),
-        gmgn.getWalletStats(chain || 'sol', wallet).catch(() => null),
+        g.getPortfolioInfo().catch(() => null),
+        g.getWalletHoldings(chain || 'sol', wallet).catch(() => null),
+        g.getWalletStats(chain || 'sol', wallet).catch(() => null),
       ]);
       const infoData = info.status === 'fulfilled' ? (info.value?.data || info.value) : null;
       const walletBalance = infoData?.[wallet] || null;
@@ -388,9 +414,10 @@ export function createWebServer() {
     const { chain, address } = req.query;
     if (!address) return res.status(400).json({ error: 'address required' });
     try {
+      const g = await gmgn.createUserClient(req.telegramId);
       const [info, security] = await Promise.allSettled([
-        gmgn.getTokenInfo(chain || 'sol', address),
-        gmgn.getTokenSecurity(chain || 'sol', address),
+        g.getTokenInfo(chain || 'sol', address),
+        g.getTokenSecurity(chain || 'sol', address),
       ]);
       res.json({
         info: info.status === 'fulfilled' ? info.value?.data || info.value : null,
@@ -407,10 +434,11 @@ export function createWebServer() {
     const { chain, address } = req.query;
     if (!address) return res.status(400).json({ error: 'address required' });
     try {
+      const g = await gmgn.createUserClient(req.telegramId);
       const [info, security, holders] = await Promise.allSettled([
-        gmgn.getTokenInfo(chain || 'sol', address),
-        gmgn.getTokenSecurity(chain || 'sol', address),
-        gmgn.getTokenHolders(chain || 'sol', address, { limit: 10 }),
+        g.getTokenInfo(chain || 'sol', address),
+        g.getTokenSecurity(chain || 'sol', address),
+        g.getTokenHolders(chain || 'sol', address, { limit: 10 }),
       ]);
       res.json({
         info: info.status === 'fulfilled' ? (info.value?.data || info.value) : null,
@@ -429,10 +457,22 @@ export function createWebServer() {
     s.default_slippage = String(config.sniper.defaultSlippage);
     s.default_anti_mev = String(config.sniper.defaultAntiMev);
     s.gmgn_api_key = config.gmgn.apiKey ? config.gmgn.apiKey.slice(0, 12) + '...' : '';
+    // Per-user GMGN key (masked)
+    const userKey = await db.getUserSetting('gmgn_api_key_usr', '', req.telegramId);
+    const userPk = await db.getUserSetting('gmgn_private_key_usr', '', req.telegramId);
+    s.gmgn_api_key_usr = userKey ? userKey.slice(0, 12) + '...' : '';
+    s.has_gmgn_private_key_usr = !!userPk;
     res.json(s);
   });
   app.post('/api/settings', async (req, res) => {
-    for (const [k, v] of Object.entries(req.body)) await db.setSetting(k, String(v));
+    for (const [k, v] of Object.entries(req.body)) {
+      if (k.startsWith('usr_')) {
+        const realKey = k.replace('usr_', '') + '_usr';
+        await db.setUserSetting(realKey, String(v));
+      } else {
+        await db.setSetting(k, String(v));
+      }
+    }
     res.json({ success: true });
   });
 

@@ -103,10 +103,10 @@ export const config = {
 
 export function validateConfig() {
   const errors = [];
-  if (!config.gmgn.apiKey) errors.push('GMGN_API_KEY not found');
-  if (!config.gmgn.privateKey) errors.push('GMGN_PRIVATE_KEY not found');
+  if (!config.gmgn.apiKey) errors.push('GMGN_API_KEY not set — users can set their own via dashboard settings');
+  if (!config.gmgn.privateKey) errors.push('GMGN_PRIVATE_KEY not set — users can set their own via dashboard settings');
   if (!config.telegram.apiId || !config.telegram.apiHash) {
-    errors.push('TELEGRAM_API_ID and TELEGRAM_API_HASH not set — dashboard-only mode');
+    errors.push('TELEGRAM_API_ID and TELEGRAM_API_HASH not set — users can provide their own during login');
   }
   return errors;
 }

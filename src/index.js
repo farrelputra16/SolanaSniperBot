@@ -19,16 +19,13 @@ async function main() {
   console.log('╚══════════════════════════════════════════╝\n');
 
   const errors = validateConfig();
-  const criticalErrors = errors.filter(e => !e.includes('TELEGRAM'));
-  if (criticalErrors.length > 0) {
-    for (const err of criticalErrors) console.error(`❌ ${err}`);
-    process.exit(1);
-  }
+  // All config is optional — users can set credentials via dashboard
   if (errors.length > 0) {
-    for (const err of errors) console.warn(`⚠️  ${err}`);
+    for (const err of errors) console.warn(`ℹ️  ${err}`);
   }
 
-  if (!existsSync(join(process.cwd(), 'data'))) mkdirSync(join(process.cwd(), 'data'), { recursive: true });
+  const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data');
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
   await initDatabase();
   await loadTelegramId();

@@ -368,11 +368,28 @@ const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 function authToken(){return localStorage.getItem('auth_token')||''}
 const api=async(p,o)=>{
   const h={'Content-Type':'application/json'};
-  const t=authToken();if(t)h['x-auth-token']=t;
-  const r=await fetch('/api'+p,{headers:h,...o});
-  if(r.status===401){localStorage.removeItem('auth_token');showLogin();throw new Error('Session expired')}
-  if(!r.ok){let e;try{e=await r.json()}catch{e={error:r.statusText}}throw new Error(e.error||e.message||r.statusText)}
-  return r.json()
+  const t=authToken();
+  if(t) h['x-auth-token']=t;
+  
+  try {
+    const r=await fetch('/api'+p,{headers:h,...o});
+    if(r.status===401){
+      localStorage.removeItem('auth_token');
+      showLogin();
+      throw new Error('Session expired');
+    }
+    if(!r.ok){
+      let e;
+      try{e=await r.json()}catch{e={error:r.statusText}}
+      throw new Error(e.error||e.message||r.statusText);
+    }
+    return await r.json();
+  } catch(err) {
+    if (err instanceof TypeError) {
+       toast('Server connection issue', 'err');
+    }
+    throw err;
+  }
 };
 function toast(m,t='info'){const c=$('#toast-c'),e=document.createElement('div');e.className='toast '+t;e.textContent=m;c.appendChild(e);setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),200)},2800)}
 function closeModal(){$('#modal').classList.remove('active')}
@@ -875,7 +892,7 @@ window.viewGroup=async function(id){
 async function renderSettings(){
   const[settings,setup,tg]=await Promise.all([api('/settings'),api('/setup'),api('/telegram/status')]);
   return`<div class="page-header"><span class="eyebrow">Configuration</span><h2>Settings</h2></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
   <div class="shell"><div class="core"><div class="card-h"><h3>Config</h3></div>
     <div class="form-grid">
       <div class="form-group"><label>Default Buy (SOL)</label><input id="s-buy" value="${settings.default_buy_amount||'0.01'}" type="number" step=".001"/></div>
@@ -883,6 +900,13 @@ async function renderSettings(){
       <div class="form-group"><label>Anti-MEV</label><select id="s-anti"><option value="true" ${settings.default_anti_mev==='true'?'selected':''}>On</option><option value="false" ${settings.default_anti_mev==='false'?'selected':''}>Off</option></select></div>
     </div>
     <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveSettings()">Save</button></div>
+  </div></div>
+  <div class="shell"><div class="core"><div class="card-h"><h3>GMGN API (Per-User)</h3></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Your API Key</label><input id="s-gmgn-key" value="${settings.gmgn_api_key_usr||''}" placeholder="Leave empty to use server default" style="font-family:var(--font-mono);font-size:0.7rem"/></div>
+      <div class="form-group"><label>Your Private Key</label><input id="s-gmgn-pk" type="password" placeholder="${settings.has_gmgn_private_key_usr?'***** (set)':'Set your private key'}" style="font-family:var(--font-mono);font-size:0.7rem"/></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveGmgnKeys()">Save GMGN Keys</button></div>
   </div></div>
   <div class="shell"><div class="core"><div class="card-h"><h3>Status</h3></div>
     <div style="display:grid;gap:0.3rem">${[
@@ -900,6 +924,7 @@ async function renderSettings(){
 </div></div>`;}
 
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
+window.saveGmgnKeys=async function(){const key=$('#s-gmgn-key').value.trim();const pk=$('#s-gmgn-pk').value.trim();const body={};if(key)body.usr_gmgn_api_key=key;if(pk)body.usr_gmgn_private_key=pk;if(!key&&!pk)return toast('Enter at least one key','err');await api('/settings',{method:'POST',body:JSON.stringify(body)});toast('GMGN keys saved','ok');renderPage('settings')};
 window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'POST'});toast('Disconnected','info');renderPage('settings')};
 
 // ═══ LOGIN ───
