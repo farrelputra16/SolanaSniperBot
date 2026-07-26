@@ -1188,7 +1188,7 @@ async function initDashboard(){
     showDashboard();
     return;
   }
-  if(tg.hasSession && _initRetries < 30){
+  if(tg.authenticated && !tg.connected && _initRetries < 30){
     _initRetries++;
     setTimeout(initDashboard, 2000);
     return;
