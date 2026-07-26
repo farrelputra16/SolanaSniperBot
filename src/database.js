@@ -564,8 +564,9 @@ export async function getUserSetting(key, dv = null, forTelegramId = null) {
   const r = sqliteDb.prepare('SELECT value FROM settings WHERE key = ? AND telegram_id = ?').get(key, tid);
   return r ? r.value : dv;
 }
-export async function setUserSetting(key, value) {
-  const tid = _tid();
+export async function setUserSetting(key, value, forTelegramId = null) {
+  const tid = forTelegramId || _tid();
+  if (!tid) return;
   if (!sqliteMode && mdb) { await collections.settings.updateOne({ key, telegram_id: tid }, { $set: { key, value: String(value), telegram_id: tid } }, { upsert: true }); return; }
   sqliteDb.prepare('DELETE FROM settings WHERE key = ? AND telegram_id = ?').run(key, tid);
   sqliteDb.prepare('INSERT INTO settings (key, value, telegram_id) VALUES (?,?,?)').run(key, String(value), tid);

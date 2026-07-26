@@ -468,7 +468,7 @@ export function createWebServer() {
     for (const [k, v] of Object.entries(req.body)) {
       if (k.startsWith('usr_')) {
         const realKey = k.replace('usr_', '') + '_usr';
-        await db.setUserSetting(realKey, String(v));
+        await db.setUserSetting(realKey, String(v), req.telegramId);
       } else {
         await db.setSetting(k, String(v));
       }
