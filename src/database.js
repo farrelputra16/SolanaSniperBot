@@ -123,24 +123,19 @@ async function nextId(seqName) {
 
 function _tidFilter(col = 'telegram_id') {
   const tid = _tid();
-  if (!tid) return '';
-  return ` AND ${col} IN ('', ?)`;
-}
-function _tidStrict(col = 'telegram_id') {
-  const tid = _tid();
-  if (!tid) return '';
+  if (!tid) return ' AND 1=0'; // No telegram_id → no results
   return ` AND ${col} = ?`;
 }
 
 // ───── Channels ─────
 export async function getActiveChannels() {
-  if (!sqliteMode && mdb) return collections.channels.find({ active: 1, telegram_id: { $in: ['', _tid()] } }).toArray();
+  if (!sqliteMode && mdb) return collections.channels.find({ active: 1, telegram_id: _tid() || 'NONE' }).toArray();
   return sqliteDb.prepare('SELECT * FROM channels WHERE active = 1' + _tidFilter()).all(...(_tid() ? [_tid()] : []));
 }
 export async function getAllChannels() {
   if (!sqliteMode && mdb) {
     return collections.channels.aggregate([
-      { $match: { telegram_id: { $in: ['', _tid()] } } },
+      { $match: { telegram_id: _tid() || 'NONE' } },
       { $lookup: { from: 'signals', localField: 'channel_username', foreignField: 'source_channel', as: 'sd' } },
       { $addFields: { signal_count: { $size: '$sd' }, last_signal_at: { $max: '$sd.created_at' } } },
       { $project: { sd: 0 } }, { $sort: { added_at: -1 } }
@@ -156,23 +151,23 @@ export async function addChannel(username, displayName) {
   try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid()); } catch {}
 }
 export async function removeChannel(id) {
-  if (!sqliteMode && mdb) { await collections.channels.deleteOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }); await collections.rules.deleteOne({ channel_id: Number(id), telegram_id: { $in: ['', _tid()] } }); return; }
+  if (!sqliteMode && mdb) { await collections.channels.deleteOne({ id: Number(id), telegram_id: _tid() || 'NONE' }); await collections.rules.deleteOne({ channel_id: Number(id), telegram_id: _tid() || 'NONE' }); return; }
   sqliteDb.prepare('DELETE FROM channels WHERE id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
   sqliteDb.prepare('DELETE FROM rules WHERE channel_id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
 }
 export async function toggleChannel(id, active) {
-  if (!sqliteMode && mdb) { await collections.channels.updateOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }, { $set: { active: active ? 1 : 0 } }); return; }
+  if (!sqliteMode && mdb) { await collections.channels.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: { active: active ? 1 : 0 } }); return; }
   sqliteDb.prepare('UPDATE channels SET active = ? WHERE id = ?' + _tidFilter()).run(active ? 1 : 0, Number(id), ...(_tid() ? [_tid()] : []));
 }
 export async function getChannel(id) {
-  if (!sqliteMode && mdb) return collections.channels.findOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } });
+  if (!sqliteMode && mdb) return collections.channels.findOne({ id: Number(id), telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT * FROM channels WHERE id = ?' + _tidFilter()).get(Number(id), ...(_tid() ? [_tid()] : [])) || null;
 }
 export async function getChannelWithRule(id) {
   if (!sqliteMode && mdb) {
-    const ch = await collections.channels.findOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } });
+    const ch = await collections.channels.findOne({ id: Number(id), telegram_id: _tid() || 'NONE' });
     if (!ch) return null;
-    const rule = await collections.rules.findOne({ channel_id: Number(id), telegram_id: { $in: ['', _tid()] } });
+    const rule = await collections.rules.findOne({ channel_id: Number(id), telegram_id: _tid() || 'NONE' });
     return { ...ch, rule: rule || null };
   }
   const ch = sqliteDb.prepare('SELECT * FROM channels WHERE id = ?' + _tidFilter()).get(Number(id), ...(_tid() ? [_tid()] : []));
@@ -183,13 +178,13 @@ export async function getChannelWithRule(id) {
 
 // ───── Rules ─────
 export async function getChannelRules() {
-  if (!sqliteMode && mdb) return collections.rules.find({ telegram_id: { $in: ['', _tid()] } }).toArray();
+  if (!sqliteMode && mdb) return collections.rules.find({ telegram_id: _tid() || 'NONE' }).toArray();
   return sqliteDb.prepare('SELECT * FROM rules WHERE 1=1' + _tidFilter()).all(...(_tid() ? [_tid()] : []));
 }
 export async function getRulesWithChannels() {
   if (!sqliteMode && mdb) {
     return collections.rules.aggregate([
-      { $match: { telegram_id: { $in: ['', _tid()] } } },
+      { $match: { telegram_id: _tid() || 'NONE' } },
       { $lookup: { from: 'channels', localField: 'channel_id', foreignField: 'id', as: 'ch' } },
       { $unwind: { path: '$ch', preserveNullAndEmptyArrays: true } }
     ]).toArray();
@@ -218,7 +213,7 @@ export async function upsertChannelRule(data) {
       track_only: data.track_only ? 1 : 0,
       telegram_id: _tid(),
     };
-    const existing = await collections.rules.findOne({ channel_id: channelId, telegram_id: { $in: ['', _tid()] } });
+    const existing = await collections.rules.findOne({ channel_id: channelId, telegram_id: _tid() || 'NONE' });
     if (existing) await collections.rules.updateOne({ _id: existing._id }, { $set: doc });
     else await collections.rules.insertOne(doc);
     return;
@@ -248,15 +243,15 @@ export async function upsertChannelRule(data) {
   }
 }
 export async function deleteRule(id) {
-  if (!sqliteMode && mdb) { await collections.rules.deleteOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }); return; }
+  if (!sqliteMode && mdb) { await collections.rules.deleteOne({ id: Number(id), telegram_id: _tid() || 'NONE' }); return; }
   sqliteDb.prepare('DELETE FROM rules WHERE id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
 }
 export async function getAutoBuyRules() {
   if (!sqliteMode && mdb) {
-    const rules = await collections.rules.find({ auto_buy: 1, telegram_id: { $in: ['', _tid()] } }).toArray();
+    const rules = await collections.rules.find({ auto_buy: 1, telegram_id: _tid() || 'NONE' }).toArray();
     const results = [];
     for (const r of rules) {
-      const ch = await collections.channels.findOne({ id: r.channel_id, telegram_id: { $in: ['', _tid()] } });
+      const ch = await collections.channels.findOne({ id: r.channel_id, telegram_id: _tid() || 'NONE' });
       if (ch) results.push({ ...r, channel_username: ch.channel_username });
     }
     return results;
@@ -266,7 +261,7 @@ export async function getAutoBuyRules() {
 
 // ───── Wallets ─────
 export async function getAllWallets() {
-  if (!sqliteMode && mdb) return collections.wallets.find({ telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).toArray();
+  if (!sqliteMode && mdb) return collections.wallets.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).toArray();
   return sqliteDb.prepare('SELECT * FROM wallets WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC').all(...(_tid() ? [_tid()] : []));
 }
 export async function getActiveWallet() {
@@ -275,7 +270,7 @@ export async function getActiveWallet() {
 }
 export async function addWallet(address, label, privateKey) {
   if (!sqliteMode && mdb) {
-    const existing = await collections.wallets.findOne({ telegram_id: { $in: ['', _tid()] } });
+    const existing = await collections.wallets.findOne({ telegram_id: _tid() || 'NONE' });
     try {
       await collections.wallets.insertOne({
         address, label: label || '', private_key: privateKey || '',
@@ -289,7 +284,7 @@ export async function addWallet(address, label, privateKey) {
 }
 export async function importWallets(wallets) {
   if (!sqliteMode && mdb) {
-    const existing = await collections.wallets.findOne({ telegram_id: { $in: ['', _tid()] } });
+    const existing = await collections.wallets.findOne({ telegram_id: _tid() || 'NONE' });
     for (let i = 0; i < wallets.length; i++) {
       try {
         await collections.wallets.insertOne({
@@ -310,7 +305,7 @@ export async function importWallets(wallets) {
 export async function removeWallet(id) {
   if (!sqliteMode && mdb) {
     await collections.wallet_group_members.deleteMany({ wallet_id: Number(id) });
-    await collections.wallets.deleteOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } });
+    await collections.wallets.deleteOne({ id: Number(id), telegram_id: _tid() || 'NONE' });
     return;
   }
   sqliteDb.prepare('DELETE FROM wallet_group_members WHERE wallet_id = ?').run(Number(id));
@@ -318,19 +313,19 @@ export async function removeWallet(id) {
 }
 export async function setActiveWallet(id) {
   if (!sqliteMode && mdb) {
-    await collections.wallets.updateMany({ telegram_id: { $in: ['', _tid()] } }, { $set: { active: 0 } });
-    await collections.wallets.updateOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }, { $set: { active: 1 } });
+    await collections.wallets.updateMany({ telegram_id: _tid() || 'NONE' }, { $set: { active: 0 } });
+    await collections.wallets.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: { active: 1 } });
     return;
   }
   sqliteDb.prepare('UPDATE wallets SET active = 0 WHERE 1=1' + _tidFilter()).run(...(_tid() ? [_tid()] : []));
   sqliteDb.prepare('UPDATE wallets SET active = 1 WHERE id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
 }
 export async function getWallet(id) {
-  if (!sqliteMode && mdb) return collections.wallets.findOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } });
+  if (!sqliteMode && mdb) return collections.wallets.findOne({ id: Number(id), telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT * FROM wallets WHERE id = ?' + _tidFilter()).get(Number(id), ...(_tid() ? [_tid()] : [])) || null;
 }
 export async function getWalletByAddress(address) {
-  if (!sqliteMode && mdb) return collections.wallets.findOne({ address, telegram_id: { $in: ['', _tid()] } });
+  if (!sqliteMode && mdb) return collections.wallets.findOne({ address, telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT * FROM wallets WHERE address = ?' + _tidFilter()).get(address, ...(_tid() ? [_tid()] : [])) || null;
 }
 
@@ -338,7 +333,7 @@ export async function getWalletByAddress(address) {
 export async function getWalletGroups() {
   if (!sqliteMode && mdb) {
     return collections.wallet_groups.aggregate([
-      { $match: { telegram_id: { $in: ['', _tid()] } } },
+      { $match: { telegram_id: _tid() || 'NONE' } },
       { $lookup: { from: 'wallet_group_members', localField: 'id', foreignField: 'group_id', as: '_m' } },
       { $addFields: { member_count: { $size: '$_m' } } },
       { $project: { _m: 0 } }, { $sort: { name: 1 } }
@@ -357,7 +352,7 @@ export async function createWalletGroup(name, description) {
 }
 export async function deleteWalletGroup(id) {
   const nid = Number(id);
-  if (!sqliteMode && mdb) { await collections.wallet_groups.deleteOne({ id: nid, telegram_id: { $in: ['', _tid()] } }); await collections.wallet_group_members.deleteMany({ group_id: nid }); return; }
+  if (!sqliteMode && mdb) { await collections.wallet_groups.deleteOne({ id: nid, telegram_id: _tid() || 'NONE' }); await collections.wallet_group_members.deleteMany({ group_id: nid }); return; }
   sqliteDb.prepare('DELETE FROM wallet_groups WHERE id = ?' + _tidFilter()).run(nid, ...(_tid() ? [_tid()] : []));
   sqliteDb.prepare('DELETE FROM wallet_group_members WHERE group_id = ?').run(nid);
 }
@@ -365,7 +360,7 @@ export async function getGroupWallets(groupId) {
   if (!sqliteMode && mdb) {
     const members = await collections.wallet_group_members.find({ group_id: Number(groupId) }).toArray();
     const walletIds = members.map(m => m.wallet_id);
-    return collections.wallets.find({ id: { $in: walletIds }, telegram_id: { $in: ['', _tid()] } }).toArray();
+    return collections.wallets.find({ id: { $in: walletIds }, telegram_id: _tid() || 'NONE' }).toArray();
   }
   return sqliteDb.prepare('SELECT w.* FROM wallets w JOIN wallet_group_members wgm ON wgm.wallet_id = w.id WHERE wgm.group_id = ?' + _tidFilter('w.telegram_id')).all(Number(groupId), ...(_tid() ? [_tid()] : []));
 }
@@ -432,12 +427,12 @@ export async function updateSignal(id, data) {
   if (sets.length) sqliteDb.prepare(`UPDATE signals SET ${sets.join(',')} WHERE id=?`).run(...vals, Number(id));
 }
 export async function getRecentSignals(limit) {
-  if (!sqliteMode && mdb) return collections.signals.find({ telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).limit(limit).toArray();
+  if (!sqliteMode && mdb) return collections.signals.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).limit(limit).toArray();
   return sqliteDb.prepare('SELECT * FROM signals WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC LIMIT ?').all(...(_tid() ? [_tid()] : []), limit);
 }
 export async function getSignalCountToday() {
   const start = sqliteNow() - 86400;
-  if (!sqliteMode && mdb) return collections.signals.countDocuments({ created_at: { $gte: start }, telegram_id: { $in: ['', _tid()] } });
+  if (!sqliteMode && mdb) return collections.signals.countDocuments({ created_at: { $gte: start }, telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT COUNT(*) as cnt FROM signals WHERE created_at >= ?' + _tidFilter()).get(start, ...(_tid() ? [_tid()] : [])).cnt;
 }
 
@@ -469,20 +464,20 @@ export async function createTrade(data) {
   return Number(info.lastInsertRowid);
 }
 export async function getOpenTrades() {
-  if (!sqliteMode && mdb) return collections.trades.find({ status: 'open', telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).toArray();
+  if (!sqliteMode && mdb) return collections.trades.find({ status: 'open', telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).toArray();
   return sqliteDb.prepare("SELECT * FROM trades WHERE status = 'open'" + _tidFilter() + " ORDER BY created_at DESC").all(...(_tid() ? [_tid()] : []));
 }
 export async function getTradeHistory(limit) {
-  if (!sqliteMode && mdb) return collections.trades.find({ telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).limit(limit).toArray();
+  if (!sqliteMode && mdb) return collections.trades.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).limit(limit).toArray();
   return sqliteDb.prepare('SELECT * FROM trades WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC LIMIT ?').all(...(_tid() ? [_tid()] : []), limit);
 }
 export async function getTrade(id) {
-  if (!sqliteMode && mdb) return collections.trades.findOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } });
+  if (!sqliteMode && mdb) return collections.trades.findOne({ id: Number(id), telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT * FROM trades WHERE id = ?' + _tidFilter()).get(Number(id), ...(_tid() ? [_tid()] : [])) || null;
 }
 export async function closeTrade(id, data) {
   if (!sqliteMode && mdb) {
-    await collections.trades.updateOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }, { $set: { status: 'closed', closed_at: sqliteNow(), ...data } });
+    await collections.trades.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: { status: 'closed', closed_at: sqliteNow(), ...data } });
     return;
   }
   sqliteDb.prepare("UPDATE trades SET status='closed', closed_at=?, sell_amount_sol=?, sell_price=?, sell_price_usd=?, sell_tx=?, sell_order_id=? WHERE id=?" + _tidFilter()).run(
@@ -490,7 +485,7 @@ export async function closeTrade(id, data) {
   );
 }
 export async function updateTrade(id, data) {
-  if (!sqliteMode && mdb) { await collections.trades.updateOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }, { $set: data }); return; }
+  if (!sqliteMode && mdb) { await collections.trades.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: data }); return; }
   const keys = Object.keys(data);
   sqliteDb.prepare(`UPDATE trades SET ${keys.map(k => `${k}=?`).join(',')} WHERE id=?` + _tidFilter()).run(...keys.map(k => data[k]), Number(id), ...(_tid() ? [_tid()] : []));
 }
@@ -517,20 +512,20 @@ export async function saveStrategyOrder(data) {
   return Number(info.lastInsertRowid);
 }
 export async function getStrategyOrders() {
-  if (!sqliteMode && mdb) return collections.strategy_orders.find({ telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).toArray();
+  if (!sqliteMode && mdb) return collections.strategy_orders.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).toArray();
   return sqliteDb.prepare('SELECT * FROM strategy_orders WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC').all(...(_tid() ? [_tid()] : []));
 }
 export async function getActiveStrategyOrders() {
-  if (!sqliteMode && mdb) return collections.strategy_orders.find({ status: 'active', telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).toArray();
+  if (!sqliteMode && mdb) return collections.strategy_orders.find({ status: 'active', telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).toArray();
   return sqliteDb.prepare("SELECT * FROM strategy_orders WHERE status = 'active'" + _tidFilter() + " ORDER BY created_at DESC").all(...(_tid() ? [_tid()] : []));
 }
 export async function updateStrategyOrder(id, data) {
-  if (!sqliteMode && mdb) { await collections.strategy_orders.updateOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }, { $set: data }); return; }
+  if (!sqliteMode && mdb) { await collections.strategy_orders.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: data }); return; }
   const keys = Object.keys(data);
   sqliteDb.prepare(`UPDATE strategy_orders SET ${keys.map(k => `${k}=?`).join(',')} WHERE id=?` + _tidFilter()).run(...keys.map(k => data[k]), Number(id), ...(_tid() ? [_tid()] : []));
 }
 export async function cancelStrategyOrderLocal(id) {
-  if (!sqliteMode && mdb) { await collections.strategy_orders.updateOne({ id: Number(id), telegram_id: { $in: ['', _tid()] } }, { $set: { status: 'cancelled' } }); return; }
+  if (!sqliteMode && mdb) { await collections.strategy_orders.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: { status: 'cancelled' } }); return; }
   sqliteDb.prepare("UPDATE strategy_orders SET status = 'cancelled' WHERE id = ?" + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
 }
 
@@ -548,13 +543,13 @@ export async function addScraperLog(ch, level, msg) {
   } catch (e) { console.error('[DB] addScraperLog error:', e.message); }
 }
 export async function getScraperLogs(limit) {
-  if (!sqliteMode && mdb) return collections.scraper_logs.find({ telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).limit(limit).toArray();
+  if (!sqliteMode && mdb) return collections.scraper_logs.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).limit(limit).toArray();
   return sqliteDb.prepare('SELECT * FROM scraper_log WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC LIMIT ?').all(...(_tid() ? [_tid()] : []), limit);
 }
 export async function getScraperStatus() {
   if (!sqliteMode && mdb) {
-    const last = await collections.scraper_logs.find({ telegram_id: { $in: ['', _tid()] } }).sort({ created_at: -1 }).limit(1).toArray();
-    const total = await collections.scraper_logs.countDocuments({ telegram_id: { $in: ['', _tid()] } });
+    const last = await collections.scraper_logs.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).limit(1).toArray();
+    const total = await collections.scraper_logs.countDocuments({ telegram_id: _tid() || 'NONE' });
     return { lastLog: last[0] || null, totalLogs: total };
   }
   const last = sqliteDb.prepare('SELECT * FROM scraper_log WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC LIMIT 1').get(...(_tid() ? [_tid()] : []));
