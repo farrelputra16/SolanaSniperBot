@@ -464,6 +464,17 @@ export function createWebServer() {
     s.has_gmgn_private_key_usr = !!userPk;
     res.json(s);
   });
+  // ───── Test GMGN Connection ─────
+  app.post('/api/test-gmgn', async (req, res) => {
+    try {
+      const g = await gmgn.createUserClient(req.telegramId);
+      const result = await g.getTokenInfo('sol', 'So11111111111111111111111111111111111111112');
+      res.json({ ok: true, data: result });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
   app.post('/api/settings', async (req, res) => {
     for (const [k, v] of Object.entries(req.body)) {
       if (k.startsWith('usr_')) {
@@ -504,8 +515,10 @@ export function createWebServer() {
   // ───── Setup ─────
   app.get('/api/setup', async (req, res) => {
     const [ch, w] = await Promise.all([db.getActiveChannels(), db.getAllWallets()]);
+    const userKey = req.telegramId ? await db.getUserSetting('gmgn_api_key_usr', '', req.telegramId) : null;
+    const userPk = req.telegramId ? await db.getUserSetting('gmgn_private_key_usr', '', req.telegramId) : null;
     res.json({
-      gmgnConfigured: !!config.gmgn.apiKey && !!config.gmgn.privateKey,
+      gmgnConfigured: (!!config.gmgn.apiKey && !!config.gmgn.privateKey) || (!!userKey && !!userPk),
       hasChannels: ch.length > 0,
       hasWallets: w.length > 0,
     });

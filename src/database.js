@@ -566,7 +566,7 @@ export async function getUserSetting(key, dv = null, forTelegramId = null) {
 }
 export async function setUserSetting(key, value, forTelegramId = null) {
   const tid = forTelegramId || _tid();
-  if (!tid) return;
+  if (tid == null) return;
   if (!sqliteMode && mdb) { await collections.settings.updateOne({ key, telegram_id: tid }, { $set: { key, value: String(value), telegram_id: tid } }, { upsert: true }); return; }
   sqliteDb.prepare('DELETE FROM settings WHERE key = ? AND telegram_id = ?').run(key, tid);
   sqliteDb.prepare('INSERT INTO settings (key, value, telegram_id) VALUES (?,?,?)').run(key, String(value), tid);

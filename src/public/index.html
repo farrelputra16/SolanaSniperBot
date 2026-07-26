@@ -906,7 +906,7 @@ async function renderSettings(){
       <div class="form-group"><label>Your API Key</label><input id="s-gmgn-key" value="${settings.gmgn_api_key_usr||''}" placeholder="Leave empty to use server default" style="font-family:var(--font-mono);font-size:0.7rem"/></div>
       <div class="form-group"><label>Your Private Key</label><input id="s-gmgn-pk" type="password" placeholder="${settings.has_gmgn_private_key_usr?'***** (set)':'Set your private key'}" style="font-family:var(--font-mono);font-size:0.7rem"/></div>
     </div>
-    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveGmgnKeys()">Save GMGN Keys</button></div>
+    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveGmgnKeys()">Save GMGN Keys</button> <button class="btn btn-sm" onclick="testGmgn()">Test Connection</button></div>
   </div></div>
   <div class="shell"><div class="core"><div class="card-h"><h3>Status</h3></div>
     <div style="display:grid;gap:0.3rem">${[
@@ -920,11 +920,12 @@ async function renderSettings(){
   <div class="text-sm text-muted">${tg.connected?'Connected and listening.':(tg.hasSession?'Session saved but not connected.':'No Telegram session.')}</div>
 </div></div>
 <div class="shell"><div class="core"><div class="card-h"><h3>Environment</h3></div>
-    <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key||'Not set'}</span></div>
+    <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key_usr||settings.gmgn_api_key||'Not set'}</span></div>
 </div></div>`;}
 
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
 window.saveGmgnKeys=async function(){const key=$('#s-gmgn-key').value.trim();const pk=$('#s-gmgn-pk').value.trim();const body={};if(key)body.usr_gmgn_api_key=key;if(pk)body.usr_gmgn_private_key=pk;if(!key&&!pk)return toast('Enter at least one key','err');await api('/settings',{method:'POST',body:JSON.stringify(body)});toast('GMGN keys saved','ok');renderPage('settings')};
+window.testGmgn=async function(){const btn=event.target;btn.disabled=true;btn.textContent='Testing...';try{const r=await api('/test-gmgn',{method:'POST'});if(r.ok){toast('GMGN OK! '+JSON.stringify(r.data?.data?.symbol||'connected'),'ok')}else{toast('Failed: '+(r.error||'unknown'),'err')}}catch(e){toast('Error: '+e.message,'err')}finally{btn.disabled=false;btn.textContent='Test Connection'}};
 window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'POST'});toast('Disconnected','info');renderPage('settings')};
 
 // ═══ LOGIN ───
