@@ -584,10 +584,7 @@ export async function setUserSetting(key, value, forTelegramId = null) {
 // ───── Settings (global) ─────
 export async function getAllSettings() {
   if (!sqliteMode && mdb) {
-    const docs = await collections.settings.find({ telegram_id: { $exists: false } }).toArray();
-    const s = {};
-    for (const d of docs) s[d.key] = d.value;
-    return s;
+    return await collections.settings.find({ $or: [{ telegram_id: { $exists: false } }, { telegram_id: null }] }).toArray();
   }
   return sqliteDb.prepare('SELECT * FROM settings WHERE telegram_id IS NULL').all();
 }
