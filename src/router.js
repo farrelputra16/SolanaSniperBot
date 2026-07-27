@@ -74,8 +74,15 @@ function parseTokenData(info, security, chain, address, sourceChannel, text, dex
 
 async function processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0) {
   const matchingRules = allRules.filter(r => r.channel_username === sourceChannel);
-  
-  // Save signal IMMEDIATELY — minimal data, appears on dashboard right away
+  const blindRules = matchingRules.filter(r => r.blind_buy);
+  const normalRules = matchingRules.filter(r => !r.blind_buy && r.auto_buy);
+
+  // BLIND BUY: swap IMMEDIATELY before ANY async I/O — zero delay
+  for (const rule of blindRules) {
+    executeAutoBuy(address, chain, rule, sourceChannel, t0);
+  }
+
+  // Save signal — appears on dashboard
   const now = Math.floor(Date.now() / 1000);
   const placeholder = { token_address: address, token_symbol: '', chain, source_channel: sourceChannel, source_text: text, price: 0, market_cap: 0, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
   const signalId = await db.saveSignal(placeholder).catch(() => null);
@@ -86,7 +93,8 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     sender_username: senderUsername, created_at: now,
   });
 
-  for (const rule of matchingRules) {
+  // Normal auto-buys (fire-and-forget, data fetched below)
+  for (const rule of normalRules) {
     executeAutoBuy(address, chain, rule, sourceChannel, t0);
   }
 

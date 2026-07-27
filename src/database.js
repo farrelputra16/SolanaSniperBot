@@ -108,6 +108,7 @@ export async function initDatabase() {
   ]) { try { sqliteDb.exec(sql); } catch {} }
   try { sqliteDb.exec("ALTER TABLE wallets ADD COLUMN private_key TEXT DEFAULT ''"); } catch {}
   try { sqliteDb.exec("ALTER TABLE settings ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE rules ADD COLUMN blind_buy INTEGER DEFAULT 0"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -205,6 +206,7 @@ export async function upsertChannelRule(data) {
       min_liquidity: data.min_liquidity ?? null,
       max_liquidity: data.max_liquidity ?? null,
       auto_buy: data.auto_buy ? 1 : 0,
+      blind_buy: data.blind_buy ? 1 : 0,
       buy_amount_sol: data.buy_amount_sol ?? 0.01,
       slippage: data.slippage ?? 30,
       anti_mev: data.anti_mev ? 1 : 0,
@@ -226,21 +228,21 @@ export async function upsertChannelRule(data) {
   const tpStr = JSON.stringify(data.tp_levels || []);
   if (existing) {
     sqliteDb.prepare(`UPDATE rules SET min_market_cap=?, max_market_cap=?, min_liquidity=?, max_liquidity=?,
-      auto_buy=?, buy_amount_sol=?, slippage=?, anti_mev=?,
+      auto_buy=?, blind_buy=?, buy_amount_sol=?, slippage=?, anti_mev=?,
       take_profit_percent=?, stop_loss_percent=?, tp_levels=?, priority_fee=?, tip_fee=?,
       wallet_group_id=?, track_only=?, telegram_id=? WHERE id=?`).run(
       data.min_market_cap ?? null, data.max_market_cap ?? null, data.min_liquidity ?? null, data.max_liquidity ?? null,
-      data.auto_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
+      data.auto_buy ? 1 : 0, data.blind_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
       data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr,
       data.priority_fee ?? null, data.tip_fee ?? null, data.wallet_group_id || 0,
       data.track_only ? 1 : 0, _tid(), existing.id);
   } else {
     sqliteDb.prepare(`INSERT INTO rules (channel_id, min_market_cap, max_market_cap, min_liquidity, max_liquidity,
-      auto_buy, buy_amount_sol, slippage, anti_mev, take_profit_percent, stop_loss_percent,
+      auto_buy, blind_buy, buy_amount_sol, slippage, anti_mev, take_profit_percent, stop_loss_percent,
       tp_levels, priority_fee, tip_fee, wallet_group_id, track_only, telegram_id)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       channelId, data.min_market_cap ?? null, data.max_market_cap ?? null, data.min_liquidity ?? null, data.max_liquidity ?? null,
-      data.auto_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
+      data.auto_buy ? 1 : 0, data.blind_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
       data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr,
       data.priority_fee ?? null, data.tip_fee ?? null, data.wallet_group_id || 0,
       data.track_only ? 1 : 0, _tid());
@@ -252,7 +254,7 @@ export async function deleteRule(id) {
 }
 export async function getAutoBuyRules() {
   if (!sqliteMode && mdb) {
-    const rules = await collections.rules.find({ auto_buy: 1, telegram_id: _tid() || 'NONE' }).toArray();
+    const rules = await collections.rules.find({ $or: [{ auto_buy: 1 }, { blind_buy: 1 }], telegram_id: _tid() || 'NONE' }).toArray();
     const results = [];
     for (const r of rules) {
       const ch = await collections.channels.findOne({ id: r.channel_id, telegram_id: _tid() || 'NONE' });
@@ -260,7 +262,7 @@ export async function getAutoBuyRules() {
     }
     return results;
   }
-  return sqliteDb.prepare('SELECT r.*, c.channel_username FROM rules r JOIN channels c ON c.id = r.channel_id WHERE r.auto_buy = 1' + _tidFilter('c.telegram_id')).all(...(_tid() ? [_tid()] : []));
+  return sqliteDb.prepare("SELECT r.*, c.channel_username FROM rules r JOIN channels c ON c.id = r.channel_id WHERE (r.auto_buy = 1 OR r.blind_buy = 1)" + _tidFilter('c.telegram_id')).all(...(_tid() ? [_tid()] : []));
 }
 
 // ───── Wallets ─────

@@ -507,7 +507,8 @@ function renderChannelCard(c){
   if(r.take_profit_percent)chips.push(`TP:${r.take_profit_percent}%`);
   if(r.stop_loss_percent)chips.push(`SL:${r.stop_loss_percent}%`);
   if(tpStr)chips.push(tpStr);
-  if(r.auto_buy)chips.push(`&bull; ${r.buy_amount_sol||0.01}SOL`);
+  if(r.blind_buy)chips.push(`<span style="color:var(--red);font-weight:700">BLIND</span> ${r.buy_amount_sol||0.01}SOL`);
+  else if(r.auto_buy)chips.push(`&bull; ${r.buy_amount_sol||0.01}SOL`);
   if(r.priority_fee)chips.push(`Fee:${r.priority_fee}`);
   if(r.wallet_group_id>0)chips.push(`Group#${r.wallet_group_id}`);
 
@@ -554,7 +555,7 @@ window.openChannelForm=async function(id){
   <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/></div>
 </div>
 <h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Filters</h3>
-<div class="form-grid">
+<div class="form-grid filter-fields" style="${r.blind_buy?'opacity:0.3':''}">
   <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Max Market Cap ($)</label><input id="f-max-mc" type="number" value="${r.max_market_cap||''}" placeholder="Any"/></div>
   <div class="form-group"><label>Min Liquidity ($)</label><input id="f-min-liq" type="number" value="${r.min_liquidity||''}" placeholder="Any"/></div>
@@ -580,9 +581,10 @@ window.openChannelForm=async function(id){
 <div class="form-grid">
   <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select></div>
 </div>
-<label class="cb"><input type="checkbox" id="f-auto" ${r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'"/> Enable Auto-Buy</label>
-<div id="autobuy-fields" style="display:${r.auto_buy?'block':'none'}" class="mt-8">
-  <p class="text-sm text-muted">Auto-buy executes when signal passes filters.</p>
+<label class="cb"><input type="checkbox" id="f-blind" ${r.blind_buy?'checked':''} onchange="if(this.checked){$('#f-auto').checked=true;$('#f-auto').disabled=true;this.closest('.core').querySelectorAll('.filter-fields').forEach(e=>e.style.opacity='0.3')}else{$('#f-auto').disabled=false;$('#f-auto').checked=false;this.closest('.core').querySelectorAll('.filter-fields').forEach(e=>e.style.opacity='1')}"/> Blind Buy (skip all filters, buy immediately)</label>
+<label class="cb mt-8"><input type="checkbox" id="f-auto" ${r.blind_buy||r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'" ${r.blind_buy?'disabled':''}/> Enable Auto-Buy</label>
+<div id="autobuy-fields" style="display:${(r.blind_buy||r.auto_buy)?'block':'none'}" class="mt-8">
+  <p class="text-sm text-muted">Auto-buy executes when signal passes filters. Blind buy ignores all filters.</p>
 </div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitChannelForm(${isEdit?ch.id:'null'})">${isEdit?'Update':'Save'}</button></div>`);
 }
@@ -633,6 +635,7 @@ window.submitChannelForm=async function(id){
     tp_levels:tps,
     wallet_group_id:parseInt($('#f-wg').value)||0,
     auto_buy:$('#f-auto').checked,
+    blind_buy:$('#f-blind').checked,
     track_only:$('#f-track').checked,
   })});
   closeModal();toast(isNew?'Channel added':'Channel updated','ok');renderPage('channels');
