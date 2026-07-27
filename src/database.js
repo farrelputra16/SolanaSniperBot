@@ -128,7 +128,7 @@ async function nextId(seqName) {
 
 function _tidFilter(col = 'telegram_id') {
   const tid = _tid();
-  if (!tid) return ' AND 1=0'; // No telegram_id → no results
+  if (!tid) return ` AND ${col} = 'NONE'`; // Guest → match 'NONE' sentinel
   return ` AND ${col} = ?`;
 }
 
@@ -154,7 +154,7 @@ export async function addChannel(username, displayName) {
     try { await collections.channels.insertOne({ id, channel_username: username, display_name: displayName || username, active: 1, added_at: sqliteNow(), telegram_id: _tid() || 'NONE' }); } catch (e) { if (e.code !== 11000) throw e; }
     return;
   }
-  try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid()); } catch {}
+  try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid() || 'NONE'); } catch {}
 }
 export async function removeChannel(id) {
   if (!sqliteMode && mdb) { await collections.channels.deleteOne({ id: Number(id), telegram_id: _tid() || 'NONE' }); await collections.rules.deleteOne({ channel_id: Number(id), telegram_id: _tid() || 'NONE' }); return; }
@@ -236,7 +236,7 @@ export async function upsertChannelRule(data) {
       data.auto_buy ? 1 : 0, data.blind_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
       data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr,
       data.priority_fee ?? null, data.tip_fee ?? null, data.wallet_group_id || 0,
-      data.track_only ? 1 : 0, _tid(), existing.id);
+      data.track_only ? 1 : 0, _tid() || 'NONE', existing.id);
   } else {
     sqliteDb.prepare(`INSERT INTO rules (channel_id, min_market_cap, max_market_cap, min_liquidity, max_liquidity,
       auto_buy, blind_buy, buy_amount_sol, slippage, anti_mev, take_profit_percent, stop_loss_percent,
@@ -246,7 +246,7 @@ export async function upsertChannelRule(data) {
       data.auto_buy ? 1 : 0, data.blind_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
       data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr,
       data.priority_fee ?? null, data.tip_fee ?? null, data.wallet_group_id || 0,
-      data.track_only ? 1 : 0, _tid());
+      data.track_only ? 1 : 0, _tid() || 'NONE');
   }
 }
 export async function deleteRule(id) {
@@ -289,7 +289,7 @@ export async function addWallet(address, label, privateKey) {
     return;
   }
   const ex = sqliteDb.prepare('SELECT id FROM wallets WHERE 1=1' + _tidFilter()).get(...(_tid() ? [_tid()] : []));
-  sqliteDb.prepare('INSERT OR IGNORE INTO wallets (address, label, private_key, active, telegram_id) VALUES (?,?,?,?,?)').run(address, label || '', privateKey || '', ex ? 0 : 1, _tid());
+  sqliteDb.prepare('INSERT OR IGNORE INTO wallets (address, label, private_key, active, telegram_id) VALUES (?,?,?,?,?)').run(address, label || '', privateKey || '', ex ? 0 : 1, _tid() || 'NONE');
 }
 export async function importWallets(wallets) {
   if (!sqliteMode && mdb) {
@@ -309,7 +309,7 @@ export async function importWallets(wallets) {
   const ex = sqliteDb.prepare('SELECT id FROM wallets WHERE 1=1' + _tidFilter()).get(...(_tid() ? [_tid()] : []));
   const stmt = sqliteDb.prepare('INSERT OR IGNORE INTO wallets (address, label, private_key, active, telegram_id) VALUES (?,?,?,?,?)');
   for (let i = 0; i < wallets.length; i++) {
-    stmt.run(wallets[i].address, wallets[i].label || '', wallets[i].private_key || '', (ex && i > 0) ? 0 : 1, _tid());
+    stmt.run(wallets[i].address, wallets[i].label || '', wallets[i].private_key || '', (ex && i > 0) ? 0 : 1, _tid() || 'NONE');
   }
 }
 export async function removeWallet(id) {
@@ -357,7 +357,7 @@ export async function createWalletGroup(name, description) {
     await collections.wallet_groups.insertOne({ id, name, description: description || '', telegram_id: _tid() || 'NONE' });
     return id;
   }
-  sqliteDb.prepare('INSERT INTO wallet_groups (name, description, telegram_id) VALUES (?,?,?)').run(name, description || '', _tid());
+  sqliteDb.prepare('INSERT INTO wallet_groups (name, description, telegram_id) VALUES (?,?,?)').run(name, description || '', _tid() || 'NONE');
   return sqliteDb.prepare('SELECT last_insert_rowid() as id').get().id;
 }
 export async function deleteWalletGroup(id) {
@@ -405,7 +405,7 @@ export async function saveSignal(data) {
     data.source_channel, data.source_text || '', data.price || 0, data.market_cap || 0,
     data.liquidity || 0, data.volume_24h || 0, data.rug_ratio ?? -1, data.smart_degen_count || 0,
     data.bundler_rate || 0, data.top10_rate || 0, data.creator_status || '', data.is_honeypot || '',
-    data.sender_username || '', data.latency_ms || 0, _tid(), sqliteNow()
+    data.sender_username || '', data.latency_ms || 0, _tid() || 'NONE', sqliteNow()
   );
   return Number(info.lastInsertRowid);
 }
@@ -471,7 +471,7 @@ export async function createTrade(data) {
   const info = sqliteDb.prepare(`INSERT INTO trades (signal_id,wallet_address,token_address,token_symbol,chain,buy_amount_sol,buy_price,buy_price_usd,buy_order_id,signal_latency_ms,buy_latency_ms,telegram_id,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     data.signal_id, data.wallet_address, data.token_address, data.token_symbol, data.chain,
     data.buy_amount_sol, data.buy_price, data.buy_price_usd, data.buy_order_id,
-    data.signal_latency_ms || 0, data.buy_latency_ms || 0, _tid(),
+    data.signal_latency_ms || 0, data.buy_latency_ms || 0, _tid() || 'NONE',
     data.status || 'open', sqliteNow()
   );
   return Number(info.lastInsertRowid);
@@ -521,7 +521,7 @@ export async function saveStrategyOrder(data) {
   const info = sqliteDb.prepare(`INSERT INTO strategy_orders (trade_id,wallet_address,token_address,token_symbol,chain,order_type,sub_order_type,check_price,amount_in_percent,group_tag,remote_order_id,status,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     data.trade_id, data.wallet_address, data.token_address, data.token_symbol, data.chain,
     data.order_type, data.sub_order_type, data.check_price, data.amount_in_percent || 100,
-    data.group_tag, data.remote_order_id, data.status || 'active', _tid(), sqliteNow()
+    data.group_tag, data.remote_order_id, data.status || 'active', _tid() || 'NONE', sqliteNow()
   );
   return Number(info.lastInsertRowid);
 }
@@ -553,7 +553,7 @@ export async function addScraperLog(ch, level, msg) {
       });
       return;
     }
-    sqliteDb.prepare('INSERT INTO scraper_log (channel_username, level, message, telegram_id, created_at) VALUES (?,?,?,?,?)').run(String(ch || ''), String(level || 'info'), String(msg || ''), _tid(), sqliteNow());
+    sqliteDb.prepare('INSERT INTO scraper_log (channel_username, level, message, telegram_id, created_at) VALUES (?,?,?,?,?)').run(String(ch || ''), String(level || 'info'), String(msg || ''), _tid() || 'NONE', sqliteNow());
   } catch (e) { console.error('[DB] addScraperLog error:', e.message); }
 }
 export async function getScraperLogs(limit) {
