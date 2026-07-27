@@ -392,7 +392,8 @@ export async function saveSignal(data) {
       rug_ratio: data.rug_ratio ?? -1, smart_degen_count: data.smart_degen_count || 0,
       bundler_rate: data.bundler_rate || 0, top10_rate: data.top10_rate || 0,
       creator_status: data.creator_status || '', is_honeypot: data.is_honeypot || '',
-      sender_username: data.sender_username || '', created_at: sqliteNow()
+      sender_username: data.sender_username || '', created_at: sqliteNow(),
+      telegram_id: _tid()
     });
     return r.insertedId?.toString ? r.insertedId.toString() : null;
   }
@@ -458,7 +459,8 @@ export async function createTrade(data) {
       source_channel: data.source_channel || '',
       status: data.status || 'open', pnl: null, pnl_percent: null,
       sell_amount_sol: null, sell_price: null, sell_price_usd: null, sell_tx: null,
-      sell_order_id: null, closed_at: null, created_at: sqliteNow()
+      sell_order_id: null, closed_at: null, created_at: sqliteNow(),
+      telegram_id: _tid()
     });
     return res.insertedId.toString();
   }
