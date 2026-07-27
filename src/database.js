@@ -62,7 +62,7 @@ export async function initDatabase() {
           try { await c.dropIndex('id_1'); } catch {}
           continue;
         }
-        try { await c.createIndex('id', { unique: true }); } catch {}
+        try { await c.createIndex('id', { unique: true, sparse: true }); } catch {}
       }
       try { await collections.channels.createIndex({ channel_username: 1 }, { unique: true, sparse: true }); } catch {}
       try { await collections.signals.createIndex({ created_at: -1 }); } catch {}
@@ -150,7 +150,8 @@ export async function getAllChannels() {
 }
 export async function addChannel(username, displayName) {
   if (!sqliteMode && mdb) {
-    try { await collections.channels.insertOne({ channel_username: username, display_name: displayName || username, active: 1, added_at: sqliteNow(), telegram_id: _tid() || 'NONE' }); } catch (e) { if (e.code !== 11000) throw e; }
+    const id = await nextId('channels');
+    try { await collections.channels.insertOne({ id, channel_username: username, display_name: displayName || username, active: 1, added_at: sqliteNow(), telegram_id: _tid() || 'NONE' }); } catch (e) { if (e.code !== 11000) throw e; }
     return;
   }
   try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid()); } catch {}
@@ -221,7 +222,7 @@ export async function upsertChannelRule(data) {
     };
     const existing = await collections.rules.findOne({ channel_id: channelId, telegram_id: _tid() || 'NONE' });
     if (existing) await collections.rules.updateOne({ _id: existing._id }, { $set: doc });
-    else await collections.rules.insertOne(doc);
+    else { doc.id = await nextId('rules'); await collections.rules.insertOne(doc); }
     return;
   }
   const existing = sqliteDb.prepare('SELECT id FROM rules WHERE channel_id = ?' + _tidFilter()).get(channelId, ...(_tid() ? [_tid()] : []));
@@ -278,9 +279,10 @@ export async function getActiveWallet() {
 export async function addWallet(address, label, privateKey) {
   if (!sqliteMode && mdb) {
     const existing = await collections.wallets.findOne({ telegram_id: _tid() || 'NONE' });
+    const id = await nextId('wallets');
     try {
       await collections.wallets.insertOne({
-        address, label: label || '', private_key: privateKey || '',
+        id, address, label: label || '', private_key: privateKey || '',
         active: existing ? 0 : 1, created_at: sqliteNow(), telegram_id: _tid() || 'NONE'
       });
     } catch (e) { if (e.code !== 11000) throw e; }
@@ -293,9 +295,10 @@ export async function importWallets(wallets) {
   if (!sqliteMode && mdb) {
     const existing = await collections.wallets.findOne({ telegram_id: _tid() || 'NONE' });
     for (let i = 0; i < wallets.length; i++) {
+      const id = await nextId('wallets');
       try {
         await collections.wallets.insertOne({
-          address: wallets[i].address, label: wallets[i].label || '',
+          id, address: wallets[i].address, label: wallets[i].label || '',
           private_key: wallets[i].private_key || '',
           active: (!existing && i === 0) ? 1 : 0, created_at: sqliteNow(), telegram_id: _tid() || 'NONE'
         });
@@ -447,8 +450,9 @@ export async function getSignalCountToday() {
 // ───── Trades ─────
 export async function createTrade(data) {
   if (!sqliteMode && mdb) {
+    const id = await nextId('trades');
     const res = await collections.trades.insertOne({
-      signal_id: data.signal_id || null,
+      id, signal_id: data.signal_id || null,
       wallet_address: data.wallet_address || '', token_address: data.token_address || '',
       token_symbol: data.token_symbol || '', chain: data.chain || 'sol',
       buy_amount_sol: data.buy_amount_sol || 0, buy_price: data.buy_price || 0,
@@ -502,8 +506,9 @@ export async function updateTrade(id, data) {
 // ───── Strategy Orders ─────
 export async function saveStrategyOrder(data) {
   if (!sqliteMode && mdb) {
+    const id = await nextId('strategy_orders');
     const res = await collections.strategy_orders.insertOne({
-      trade_id: data.trade_id || null, wallet_address: data.wallet_address || '',
+      id, trade_id: data.trade_id || null, wallet_address: data.wallet_address || '',
       token_address: data.token_address || '', token_symbol: data.token_symbol || '',
       chain: data.chain || 'sol', order_type: data.order_type || '',
       sub_order_type: data.sub_order_type || '', check_price: data.check_price || 0,
@@ -594,7 +599,7 @@ export async function getAllSettings() {
   if (!sqliteMode && mdb) {
     return await collections.settings.find({ $or: [{ telegram_id: { $exists: false } }, { telegram_id: null }] }).toArray();
   }
-  return sqliteDb.prepare('SELECT * FROM settings WHERE telegram_id IS NULL').all();
+  return sqliteDb.prepare("SELECT * FROM settings WHERE telegram_id IS NULL OR telegram_id = ''").all();
 }
 export async function getSetting(key, dv = null) {
   if (!sqliteMode && mdb) { const d = await collections.settings.findOne({ key }); return d ? d.value : dv; }

@@ -150,18 +150,19 @@ function forwardSignal(sourceChannel, address, data, text, error) {
 
 function resolveWallets(rule) {
   if (rule.wallet_group_id && rule.wallet_group_id > 0) {
-    return getCachedWallet(`group:${rule.wallet_group_id}`, () => db.getGroupWallets(rule.wallet_group_id));
+    return Promise.resolve(getCachedWallet(`group:${rule.wallet_group_id}`, () => db.getGroupWallets(rule.wallet_group_id)));
   }
   if (rule.wallet_group_id && rule.wallet_group_id < 0) {
-    return getCachedWallet(`wallet:${Math.abs(rule.wallet_group_id)}`, () => db.getWallet(Math.abs(rule.wallet_group_id)))
+    return Promise.resolve(getCachedWallet(`wallet:${Math.abs(rule.wallet_group_id)}`, () => db.getWallet(Math.abs(rule.wallet_group_id))))
       .then(w => w ? [w] : []);
   }
-  return getCachedWallet('active', () => db.getActiveWallet())
+  return Promise.resolve(getCachedWallet('active', () => db.getActiveWallet()))
     .then(w => w ? [w] : []);
 }
 
 async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
-  if (!rule.auto_buy || rule.track_only) return;
+  if (!rule.auto_buy && !rule.blind_buy) return;
+  if (rule.track_only) return;
 
   const wallets = await resolveWallets(rule);
   if (wallets.length === 0) {

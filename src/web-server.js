@@ -718,7 +718,9 @@ export function startWebServer(app) {
   });
   const cleanup = setInterval(() => {
     const now = Date.now();
-    for (const [k, v] of SESSIONS) if (v < now) SESSIONS.delete(k);
+    for (const [k, v] of SESSIONS) {
+      if (typeof v === 'object' ? v.expires < now : v < now) SESSIONS.delete(k);
+    }
   }, 60000);
   const shut = () => { clearInterval(cleanup); SESSIONS.clear(); server.close(); process.exit(0); };
   process.on('SIGINT', shut);
