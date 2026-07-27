@@ -47,14 +47,18 @@ function signMessage(message, privateKey) {
   return sig.toString('base64');
 }
 
+const _credsCache = new Map();
+const CREDS_CACHE_TTL = 15000;
+
 export async function getUserCredentials(telegramId) {
   if (telegramId == null) return { apiKey: envApiKey, privateKey: envPrivateKey };
+  const cached = _credsCache.get(telegramId);
+  if (cached && Date.now() - cached.ts < CREDS_CACHE_TTL) return cached.data;
   const userKey = await db.getUserSetting('gmgn_api_key_usr', '', telegramId);
   const userPk = await db.getUserSetting('gmgn_private_key_usr', '', telegramId);
-  return {
-    apiKey: userKey || envApiKey,
-    privateKey: userPk || envPrivateKey,
-  };
+  const data = { apiKey: userKey || envApiKey, privateKey: userPk || envPrivateKey };
+  _credsCache.set(telegramId, { data, ts: Date.now() });
+  return data;
 }
 
 async function request(method, path, params = {}, body = null, signed = false, overrideCreds = null) {
@@ -153,13 +157,52 @@ export async function getNewPairs(chain = 'sol', limit = 50) {
   return request('GET', '/defi/v1/token/new_pairs', { chain, limit });
 }
 
+// ───── Token Cache (30s TTL) ─────
+const _tokenCache = new Map();
+const TOKEN_CACHE_TTL = 30000;
+
+function getCachedToken(chain, address) {
+  const key = `${chain}:${address}`;
+  const hit = _tokenCache.get(key);
+  if (hit) {
+    if (Date.now() - hit.ts < TOKEN_CACHE_TTL) {
+      hit.revalidating = true;
+      return hit.data;
+    }
+    if (hit.revalidating) return hit.data;
+  }
+  return null;
+}
+
+function setCachedToken(chain, address, data) {
+  const key = `${chain}:${address}`;
+  const existing = _tokenCache.get(key);
+  if (existing && existing.revalidating) {
+    existing.data = data;
+    existing.ts = Date.now();
+    existing.revalidating = false;
+    return;
+  }
+  _tokenCache.set(key, { data, ts: Date.now(), revalidating: false });
+}
+
 // ───── Token Data ─────
 export async function getTokenInfo(chain, address) {
-  return request('GET', '/v1/token/info', { chain, address });
+  const cached = getCachedToken(chain, address);
+  if (cached && cached.info) return cached.info;
+  const data = await request('GET', '/v1/token/info', { chain, address });
+  const existing = getCachedToken(chain, address);
+  setCachedToken(chain, address, { ...existing, info: data });
+  return data;
 }
 
 export async function getTokenSecurity(chain, address) {
-  return request('GET', '/v1/token/security', { chain, address });
+  const cached = getCachedToken(chain, address);
+  if (cached && cached.security) return cached.security;
+  const data = await request('GET', '/v1/token/security', { chain, address });
+  const existing = getCachedToken(chain, address);
+  setCachedToken(chain, address, { ...existing, security: data });
+  return data;
 }
 
 export async function getTokenHolders(chain, address, opts = {}) {

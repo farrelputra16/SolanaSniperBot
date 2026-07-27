@@ -23,7 +23,7 @@ async function getCachedRules() {
 
 function getCachedWallet(key, fetcher) {
   const hit = _walletCache.get(key);
-  if (hit && Date.now() - hit.ts < 10000) return hit.data;
+  if (hit && Date.now() - hit.ts < 30000) return hit.data;
   const data = fetcher();
   if (data && typeof data.then === 'function') {
     return data.then(w => {
@@ -38,13 +38,14 @@ function getCachedWallet(key, fetcher) {
 export async function processSignal(sourceChannel, text, message, senderUsername) {
   const t0 = Date.now();
 
-  const found = extractAddresses(text);
+  const [found, allRules] = await Promise.all([
+    Promise.resolve().then(() => extractAddresses(text)),
+    getCachedRules(),
+  ]);
   if (found.length === 0) return;
   db.addScraperLog(sourceChannel, 'info', `CA ${found.map(f=>f.address).join(', ')}`).catch(() => {});
   const captureLatency = Date.now() - t0;
   console.log(`📡 CA captured in ${captureLatency}ms | ${found.length} address(es)`);
-
-  const allRules = await getCachedRules();
 
   await Promise.allSettled(found.map(({ address, chain }) =>
     processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0)
@@ -89,69 +90,39 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     executeAutoBuy(address, chain, rule, sourceChannel, t0);
   }
 
-  // Step 1: DexScreener (fast) — basic info, appears on dashboard ASAP
-  let dexData = null;
-  try {
-    dexData = await getDexScreenerInfo(chain, address);
-  } catch (e) {
-    // ignore, fall through to GMGN
-  }
+  // Step 1: Fire both DexScreener (fast) + GMGN (detailed) simultaneously
+  // Use whichever returns first for the initial dashboard update
+  const dexPromise = getDexScreenerInfo(chain, address).catch(() => null);
+  const gmgnPromise = Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address).catch(() => null)])
+    .then(([info, security]) => {
+      if (!info || (info.code && info.code !== 0)) return null;
+      return parseTokenData(info, security, chain, address, sourceChannel, text, null);
+    })
+    .catch(() => null);
 
-  if (dexData) {
-    const dexUpdate = {
-      token_symbol: dexData.tokenSymbol,
-      token_name: dexData.tokenName,
-      price: dexData.priceUsd,
-      market_cap: dexData.marketCap,
-      liquidity: dexData.liquidity,
-      volume_24h: dexData.volume24h,
-      sender_username: senderUsername || '',
-      latency_ms: Date.now() - t0,
-    };
+  const [dexData, gmgnData] = await Promise.all([dexPromise, gmgnPromise]);
 
-    if (signalId) db.updateSignal(signalId, dexUpdate).catch(() => {});
+  // Prefer GMGN (more detailed), fall back to DexScreener
+  const primary = gmgnData || dexData;
+
+  if (primary) {
+    primary.sender_username = senderUsername || '';
+    primary.latency_ms = Date.now() - t0;
+
+    if (signalId) db.updateSignal(signalId, primary).catch(() => {});
 
     liveEvents.emit('signal_update', {
-      _tid: db.getTelegramId(), id: signalId, token_symbol: dexData.tokenSymbol, token_address: address, source_channel: sourceChannel,
-      market_cap: dexData.marketCap, price: dexData.priceUsd, liquidity: dexData.liquidity,
-      volume_24h: dexData.volume24h, rug_ratio: -1, smart_degen_count: 0,
+      _tid: db.getTelegramId(), id: signalId, token_symbol: primary.token_symbol, token_address: address, source_channel: sourceChannel,
+      market_cap: primary.market_cap, price: primary.price, liquidity: primary.liquidity, volume_24h: primary.volume_24h,
+      rug_ratio: primary.rug_ratio, smart_degen_count: primary.smart_degen_count,
       latency_ms: Date.now() - t0, sender_username: senderUsername, created_at: now,
     });
 
-    forwardSignal(sourceChannel, address, dexUpdate, text, null);
-
-    console.log(`⚡ SIGNAL ${dexData.tokenSymbol||address} | DexScreener=${Date.now()-t0}ms`);
+    forwardSignal(sourceChannel, address, primary, text, null);
+    console.log(`⚡ SIGNAL ${primary.token_symbol||address} | ${gmgnData?'GMGN':'DexScreener'}=${Date.now()-t0}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
+  } else {
+    console.warn(`[Router] Could not fetch metadata for ${address}, skipping update.`);
   }
-
-  // Step 2: GMGN (slower, detailed) — fire-and-forget enrichment
-  Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address).catch(() => null)])
-    .then(([info, security]) => {
-      if (!info || (info.code && info.code !== 0)) {
-        if (!dexData) console.warn(`[Router] Could not fetch metadata for ${address}, skipping update.`);
-        return;
-      }
-
-      const data = parseTokenData(info, security, chain, address, sourceChannel, text, dexData);
-      data.sender_username = senderUsername || '';
-      data.latency_ms = Date.now() - t0;
-
-      if (signalId) db.updateSignal(signalId, data).catch(() => {});
-
-      liveEvents.emit('signal_update', {
-        _tid: db.getTelegramId(), id: signalId, token_symbol: data.token_symbol, token_address: address, source_channel: sourceChannel,
-        market_cap: data.market_cap, price: data.price, liquidity: data.liquidity, volume_24h: data.volume_24h,
-        rug_ratio: data.rug_ratio, smart_degen_count: data.smart_degen_count,
-        latency_ms: data.latency_ms, sender_username: senderUsername, created_at: now,
-      });
-
-      if (!dexData) forwardSignal(sourceChannel, address, data, text, null);
-
-      const totalLatency = Date.now() - t0;
-      console.log(`⚡ SIGNAL ${data.token_symbol||address} | GMGN=${totalLatency}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
-    })
-    .catch((err) => {
-      if (!dexData) console.error(`[Router] Failed to fetch token data for ${address}:`, err.message);
-    });
 }
 
 function forwardSignal(sourceChannel, address, data, text, error) {
@@ -277,7 +248,7 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
 
 async function pollOrder(orderId, chain, tradeId) {
   let attempts = 0;
-  const maxAttempts = 60;
+  const maxAttempts = 15;
 
   while (attempts < maxAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
