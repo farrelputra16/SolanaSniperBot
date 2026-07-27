@@ -101,7 +101,16 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   // Show DexScreener data immediately (fast), then override with GMGN (detailed)
   getDexScreenerInfo(chain, address).then(dexData => {
     if (!dexData || !signalId) return;
-    const update = { ...dexData, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
+    const update = {
+      token_symbol: dexData.tokenSymbol || '',
+      token_name: dexData.tokenName || '',
+      price: dexData.priceUsd || 0,
+      market_cap: dexData.marketCap || 0,
+      liquidity: dexData.liquidity || 0,
+      volume_24h: dexData.volume24h || 0,
+      sender_username: senderUsername || '',
+      latency_ms: Date.now() - t0,
+    };
     db.updateSignal(signalId, update).catch(() => {});
     liveEvents.emit('signal_update', {
       _tid: db.getTelegramId(), id: signalId, token_symbol: update.token_symbol, token_address: address, source_channel: sourceChannel,
