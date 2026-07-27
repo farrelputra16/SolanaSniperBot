@@ -57,7 +57,11 @@ export async function initDatabase() {
         settings: mdb.collection('settings'),
         counters: mdb.collection('counters'),
       };
-      for (const c of Object.values(collections)) {
+      for (const [name, c] of Object.entries(collections)) {
+        if (name === 'settings') {
+          try { await c.dropIndex('id_1'); } catch {}
+          continue;
+        }
         try { await c.createIndex('id', { unique: true }); } catch {}
       }
       try { await collections.channels.createIndex({ channel_username: 1 }, { unique: true, sparse: true }); } catch {}
