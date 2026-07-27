@@ -150,7 +150,7 @@ export async function getAllChannels() {
 }
 export async function addChannel(username, displayName) {
   if (!sqliteMode && mdb) {
-    try { await collections.channels.insertOne({ channel_username: username, display_name: displayName || username, active: 1, added_at: sqliteNow() }); } catch (e) { if (e.code !== 11000) throw e; }
+    try { await collections.channels.insertOne({ channel_username: username, display_name: displayName || username, active: 1, added_at: sqliteNow(), telegram_id: _tid() || '' }); } catch (e) { if (e.code !== 11000) throw e; }
     return;
   }
   try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid()); } catch {}
