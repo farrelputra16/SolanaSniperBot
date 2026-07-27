@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || '';
 const DB_NAME = 'scoopscraper';
@@ -425,7 +425,7 @@ export async function updateSignal(id, data) {
     if (data.is_honeypot !== undefined) update.is_honeypot = data.is_honeypot;
     if (data.latency_ms !== undefined) update.latency_ms = data.latency_ms;
     if (data.sender_username !== undefined) update.sender_username = data.sender_username;
-    if (Object.keys(update).length) await collections.signals.updateOne({ _id: typeof id === 'string' ? id : Number(id) }, { $set: update });
+    if (Object.keys(update).length) await collections.signals.updateOne({ _id: typeof id === 'string' ? ObjectId.createFromHexString(id) : Number(id) }, { $set: update });
     return;
   }
   const sets = [];
