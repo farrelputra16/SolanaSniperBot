@@ -217,7 +217,7 @@ export async function upsertChannelRule(data) {
       tip_fee: data.tip_fee ?? null,
       wallet_group_id: data.wallet_group_id || 0,
       track_only: data.track_only ? 1 : 0,
-      telegram_id: _tid(),
+      telegram_id: _tid() || 'NONE',
     };
     const existing = await collections.rules.findOne({ channel_id: channelId, telegram_id: _tid() || 'NONE' });
     if (existing) await collections.rules.updateOne({ _id: existing._id }, { $set: doc });
@@ -281,7 +281,7 @@ export async function addWallet(address, label, privateKey) {
     try {
       await collections.wallets.insertOne({
         address, label: label || '', private_key: privateKey || '',
-        active: existing ? 0 : 1, created_at: sqliteNow(), telegram_id: _tid()
+        active: existing ? 0 : 1, created_at: sqliteNow(), telegram_id: _tid() || 'NONE'
       });
     } catch (e) { if (e.code !== 11000) throw e; }
     return;
@@ -297,7 +297,7 @@ export async function importWallets(wallets) {
         await collections.wallets.insertOne({
           address: wallets[i].address, label: wallets[i].label || '',
           private_key: wallets[i].private_key || '',
-          active: (!existing && i === 0) ? 1 : 0, created_at: sqliteNow(), telegram_id: _tid()
+          active: (!existing && i === 0) ? 1 : 0, created_at: sqliteNow(), telegram_id: _tid() || 'NONE'
         });
       } catch (e) { if (e.code !== 11000) throw e; }
     }
@@ -351,7 +351,7 @@ export async function getWalletGroups() {
 export async function createWalletGroup(name, description) {
   if (!sqliteMode && mdb) {
     const id = await nextId('wallet_groups');
-    await collections.wallet_groups.insertOne({ id, name, description: description || '', telegram_id: _tid() });
+    await collections.wallet_groups.insertOne({ id, name, description: description || '', telegram_id: _tid() || 'NONE' });
     return id;
   }
   sqliteDb.prepare('INSERT INTO wallet_groups (name, description, telegram_id) VALUES (?,?,?)').run(name, description || '', _tid());
@@ -393,7 +393,7 @@ export async function saveSignal(data) {
       bundler_rate: data.bundler_rate || 0, top10_rate: data.top10_rate || 0,
       creator_status: data.creator_status || '', is_honeypot: data.is_honeypot || '',
       sender_username: data.sender_username || '', created_at: sqliteNow(),
-      telegram_id: _tid()
+      telegram_id: _tid() || 'NONE'
     });
     return r.insertedId?.toString ? r.insertedId.toString() : null;
   }
@@ -460,7 +460,7 @@ export async function createTrade(data) {
       status: data.status || 'open', pnl: null, pnl_percent: null,
       sell_amount_sol: null, sell_price: null, sell_price_usd: null, sell_tx: null,
       sell_order_id: null, closed_at: null, created_at: sqliteNow(),
-      telegram_id: _tid()
+      telegram_id: _tid() || 'NONE'
     });
     return res.insertedId.toString();
   }
@@ -509,7 +509,7 @@ export async function saveStrategyOrder(data) {
       sub_order_type: data.sub_order_type || '', check_price: data.check_price || 0,
       amount_in_percent: data.amount_in_percent || 100, group_tag: data.group_tag || '',
       remote_order_id: data.remote_order_id || '', status: data.status || 'active',
-      created_at: sqliteNow(), telegram_id: _tid()
+      created_at: sqliteNow(), telegram_id: _tid() || 'NONE'
     });
     return res.insertedId.toString();
   }
@@ -544,7 +544,7 @@ export async function addScraperLog(ch, level, msg) {
     if (!sqliteMode && mdb) {
       await collections.scraper_logs.insertOne({
         channel_username: String(ch || ''), level: String(level || 'info'),
-        message: String(msg || ''), created_at: sqliteNow(), telegram_id: _tid()
+        message: String(msg || ''), created_at: sqliteNow(), telegram_id: _tid() || 'NONE'
       });
       return;
     }
