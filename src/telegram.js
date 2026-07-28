@@ -179,6 +179,11 @@
     return client;
   }
 
+  export function isChannelListening(identifier) {
+    const chatId = _entityIdMap.get(identifier);
+    return chatId ? _listeners.has(chatId) : false;
+  }
+
   function installGlobalHandler() {
     if (_globalHandlerInstalled || !client) return;
     client.addEventHandler(globalMessageHandler, new NewMessage({}));

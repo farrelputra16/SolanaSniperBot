@@ -107,6 +107,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE wallets ADD COLUMN private_key TEXT DEFAULT ''"); } catch {}
   try { sqliteDb.exec("ALTER TABLE settings ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch {}
   try { sqliteDb.exec("ALTER TABLE rules ADD COLUMN blind_buy INTEGER DEFAULT 0"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN ignore_duplicate INTEGER DEFAULT 0"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -158,6 +159,10 @@ export async function removeChannel(id) {
   if (!sqliteMode && mdb) { await collections.channels.deleteOne({ id: Number(id), telegram_id: _tid() || 'NONE' }); await collections.rules.deleteOne({ channel_id: Number(id), telegram_id: _tid() || 'NONE' }); return; }
   sqliteDb.prepare('DELETE FROM channels WHERE id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
   sqliteDb.prepare('DELETE FROM rules WHERE channel_id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
+}
+export async function updateChannelSetting(id, field, value) {
+  if (!sqliteMode && mdb) { await collections.channels.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: { [field]: value } }); return; }
+  sqliteDb.prepare(`UPDATE channels SET ${field} = ? WHERE id = ?` + _tidFilter()).run(value, Number(id), ...(_tid() ? [_tid()] : []));
 }
 export async function toggleChannel(id, active) {
   if (!sqliteMode && mdb) { await collections.channels.updateOne({ id: Number(id), telegram_id: _tid() || 'NONE' }, { $set: { active: active ? 1 : 0 } }); return; }
@@ -257,11 +262,11 @@ export async function getAutoBuyRules() {
     const results = [];
     for (const r of rules) {
       const ch = await collections.channels.findOne({ id: r.channel_id, telegram_id: _tid() || 'NONE' });
-      if (ch) results.push({ ...r, channel_username: ch.channel_username });
+      if (ch) results.push({ ...r, channel_username: ch.channel_username, ignore_duplicate: ch.ignore_duplicate || 0 });
     }
     return results;
   }
-  return sqliteDb.prepare("SELECT r.*, c.channel_username FROM rules r JOIN channels c ON c.id = r.channel_id WHERE (r.auto_buy = 1 OR r.blind_buy = 1)" + _tidFilter('c.telegram_id')).all(...(_tid() ? [_tid()] : []));
+  return sqliteDb.prepare("SELECT r.*, c.channel_username, c.ignore_duplicate FROM rules r JOIN channels c ON c.id = r.channel_id WHERE (r.auto_buy = 1 OR r.blind_buy = 1)" + _tidFilter('c.telegram_id')).all(...(_tid() ? [_tid()] : []));
 }
 
 // ───── Wallets ─────

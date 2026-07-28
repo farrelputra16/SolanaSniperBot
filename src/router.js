@@ -9,6 +9,9 @@ const CURRENCY_ADDRESSES = {
   sol: 'So11111111111111111111111111111111111111112',
 };
 
+const _seenCAs = new Map();  // key: channel:address, value: timestamp
+const SEEN_CA_TTL = 300000; // 5 min
+
 let _rulesCache = null;
 let _rulesCacheTs = 0;
 const _walletCache = new Map();
@@ -76,6 +79,20 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   const matchingRules = allRules.filter(r => r.channel_username === sourceChannel);
   const blindRules = matchingRules.filter(r => r.blind_buy);
   const normalRules = matchingRules.filter(r => !r.blind_buy && r.auto_buy);
+
+  // Check ignore_duplicate — skip if same CA already caught from this channel
+  const ignoreDup = matchingRules.some(r => r.ignore_duplicate);
+  if (ignoreDup) {
+    const key = `${sourceChannel}:${address}`;
+    const seen = _seenCAs.get(key);
+    if (seen && Date.now() - seen < SEEN_CA_TTL) return;
+    _seenCAs.set(key, Date.now());
+    // Clean stale entries periodically
+    if (_seenCAs.size > 1000) {
+      const threshold = Date.now() - SEEN_CA_TTL;
+      for (const [k, ts] of _seenCAs) if (ts < threshold) _seenCAs.delete(k);
+    }
+  }
 
   // BLIND BUY: swap IMMEDIATELY before ANY async I/O — zero delay
   for (const rule of blindRules) {

@@ -128,9 +128,10 @@ export function createWebServer() {
   app.get('/api/channels', async (req, res) => {
     const channels = await db.getAllChannels();
     const rules = await db.getChannelRules();
+    const { isChannelListening } = await import('./telegram.js');
     const enriched = channels.map(c => {
       const rule = rules.find(r => r.channel_id === c.id);
-      return { ...c, rule: rule || null };
+      return { ...c, rule: rule || null, listening: isChannelListening(c.channel_username) };
     });
     res.json(enriched);
   });
@@ -185,6 +186,15 @@ export function createWebServer() {
       console.error('[Channel] toggle listener error:', e.message);
     }
     res.json({ success: true, active: newActive });
+  });
+
+  app.patch('/api/channels/:id/ignore-duplicate', async (req, res) => {
+    const ch = await db.getChannel(req.params.id);
+    if (!ch) return res.status(404).json({ error: 'not found' });
+    const { value } = req.body;
+    const newVal = value !== undefined ? (value ? 1 : 0) : (ch.ignore_duplicate ? 0 : 1);
+    await db.updateChannelSetting(req.params.id, 'ignore_duplicate', newVal);
+    res.json({ success: true, ignore_duplicate: newVal });
   });
 
   // ───── Rules ─────

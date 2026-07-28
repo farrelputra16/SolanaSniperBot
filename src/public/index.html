@@ -504,6 +504,7 @@ function renderChannelCard(c){
   if(r.min_market_cap!=null)chips.push(`MC &ge; ${fmtCur(r.min_market_cap)}`);
   if(r.max_market_cap!=null)chips.push(`MC &le; ${fmtCur(r.max_market_cap)}`);
   if(r.min_liquidity!=null)chips.push(`Liq &ge; ${fmtCur(r.min_liquidity)}`);
+  if(r.max_liquidity!=null)chips.push(`Liq &le; ${fmtCur(r.max_liquidity)}`);
   if(r.take_profit_percent)chips.push(`TP:${r.take_profit_percent}%`);
   if(r.stop_loss_percent)chips.push(`SL:${r.stop_loss_percent}%`);
   if(tpStr)chips.push(tpStr);
@@ -511,6 +512,9 @@ function renderChannelCard(c){
   else if(r.auto_buy)chips.push(`&bull; ${r.buy_amount_sol||0.01}SOL`);
   if(r.priority_fee)chips.push(`Fee:${r.priority_fee}`);
   if(r.wallet_group_id>0)chips.push(`Group#${r.wallet_group_id}`);
+  if(c.ignore_duplicate)chips.push(`<span style="color:var(--accent)">Dedup</span>`);
+
+  const listeningDot = c.listening ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-left:6px" title="Listening"></span>' : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-left:6px" title="Not listening"></span>';
 
   return`<div class="channel-card" style="opacity:${c.active?1:0.5}">
   <div class="shell"><div class="core">
@@ -519,7 +523,7 @@ function renderChannelCard(c){
       <label class="toggle"><input type="checkbox" ${c.active?'checked':''} onchange="togCh(${c.id})"><span class="sl"></span></label>
       ${c.display_name||c.channel_username}
       <span class="badge badge-o" style="font-size:0.6rem">${c.channel_username}</span>
-      ${c.active?'':'<span class="badge badge-y" style="font-size:0.6rem">Paused</span>'}
+      ${c.active?listeningDot:'<span class="badge badge-y" style="font-size:0.6rem">Paused</span>'}
     </div>
     <div class="actions">
       <button class="btn btn-sm btn-ghost" onclick="openChannelForm(${c.id})">Edit</button>
@@ -582,6 +586,7 @@ window.openChannelForm=async function(id){
   <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select></div>
 </div>
 <label class="cb"><input type="checkbox" id="f-blind" ${r.blind_buy?'checked':''} onchange="if(this.checked){$('#f-auto').checked=true;$('#f-auto').disabled=true;this.closest('.core').querySelectorAll('.filter-fields').forEach(e=>e.style.opacity='0.3')}else{$('#f-auto').disabled=false;$('#f-auto').checked=false;this.closest('.core').querySelectorAll('.filter-fields').forEach(e=>e.style.opacity='1')}"/> Blind Buy (skip all filters, buy immediately)</label>
+<label class="cb mt-8"><input type="checkbox" id="f-dedup" ${c.ignore_duplicate?'checked':''}/> Ignore Duplicate CA (skip if same address already caught from this channel)</label>
 <label class="cb mt-8"><input type="checkbox" id="f-auto" ${r.blind_buy||r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'" ${r.blind_buy?'disabled':''}/> Enable Auto-Buy</label>
 <div id="autobuy-fields" style="display:${(r.blind_buy||r.auto_buy)?'block':'none'}" class="mt-8">
   <p class="text-sm text-muted">Auto-buy executes when signal passes filters. Blind buy ignores all filters.</p>
@@ -638,6 +643,7 @@ window.submitChannelForm=async function(id){
     blind_buy:$('#f-blind').checked,
     track_only:$('#f-track').checked,
   })});
+  await api('/channels/'+id+'/ignore-duplicate',{method:'PATCH',body:JSON.stringify({value:$('#f-dedup').checked})});
   closeModal();toast(isNew?'Channel added':'Channel updated','ok');renderPage('channels');
 };
 
