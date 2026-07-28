@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import { config } from './config.js';
 import * as db from './database.js';
 import * as gmgn from './gmgn.js';
+import { getDexScreenerInfo } from './dexscreener.js';
 
 const __dirname = join(fileURLToPath(import.meta.url), '..');
 export const liveEvents = new EventEmitter();
@@ -448,17 +449,19 @@ export function createWebServer() {
     const { chain, address } = req.query;
     if (!address) return res.status(400).json({ error: 'address required' });
     try {
-      const g = await gmgn.createUserClient(req.telegramId);
-      const [info, security, holders] = await Promise.allSettled([
-        g.getTokenInfo(chain || 'sol', address),
-        g.getTokenSecurity(chain || 'sol', address),
-        g.getTokenHolders(chain || 'sol', address, { limit: 10 }),
-      ]);
-      res.json({
-        info: info.status === 'fulfilled' ? (info.value?.data || info.value) : null,
-        security: security.status === 'fulfilled' ? (security.value?.data || security.value) : null,
-        holders: holders.status === 'fulfilled' ? (holders.value?.data || holders.value) : null,
-      });
+      const dexData = await getDexScreenerInfo(chain || 'sol', address);
+      if (!dexData) return res.json({ info: null, security: null, holders: null });
+      const info = {
+        symbol: dexData.tokenSymbol,
+        name: dexData.tokenName,
+        price: dexData.priceUsd,
+        market_cap: dexData.marketCap,
+        liquidity: dexData.liquidity,
+        volume_24h: dexData.volume24h,
+        holder_count: 0,
+        wallet_tags_stat: { smart_wallets: 0 },
+      };
+      res.json({ info, security: null, holders: null });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
