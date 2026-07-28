@@ -55,6 +55,7 @@
       } catch {}
       client = null;
     }
+    _globalHandlerInstalled = false;
   }
 
   export async function loginNewSession(apiId, apiHash, phoneNumber, onCode, onPassword) {
@@ -191,6 +192,9 @@
     let chatId = String(rawId ?? '');
     if (chatId.startsWith('-100')) chatId = chatId.slice(4);
     if (!chatId || !_listeners.has(chatId)) return;
+
+    const identifier = resolveIdentifier(chatId);
+    if (!identifier) return;
 
     const text = msg.text;
 
