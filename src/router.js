@@ -11,6 +11,18 @@ const CURRENCY_ADDRESSES = {
 
 const _seenCAs = new Map();  // key: channel:address, value: timestamp
 const SEEN_CA_TTL = 300000; // 5 min
+const _channelDedupCache = new Map(); // key: channel, value: { enabled, ts }
+const CHANNEL_DEDUP_TTL = 30000; // 30s
+
+async function isIgnoreDuplicate(channel) {
+  const cached = _channelDedupCache.get(channel);
+  if (cached && Date.now() - cached.ts < CHANNEL_DEDUP_TTL) return cached.enabled;
+  const channels = await db.getAllChannels();
+  const ch = channels.find(c => c.channel_username === channel);
+  const enabled = !!(ch && ch.ignore_duplicate);
+  _channelDedupCache.set(channel, { enabled, ts: Date.now() });
+  return enabled;
+}
 
 let _rulesCache = null;
 let _rulesCacheTs = 0;
@@ -81,7 +93,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   const normalRules = matchingRules.filter(r => !r.blind_buy && r.auto_buy);
 
   // Check ignore_duplicate — skip if same CA already caught from this channel
-  const ignoreDup = matchingRules.some(r => r.ignore_duplicate);
+  const ignoreDup = await isIgnoreDuplicate(sourceChannel);
   if (ignoreDup) {
     const key = `${sourceChannel}:${address}`;
     const seen = _seenCAs.get(key);
