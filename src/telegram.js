@@ -187,11 +187,17 @@
   async function globalMessageHandler(event) {
     const msg = event.message;
     if (!msg || !msg.text) return;
-    const chatId = String(msg.chatId || msg.peerId?.channelId || '');
+    const rawId = msg.chatId || msg.peerId?.channelId || msg.peerId?.chatId || msg.peerId?.userId;
+    const chatId = String(rawId ?? '');
+    const listenerIds = [..._listeners].join(',');
+    if (chatId) console.log(`[TG-DEBUG] msg chatId=${chatId} | _listeners=[${listenerIds}] | text=${msg.text.slice(0, 40)}`);
     if (!chatId || !_listeners.has(chatId)) return;
 
     const identifier = resolveIdentifier(chatId);
-    if (!identifier) return;
+    if (!identifier) {
+      console.log(`[TG-DEBUG] resolveIdentifier failed for ${chatId}`);
+      return;
+    }
 
     const text = msg.text;
 
@@ -312,7 +318,7 @@
       installGlobalHandler();
       _listeners.add(chatId);
       _entityIdMap.set(identifier, chatId);
-      console.log(`[Telegram] Listening: ${label}`);
+      console.log(`[Telegram] Listening: ${label} (chatId=${chatId})`);
       db.addScraperLog(identifier, 'info', `Listening: ${label}`);
       return true;
     } catch (err) {
