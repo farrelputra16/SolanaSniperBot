@@ -156,7 +156,9 @@
   }
 
   let _pingInterval = null;
-  const _listeners = new Map();
+  let _globalHandlerInstalled = false;
+  const _listeners = new Set();
+  const _entityIdMap = new Map();
 
   export function startKeepAlive() {
     if (_pingInterval) clearInterval(_pingInterval);
@@ -176,8 +178,57 @@
     return client;
   }
 
+  function installGlobalHandler() {
+    if (_globalHandlerInstalled || !client) return;
+    client.addEventHandler(globalMessageHandler, new NewMessage({}));
+    _globalHandlerInstalled = true;
+  }
+
+  async function globalMessageHandler(event) {
+    const msg = event.message;
+    if (!msg || !msg.text) return;
+    const chatId = String(msg.chatId || msg.peerId?.channelId || '');
+    if (!chatId || !_listeners.has(chatId)) return;
+
+    const identifier = resolveIdentifier(chatId);
+    if (!identifier) return;
+
+    const text = msg.text;
+
+    if (onForwardCallback) {
+      onForwardCallback(identifier, msg);
+    }
+
+    if (onSignalCallback) {
+      onSignalCallback(identifier, text, msg, null);
+      getSenderUsername(msg).then(username => {
+        if (username) console.log(`[Signal] ${identifier} @${username}`);
+      }).catch(() => {});
+    }
+  }
+
+  function resolveIdentifier(chatId) {
+    for (const [id, val] of _entityIdMap) {
+      if (String(val) === chatId) return id;
+    }
+    return null;
+  }
+
+  async function getSenderUsername(message) {
+    try {
+      if (!message) return null;
+      const sender = await message.getSender();
+      if (!sender) return null;
+      return sender.username || `${sender.firstName || ''} ${sender.lastName || ''}`.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   export async function startListeners() {
     if (!client) throw new Error('Telegram not initialized');
+
+    installGlobalHandler();
 
     const channels = await db.getActiveChannels();
 
@@ -187,36 +238,6 @@
     }
 
     console.log(`[Telegram] Listening ${channels.length} channel(s)`);
-  }
-
-  async function getSenderUsername(event) {
-    try {
-      if (!event.message) return null;
-      const sender = await event.message.getSender();
-      if (!sender) return null;
-      return sender.username || `${sender.firstName || ''} ${sender.lastName || ''}`.trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function handleMessage(sourceChannel, event) {
-    const message = event.message;
-    if (!message || !message.text) return;
-
-    const text = message.text;
-
-    if (onForwardCallback) {
-      onForwardCallback(sourceChannel, message);
-    }
-
-    if (onSignalCallback) {
-      // Fire signal ASAP, sender in background
-      onSignalCallback(sourceChannel, text, message, null);
-      getSenderUsername(event).then(username => {
-        if (username) console.log(`[Signal] ${sourceChannel} @${username}`);
-      }).catch(() => {});
-    }
   }
 
   export async function resolveAndJoin(identifier) {
@@ -288,15 +309,9 @@
       const entity = await resolveAndJoin(identifier);
       const label = entity.username || `t.me/+${identifier.replace('+', '')}`;
       const chatId = String(entity.id);
-      // Remove old listener for this chat before adding new one
-      if (_listeners.has(chatId)) {
-        client.removeEventHandler(_listeners.get(chatId));
-        _listeners.delete(chatId);
-      }
-      setEntityId(identifier, entity.id);
-      const handler = async (event) => handleMessage(identifier, event);
-      client.addEventHandler(handler, new NewMessage({ chats: [entity.id] }));
-      _listeners.set(chatId, handler);
+      installGlobalHandler();
+      _listeners.add(chatId);
+      _entityIdMap.set(identifier, chatId);
       console.log(`[Telegram] Listening: ${label}`);
       db.addScraperLog(identifier, 'info', `Listening: ${label}`);
       return true;
@@ -309,18 +324,8 @@
 
   export async function removeChannelListener(identifier) {
     if (!client) return;
-    let chatId = _entityIdMap.get(identifier);
-    if (!chatId) {
-      try {
-        const entity = await resolveAndJoin(identifier);
-        chatId = String(entity.id);
-      } catch {
-        return;
-      }
-    }
-    chatId = String(chatId);
-    if (_listeners.has(chatId)) {
-      client.removeEventHandler(_listeners.get(chatId));
+    const chatId = _entityIdMap.get(identifier);
+    if (chatId) {
       _listeners.delete(chatId);
       _entityIdMap.delete(identifier);
       const label = identifier || chatId;
@@ -337,8 +342,6 @@
       console.error('[Telegram] Forward error:', err.message);
     }
   }
-
-  const _entityIdMap = new Map();
 
   export function setEntityId(identifier, id) {
     _entityIdMap.set(identifier, id);
