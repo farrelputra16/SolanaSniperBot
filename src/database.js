@@ -109,6 +109,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE rules ADD COLUMN blind_buy INTEGER DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN ignore_duplicate INTEGER DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN track_mode TEXT DEFAULT 'admin'"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE signals ADD COLUMN catched_mc REAL DEFAULT 0"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -446,6 +447,7 @@ export async function updateSignal(id, data) {
     if (data.creator_status !== undefined) update.creator_status = data.creator_status;
     if (data.is_honeypot !== undefined) update.is_honeypot = data.is_honeypot;
     if (data.latency_ms !== undefined) update.latency_ms = data.latency_ms;
+    if (data.catched_mc !== undefined) update.catched_mc = data.catched_mc;
     if (data.sender_username !== undefined) update.sender_username = data.sender_username;
     if (Object.keys(update).length) await collections.signals.updateOne({ _id: typeof id === 'string' ? ObjectId.createFromHexString(id) : Number(id) }, { $set: update });
     return;

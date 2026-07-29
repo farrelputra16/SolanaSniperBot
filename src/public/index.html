@@ -534,7 +534,7 @@ async function renderDashboard(){
   <div class="stat ${st.tgConnected?'green':'red'}"><div class="shell"><div class="core"><div class="num" style="font-size:1.2rem">${st.tgConnected?'●':'○'}</div><div class="lbl">📡 Telegram</div><span class="hint" style="margin-top:0.2rem">${st.tgConnected?'Connected to MTProto':'Disconnected'}</span></div></div></div>
 </div>
 <div class="shell"><div class="core"><div class="card-h"><h3>📡 Live Signals</h3><span class="text-muted text-sm">${act.signals.length} recent · tap for detail</span></div>
-${act.signals.length?`<div class="signal-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.5rem">${act.signals.map(s=>`<div class="shell signal-card" data-sid="${s.id||''}" style="cursor:pointer;border-radius:var(--radius-md)" onclick="openTokenDetail('${s.token_address}',${s.market_cap||0})"><div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
+${act.signals.length?`<div class="signal-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.5rem">${act.signals.map(s=>`<div class="shell signal-card" data-sid="${s.id||''}" data-catched-mc="${s.catched_mc||s.market_cap||0}" style="cursor:pointer;border-radius:var(--radius-md)" onclick="openTokenDetail('${s.token_address}',parseFloat(this.dataset.catchedMc)||0)"><div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${s.token_symbol||addrShort(s.token_address)}</span><span class="badge badge-o" style="font-size:0.55rem">${s.source_channel||''}</span></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(s.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right">${fmtCur(s.liquidity)}</span></div>
 <div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(s.created_at)}</span>${s.latency_ms?`<span class="badge badge-gr">${s.latency_ms < 1000 ? s.latency_ms + 'ms' : (s.latency_ms/1000).toFixed(1) + 's'}</span>`:''}</div>
@@ -1178,7 +1178,8 @@ function flushSSE(){
       for(const d of _sseBuffer.signal){
         const card=document.createElement('div');card.className='shell signal-card';
         card.dataset.sid=d.id||'';card.style.cssText='cursor:pointer;border-radius:var(--radius-md)';
-        card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
+        card.dataset.catchedMc = d.catched_mc || d.market_cap || 0;
+        card.onclick=function(){openTokenDetail(d.token_address,this.dataset.catchedMc||d.market_cap||0)};
         const sym=d.token_symbol||addrShort(d.token_address);
         card.innerHTML=`<div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div><div class="sig-data" style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right" class="sig-liq">${fmtCur(d.liquidity)}</span></div><div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span><span class="sig-latency"></span></div></div>`;
         grid.prepend(card);
@@ -1211,7 +1212,8 @@ function connectSSE(){
     const d = JSON.parse(e.data);
     const card = $('#page-dashboard .signal-grid .signal-card[data-sid="'+d.id+'"]');
     if (!card) return;
-    card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
+    if (d.catched_mc) card.dataset.catchedMc = d.catched_mc;
+    card.onclick=function(){openTokenDetail(d.token_address,this.dataset.catchedMc||d.market_cap||0)};
     const core = card.querySelector('.core');
     if (!core) return;
     const sym = d.token_symbol || addrShort(d.token_address);

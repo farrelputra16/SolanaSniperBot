@@ -125,6 +125,9 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     executeAutoBuy(address, chain, rule, sourceChannel, t0);
   }
 
+  // Forward CA immediately — placeholder, data comes later
+  forwardSignal(sourceChannel, address, null, text, null);
+
   // Dedup check runs in parallel — doesn't block blind buy
   const ignoreDup = await isIgnoreDuplicate(sourceChannel);
   if (ignoreDup) {
@@ -160,6 +163,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   // Fetch data from DexScreener (fast) + GMGN (detailed) — both fire-and-forget, non-blocking
   getDexScreenerInfo(chain, address).then(dexData => {
     if (!dexData || !signalId) return;
+    const catchedMc = dexData.marketCap || 0;
     const update = {
       token_symbol: dexData.tokenSymbol || '',
       token_name: dexData.tokenName || '',
@@ -169,12 +173,13 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
       volume_24h: dexData.volume24h || 0,
       sender_username: senderUsername || '',
       latency_ms: Date.now() - t0,
+      catched_mc: catchedMc,
     };
     db.updateSignal(signalId, update).catch(() => {});
     liveEvents.emit('signal_update', {
       _tid: db.getTelegramId(), id: signalId, token_symbol: update.token_symbol, token_address: address, source_channel: sourceChannel,
       market_cap: update.market_cap, price: update.price, liquidity: update.liquidity, volume_24h: update.volume_24h,
-      rug_ratio: -1, smart_degen_count: 0,
+      rug_ratio: -1, smart_degen_count: 0, catched_mc: catchedMc,
       latency_ms: Date.now() - t0, sender_username: senderUsername, created_at: now,
     });
     forwardSignal(sourceChannel, address, update, text, null);
@@ -222,10 +227,12 @@ function forwardSignal(sourceChannel, address, data, text, error) {
     let msg;
     if (error && !data) {
       msg = `⚠️ ${sourceChannel}\n${address}\nError: ${error}`;
+    } else if (!data) {
+      msg = `📡 ${sourceChannel}\n\`${address}\`\n⏳ Fetching data...\n🔗 gmgn.ai/chain/sol/token/${address}`;
     } else if (error) {
-      msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n🔗 gmgn.ai/chain/sol/token/${address}\n❌ ${error}`;
+      msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n\`${address}\`\n🔗 gmgn.ai/chain/sol/token/${address}\n❌ ${error}`;
     } else {
-      msg = `📡 *${sourceChannel}*\n\`${address}\`\n💰 ${data.token_symbol || '?'} | $${data.market_cap ? data.market_cap.toFixed(0) : '?'} MC\n💧 $${data.liquidity ? data.liquidity.toFixed(0) : '?'} Liq\n🔗 gmgn.ai/chain/sol/token/${address}`;
+      msg = `📡 *${sourceChannel}*\n\`${address}\`\n💰 ${data.token_symbol || '?'} | 🎯 Catched at $${data.market_cap ? data.market_cap.toFixed(0) : '?'} MC\n💧 $${data.liquidity ? data.liquidity.toFixed(0) : '?'} Liq\n🔗 gmgn.ai/chain/sol/token/${address}`;
     }
     sendToChat(target, msg).catch(() => {});
   }).catch(() => {});
