@@ -286,18 +286,19 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       if (rule.take_profit_percent) conditionOrders.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(rule.take_profit_percent), sell_ratio: '100' });
       if (rule.stop_loss_percent) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(rule.stop_loss_percent)), sell_ratio: '100' });
 
-      const hasFee = rule.priority_fee && rule.tip_fee;
-      if (conditionOrders.length && !hasFee) {
-        db.addScraperLog(sourceChannel, 'warn', `TP/SL set for ${address} but no priority_fee+tip_fee — skipping condition orders (swap only)`).catch(() => {});
+      const feeOk = chain === 'sol' ? (rule.priority_fee >= 0.00001 && rule.tip_fee >= 0.00001) : (rule.priority_fee > 0 && rule.tip_fee > 0);
+      if (conditionOrders.length && !feeOk) {
+        db.addScraperLog(sourceChannel, 'warn', `TP/SL skipped: priority_fee/tip_fee too low or missing (SOL min 0.00001)`).catch(() => {});
         conditionOrders.length = 0;
       }
 
       const result = await executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, perWallet, {
         slippage: rule.slippage,
         antiMev: !!rule.anti_mev,
-        priorityFee: rule.priority_fee || undefined,
-        tipFee: rule.tip_fee || undefined,
+        priorityFee: rule.priority_fee && rule.priority_fee >= 0 ? rule.priority_fee : undefined,
+        tipFee: rule.tip_fee && rule.tip_fee >= 0 ? rule.tip_fee : undefined,
         conditionOrders: conditionOrders.length > 0 ? conditionOrders : undefined,
+        sellRatioType: conditionOrders.length > 0 ? 'hold_amount' : undefined,
       });
 
       const orderRes = result.data || result;
