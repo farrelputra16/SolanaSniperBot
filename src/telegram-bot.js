@@ -61,7 +61,9 @@ async function showMainMenu(ctx, edit) {
   const kb = new InlineKeyboard()
     .text('📡 Channels', 'menu_channels').text('💰 Wallets', 'menu_wallets')
     .row()
-    .text('📊 Signals', 'menu_signals').text('📈 Stats', 'menu_stats');
+    .text('📊 Signals', 'menu_signals').text('📈 Stats', 'menu_stats')
+    .row()
+    .text('❓ Help', 'menu_help');
   if (isTgConnected()) kb.row().text('🔌 Disconnect', 'menu_disconnect');
 
   const conn = isTgConnected() ? '🟢 Connected' : '🔴 Disconnected';
@@ -72,13 +74,48 @@ async function showMainMenu(ctx, edit) {
   ]);
   const activeChs = channels.filter(c => c.active).length;
 
+  let totalSol = 0;
+  if (wallets.length) {
+    const balances = await Promise.allSettled(wallets.map(w => fetchSolBalance(w.address)));
+    for (const b of balances) { if (b.status === 'fulfilled' && b.value != null) totalSol += b.value; }
+  }
+
   const text = `🤖 <b>SniperBot</b>
 ━━━━━━━━━━━━━━━━
-${conn} | 📡 ${activeChs}/${channels.length} ch | 💰 ${wallets.length} wallet${signals.length ? ` | 📊 ${signals.length} sig` : ''}
+${conn}
+📡 ${activeChs}/${channels.length} channels active
+💰 ${wallets.length} wallets · ${totalSol > 0 ? totalSol.toFixed(2) + ' SOL' : '—'}
+${signals.length ? '📊 ' + signals.length + ' signal' : ''}
 ━━━━━━━━━━━━━━━━
 
 <b>Menu</b> — tap to open:`;
 
+  const opts = { parse_mode: 'HTML', reply_markup: kb, ...(edit ? {} : {}) };
+  if (edit) {
+    try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); }
+  } else {
+    await ctx.reply(text, opts);
+  }
+}
+
+async function showHelp(ctx, edit) {
+  const text = `❓ <b>Help — Commands</b>
+━━━━━━━━━━━━━━━━
+/start — Open main menu
+/help — Show this help
+/channels — Manage signal channels
+/wallets — View & manage wallets
+/balance — Show wallet balances
+/signals — Recent signals
+/stats — Bot statistics
+/disconnect — Disconnect Telegram
+/cancel — Cancel current action
+━━━━━━━━━━━━━━━━
+💡 Tap 📡 Channels to add signal sources
+💡 Add wallets under 💰 Wallets before trading
+💡 Configure auto-buy per channel in ⚙️ settings`;
+
+  const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
   const opts = { parse_mode: 'HTML', reply_markup: kb, ...(edit ? {} : {}) };
   if (edit) {
     try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); }
@@ -613,7 +650,7 @@ function attachLiveForwarding() {
 // ───── Commands ─────
 function registerCommands() {
   bot.command('start', async ctx => { if (!auth(ctx)) return; showMainMenu(ctx, false); });
-  bot.command('help', async ctx => { if (!auth(ctx)) return; showMainMenu(ctx, false); });
+  bot.command('help', async ctx => { if (!auth(ctx)) return; showHelp(ctx, false); });
   bot.command('cancel', async ctx => {
     const uid = String(ctx.from.id);
     _awaitingLink.delete(uid);
@@ -657,6 +694,7 @@ function registerCommands() {
     if (d === 'menu_signals') { ctx.answerCallbackQuery(); return showSignals(ctx); }
     if (d === 'menu_stats') { ctx.answerCallbackQuery(); return showStats(ctx); }
     if (d === 'menu_disconnect') { ctx.answerCallbackQuery({ text: 'Disconnecting...' }); return cmdDisconnect(ctx); }
+    if (d === 'menu_help') { ctx.answerCallbackQuery(); return showHelp(ctx, true); }
 
     // Add channel
     if (d === 'add_ch') {
