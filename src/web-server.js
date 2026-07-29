@@ -197,6 +197,21 @@ export function createWebServer() {
     res.json({ success: true, ignore_duplicate: newVal });
   });
 
+  app.get('/api/channels/joined', async (req, res) => {
+    try {
+      const { getJoinedChannels } = await import('./telegram.js');
+      const joined = await getJoinedChannels();
+      res.json(joined || []);
+    } catch (err) {
+      res.json({ error: err.message });
+    }
+  });
+
+  app.get('/api/scraper-stats', async (req, res) => {
+    const { getDedupStats } = await import('./router.js');
+    res.json(getDedupStats());
+  });
+
   // ───── Rules ─────
   app.get('/api/rules', async (req, res) => res.json(await db.getRulesWithChannels()));
   app.delete('/api/rules/:id', async (req, res) => {
@@ -677,6 +692,19 @@ export function createWebServer() {
           if (me) { tgId = String(me.id); db.setSetting('telegram_id', tgId).catch(()=>{}); }
         }
       } catch {}
+      // Auto-reconnect if session exists but not connected
+      if (!connected && sessionStr) {
+        try {
+          const apiId = config.telegram.apiId;
+          const apiHash = config.telegram.apiHash;
+          if (apiId && apiHash) {
+            await initTelegramWithSession(apiId, apiHash, sessionStr);
+            connected = true;
+          }
+        } catch (e) {
+          console.warn('[Telegram] Auto-reconnect failed:', e.message);
+        }
+      }
       let token = null;
       const h = req.headers['x-auth-token'];
       if (h && SESSIONS.has(h)) {
@@ -735,7 +763,20 @@ export function startWebServer(app) {
       if (typeof v === 'object' ? v.expires < now : v < now) SESSIONS.delete(k);
     }
   }, 60000);
-  const shut = () => { clearInterval(cleanup); SESSIONS.clear(); server.close(); process.exit(0); };
+  // Telegram 24/7 reconnect loop — keeps alive even with no browser open
+  const tgKeepAlive = setInterval(async () => {
+    try {
+      const { getClient } = await import('./telegram.js');
+      const c = getClient();
+      if (!c || !c.connected) {
+        const sessionStr = await db.getSetting('telegram_session', '').catch(() => '');
+        if (sessionStr && config.telegram.apiId && config.telegram.apiHash) {
+          await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, sessionStr);
+        }
+      }
+    } catch {}
+  }, 30000);
+  const shut = () => { clearInterval(cleanup); clearInterval(tgKeepAlive); SESSIONS.clear(); server.close(); process.exit(0); };
   process.on('SIGINT', shut);
   process.on('SIGTERM', shut);
   return server;

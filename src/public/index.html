@@ -492,7 +492,7 @@ async function renderDashboard(){
 async function renderChannels(){
   const channels=await api('/channels');
   return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules</div></div>
-<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add Channel</button></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add</button><button class="btn btn-sm" onclick="fetchJoinedChannels()">From Telegram</button></div></div>
 ${channels.length?channels.map(c=>renderChannelCard(c)).join(''):`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
 </div></div>`;}
 
@@ -540,6 +540,25 @@ function renderChannelCard(c){
 
 window.togCh=async function(id){await api('/channels/'+id+'/toggle',{method:'PATCH'});renderPage('channels')};
 window.delCh=async function(id){if(!confirm('Delete channel and its rules?'))return;await api('/channels/'+id,{method:'DELETE'});toast('Deleted','info');renderPage('channels')};
+window.fetchJoinedChannels=async function(){
+  const btn=event.target;btn.disabled=true;btn.textContent='Loading...';
+  try{
+    const joined=await api('/channels/joined');
+    if(!joined||joined.length===0)return toast('No channels found','info');
+    const existing=await api('/channels');
+    const existingNames=new Set(existing.map(c=>c.channel_username));
+    let added=0;let skipped=0;
+    for(const ch of joined){
+      const name=ch.username||ch.name||'';
+      if(!name||existingNames.has(name)){skipped++;continue}
+      await api('/channels',{method:'POST',body:JSON.stringify({username:name,display_name:ch.name||name})});
+      added++;
+    }
+    toast(added+' added, '+skipped+' skipped','ok');
+    renderPage('channels');
+  }catch(e){toast('Error: '+e.message,'err')}
+  finally{btn.disabled=false;btn.textContent='From Telegram'}
+};
 
 window.openChannelForm=async function(id){
   let ch={channel_username:'',display_name:'',rule:{}};
@@ -718,11 +737,19 @@ window.execSell=async function(tradeId){
 
 // ═══ SCRAPER ───
 async function renderScraper(){
-  const[status,logs,trades]=await Promise.all([api('/scraper/status'),api('/scraper/logs?limit=300'),api('/trades?limit=20')]);
+  const[status,logs,trades,stats]=await Promise.all([api('/scraper/status'),api('/scraper/logs?limit=300'),api('/trades?limit=20'),api('/scraper-stats').catch(()=>({}))]);
   const swaps=trades.filter(t=>t.buy_order_id);
-  return`<div class="page-header"><span class="eyebrow">Monitoring</span><h2>Scraper</h2><div class="sub">Monitor scraper status and activity logs</div></div>
-<div class="stats">${Array.isArray(status)?status.map(s=>`<div class="stat ${s.active?(s.error_count>0?'yellow':'green'):'red'}"><div class="shell"><div class="core"><div class="num" style="font-size:1.25rem">${s.signal_count||0}</div><div class="lbl">${s.display_name||s.channel_username}<br><span class="text-muted" style="font-size:0.55rem">${s.active?(s.error_count>0?'Errors '+s.error_count:'Active'):'Paused'}</span></div></div></div></div>`):`<div class="stat"><div class="shell"><div class="core"><div class="num">0</div><div class="lbl">No channels</div></div></div></div>`}</div>
-<div class="shell"><div class="core"><div class="card-h"><h3>Activity</h3></div>
+  const channelsEnabled=Array.isArray(status)?status.length:0;
+  const channelStats=stats.per_channel||{};
+  const chanKeys=Object.keys(channelStats);
+  return`<div class="page-header"><span class="eyebrow">Monitoring</span><h2>Scraper</h2><div class="sub">Monitor scraper activity and dedup stats</div></div>
+<div class="stats">
+  <div class="stat green"><div class="shell"><div class="core"><div class="num">${stats.total_caught||0}</div><div class="lbl">CA Caught</div></div></div></div>
+  <div class="stat"><div class="shell"><div class="core"><div class="num" style="color:var(--text2)">${stats.total_ignored||0}</div><div class="lbl">Ignored (Dedup)</div></div></div></div>
+  <div class="stat cyan"><div class="shell"><div class="core"><div class="num">${channelsEnabled}</div><div class="lbl">Active Channels</div></div></div></div>
+</div>
+${chanKeys.length?`<div class="shell"><div class="core"><div class="card-h"><h3>Per Channel</h3></div><div class="table-wrap"><table><thead><tr><th>Channel</th><th>Caught</th><th>Ignored</th></tr></thead><tbody>${chanKeys.map(k=>`<tr><td><span class="mono" style="font-size:0.7rem">${esc(k)}</span></td><td><span class="badge badge-g">${channelStats[k].caught||0}</span></td><td><span class="badge badge-gr">${channelStats[k].ignored||0}</span></td></tr>`).join('')}</tbody></table></div></div></div>`:''}
+<div class="shell"><div class="core"><div class="card-h"><h3>Activity Log</h3></div>
   ${logs.length?`<div style="max-height:350px;overflow-y:auto">${logs.map(l=>`<div class="log-line"><span class="log-time">${fmtShort(l.created_at)}</span><span class="log-lv ${l.level}">${l.level}</span><span class="log-msg">${l.channel_username?'['+esc(l.channel_username)+'] ':''}${esc(l.message)}</span></div>`).join('')}</div>`:`<div class="empty-state"><p>No activity</p></div>`}
 </div></div>
 <div class="shell"><div class="core"><div class="card-h"><h3>Swap Activity</h3></div>

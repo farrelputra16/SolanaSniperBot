@@ -11,6 +11,11 @@ const CURRENCY_ADDRESSES = {
 
 const _seenCAs = new Map();  // key: channel:address, value: timestamp
 const SEEN_CA_TTL = 300000; // 5 min
+let _dedupStats = { total_caught: 0, total_ignored: 0, per_channel: {} };
+
+export function getDedupStats() { return _dedupStats; }
+
+function getCacheSize() { return _seenCAs.size; }
 const _channelDedupCache = new Map(); // key: channel, value: { enabled, ts }
 const CHANNEL_DEDUP_TTL = 30000; // 30s
 
@@ -97,7 +102,11 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   if (ignoreDup) {
     const key = `${sourceChannel}:${address}`;
     const seen = _seenCAs.get(key);
-    if (seen && Date.now() - seen < SEEN_CA_TTL) return;
+    if (seen && Date.now() - seen < SEEN_CA_TTL) {
+      _dedupStats.total_ignored++;
+      _dedupStats.per_channel[sourceChannel] = (_dedupStats.per_channel[sourceChannel]?.ignored || 0) + 1;
+      return;
+    }
     _seenCAs.set(key, Date.now());
     // Clean stale entries periodically
     if (_seenCAs.size > 1000) {
@@ -105,6 +114,9 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
       for (const [k, ts] of _seenCAs) if (ts < threshold) _seenCAs.delete(k);
     }
   }
+  _dedupStats.total_caught++;
+  if (!_dedupStats.per_channel[sourceChannel]) _dedupStats.per_channel[sourceChannel] = { caught: 0, ignored: 0 };
+  _dedupStats.per_channel[sourceChannel].caught = (_dedupStats.per_channel[sourceChannel].caught || 0) + 1;
 
   // BLIND BUY: swap IMMEDIATELY before ANY async I/O — zero delay
   for (const rule of blindRules) {
