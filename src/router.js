@@ -228,7 +228,7 @@ function forwardSignal(sourceChannel, address, data, text, error) {
     if (error && !data) {
       msg = `⚠️ ${sourceChannel}\n${address}\nError: ${error}`;
     } else if (!data) {
-      msg = `📡 ${sourceChannel}\n\`${address}\`\n⏳ Fetching data...\n🔗 gmgn.ai/chain/sol/token/${address}`;
+      msg = address;
     } else if (error) {
       msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n\`${address}\`\n🔗 gmgn.ai/chain/sol/token/${address}\n❌ ${error}`;
     } else {
