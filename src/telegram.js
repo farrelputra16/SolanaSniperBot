@@ -136,6 +136,7 @@
         .map(d => ({
           id: d.id?.value?.toString() || String(d.id),
           name: d.name || d.title || 'Unknown',
+          title: d.title || d.name || '',
           username: d.entity?.username || null,
           participants: d.entity?.participantsCount || 0,
         }))

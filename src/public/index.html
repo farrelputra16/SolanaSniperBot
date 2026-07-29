@@ -548,17 +548,18 @@ window.fetchJoinedChannels=async function(){
     if(!joined||joined.length===0)return toast('No channels found','info');
     const existing=await api('/channels');
     const existingNames=new Set(existing.map(c=>c.channel_username));
-    let added=0;let skipped=0;
-    for(const ch of joined){
-      const name=ch.username||ch.name||'';
-      if(!name||existingNames.has(name)){skipped++;continue}
-      await api('/channels',{method:'POST',body:JSON.stringify({username:name,display_name:ch.name||name})});
-      added++;
-    }
-    toast(added+' added, '+skipped+' skipped','ok');
-    renderPage('channels');
+    const newChs=joined.filter(ch=>{const n=ch.username||ch.name||'';return n&&!existingNames.has(n)});
+    if(!newChs.length)return toast('All channels already added','info');
+    openModal('<h2>Select Channels to Add</h2><p class="text-sm text-muted mb-8">'+newChs.length+' new channels found</p><div style="max-height:400px;overflow-y:auto">'+newChs.map((ch,i)=>{const n=ch.username||'';return'<label class="cb" style="padding:0.5rem 0;border-bottom:1px solid var(--border-subtle)"><input type="checkbox" class="fetch-ch-cb" data-username="'+esc(n)+'" data-display="'+esc(ch.name||n)+'" checked/> <span class="mono">'+esc(n)+'</span> <span class="text-muted text-sm">'+esc(ch.title||ch.name||'')+'</span>'+(ch.participants?' <span class="badge badge-gr">'+ch.participants+'</span>':'')+'</label>'}).join('')+'</div><div class="modal-actions" style="margin-top:0.75rem"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitFetchChannels()">Add Selected</button></div>');
   }catch(e){toast('Error: '+e.message,'err')}
   finally{btn.disabled=false;btn.textContent='From Telegram'}
+};
+window.submitFetchChannels=async function(){
+  const cbs=document.querySelectorAll('.fetch-ch-cb:checked');
+  if(!cbs.length)return toast('Select at least one','err');
+  let added=0;
+  for(const cb of cbs){try{await api('/channels',{method:'POST',body:JSON.stringify({username:cb.dataset.username,display_name:cb.dataset.display})});added++}catch(e){console.error(cb.dataset.username,e.message)}}
+  closeModal();toast(added+' channel(s) added','ok');renderPage('channels');
 };
 
 window.openChannelForm=async function(id){
