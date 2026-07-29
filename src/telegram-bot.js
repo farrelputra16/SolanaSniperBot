@@ -39,8 +39,19 @@ function addrShort(a) { return a ? a.slice(0, 4) + '..' + a.slice(-4) : '?'; }
 
 function ago(ts) { if (!ts) return 'never'; const s = Math.floor((Date.now() / 1000 - ts)); if (s < 60) return s + 's'; if (s < 3600) return Math.floor(s / 60) + 'm'; return Math.floor(s / 3600) + 'h'; }
 
+function btnText(s) {
+  if (!s) return '?';
+  return String(s)
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<=[\uD800-\uDBFF])[\uDC00-\uDFFF]|^[\uDC00-\uDFFF]/g, '')
+    .slice(0, 30);
+}
+
+function isTgConnected() { try { const c = tg.getClient(); return c?.connected === true; } catch { return false; } }
+
 function auth(ctx) {
-  if (!adminId) { ctx.reply('⏳ Bot not ready', { parse_mode: 'HTML' }); return false; }
+  if (!adminId) { ctx.reply('⏳ Bot not ready — login from dashboard first', { parse_mode: 'HTML' }); return false; }
   if (String(ctx.from.id) !== String(adminId)) { ctx.reply('⛔ Unauthorized', { parse_mode: 'HTML' }); return false; }
   return true;
 }
@@ -76,6 +87,7 @@ async function handleLinkInput(ctx, text) {
   _awaitingLink.delete(String(ctx.from.id));
   const identifier = text.replace(/^https?:\/\/t\.me\//, '').replace(/^@/, '').trim();
   if (!identifier) return ctx.reply('❌ Invalid. Try again with /addchannel or tap Add Channel.', { parse_mode: 'HTML' });
+  if (!isTgConnected()) return ctx.reply('❌ Telegram not connected.\nLogin from the web dashboard first.', { parse_mode: 'HTML' });
   const msg = await ctx.reply(`⏳ Joining <b>${esc(identifier)}</b>...`, { parse_mode: 'HTML' });
   try {
     await db.setTelegramId(adminId);
@@ -100,6 +112,11 @@ async function handleLinkInput(ctx, text) {
 async function showJoinedChannels(ctx, page = 0) {
   const msg = await ctx.reply('📡 Fetching joined channels...', { parse_mode: 'HTML' });
   try {
+    if (!isTgConnected()) {
+      const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
+      return ctx.api.editMessageText(msg.chat.id, msg.message_id,
+        '❌ Telegram not connected.\nLogin from the web dashboard first.', { parse_mode: 'HTML', reply_markup: kb });
+    }
     const joined = await tg.getJoinedChannels();
     if (!joined || !joined.length) {
       return ctx.api.editMessageText(msg.chat.id, msg.message_id, 'No channels found.', { parse_mode: 'HTML' });
@@ -111,32 +128,32 @@ async function showJoinedChannels(ctx, page = 0) {
       const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
       return ctx.api.editMessageText(msg.chat.id, msg.message_id, 'All channels already added.', { parse_mode: 'HTML', reply_markup: kb });
     }
-    const PAGE = 8;
-    const totalPages = Math.ceil(newChs.length / PAGE);
+    const totalPages = Math.ceil(newChs.length / 8);
     const p = Math.min(page, totalPages - 1);
-    const slice = newChs.slice(p * PAGE, (p + 1) * PAGE);
+    const slice = newChs.slice(p * 8, (p + 1) * 8);
     const kb = new InlineKeyboard();
     for (const ch of slice) {
       const n = ch.username || '';
-      const title = ch.title || n;
-      kb.text(`${esc(title)}`, `join_add_${esc(n)}`).row();
+      const title = btnText(ch.title || n);
+      kb.text(title, `ja_${n}`).row();
     }
     if (totalPages > 1) {
-      if (p > 0) kb.text('⬅️', `join_page_${p - 1}`);
+      if (p > 0) kb.text('⬅️', `jp_${p - 1}`);
       kb.text(`${p + 1}/${totalPages}`, 'ch_nop');
-      if (p < totalPages - 1) kb.text('➡️', `join_page_${p + 1}`);
+      if (p < totalPages - 1) kb.text('➡️', `jp_${p + 1}`);
       kb.row();
     }
     kb.text('🔙 Menu', 'menu_main');
     ctx.api.editMessageText(msg.chat.id, msg.message_id,
       `📡 <b>${newChs.length}</b> new channels found\nTap a channel to add it:`, { parse_mode: 'HTML', reply_markup: kb });
   } catch (e) {
-    ctx.api.editMessageText(msg.chat.id, msg.message_id, `❌ ${esc(e.message)}`, { parse_mode: 'HTML' });
+    ctx.api.editMessageText(msg.chat.id, msg.message_id, `❌ ${e.message?.slice?.(0, 200) || 'Error'}`, { parse_mode: 'HTML' });
   }
 }
 
 async function addJoinedChannel(ctx, identifier) {
   await ctx.answerCallbackQuery({ text: 'Adding...' });
+  if (!isTgConnected()) return ctx.reply('❌ Telegram not connected.\nLogin from dashboard first.', { parse_mode: 'HTML' });
   try {
     await db.setTelegramId(adminId);
     await db.addChannel(identifier, identifier);
@@ -162,11 +179,11 @@ async function showChannels(ctx, page = 0, edit = true) {
   const slice = all.slice(p * CH_PAGE_SIZE, (p + 1) * CH_PAGE_SIZE);
   const kb = new InlineKeyboard();
   for (const ch of slice) {
-    const name = ch.display_name || ch.channel_username;
+    const name = btnText(ch.display_name || ch.channel_username);
     const icon = ch.active ? '🟢' : '🔴';
-    kb.text(`${icon} ${esc(name.length > 20 ? name.slice(0, 20) + '..' : name)}`, `ch_toggle_${ch.id}`)
-      .text('⚙️', `ch_setup_${ch.id}`)
-      .text('🗑', `ch_remove_${ch.id}`)
+    kb.text(`${icon} ${name}`, `ch_t_${ch.id}`)
+      .text('⚙️', `ch_s_${ch.id}`)
+      .text('🗑', `ch_r_${ch.id}`)
       .row();
   }
   if (totalPages > 1) {
@@ -205,8 +222,8 @@ async function showChannelSetup(ctx, id) {
     r.stop_loss_percent ? `SL: ${r.stop_loss_percent}%` : '',
   ].filter(Boolean).join('\n');
   const kb = new InlineKeyboard()
-    .text(ch.active ? '🔇 Pause' : '🔊 Activate', `ch_toggle_${ch.id}`)
-    .text('🗑 Remove', `ch_remove_${ch.id}`)
+    .text(ch.active ? '🔇 Pause' : '🔊 Activate', `ch_t_${ch.id}`)
+    .text('🗑 Remove', `ch_r_${ch.id}`)
     .row()
     .text('🔙 Back', 'menu_channels');
   ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb });
@@ -243,14 +260,15 @@ async function showBalance(ctx) {
   const lines = [];
   for (const w of wallets) {
     const label = w.label || addrShort(w.address);
-    let bal = '?';
+    let solBal = '?';
     try {
       const raw = await getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
-      const data = raw?.data || raw || {};
-      const b = data.balance ?? data.amount ?? 0;
-      bal = Number(b) > 0 ? (Number(b) / 1e9).toFixed(3) + ' SOL' : '0 SOL';
-    } catch {}
-    lines.push(`<b>${esc(label)}</b>\n<code>${esc(w.address)}</code>\n💳 ${bal}`);
+      const entry = raw?.data?.balances?.[0] || {};
+      const bal = Number(entry.balance ?? 0);
+      const dec = entry.decimal ?? 9;
+      solBal = bal > 0 ? (bal / Math.pow(10, dec)).toFixed(4) + ' SOL' : '0 SOL';
+    } catch (e) { solBal = 'err'; }
+    lines.push(`<b>${esc(label)}</b>\n<code>${esc(w.address)}</code>\n💳 ${solBal}`);
   }
   lines.push('');
   const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
@@ -330,6 +348,7 @@ function registerCommands() {
     if (!parts.length) return promptLink(ctx);
     const identifier = parts[0].replace(/^https?:\/\/t\.me\//, '').replace(/^@/, '').trim();
     if (!identifier) return ctx.reply('❌ Invalid link', { parse_mode: 'HTML' });
+    if (!isTgConnected()) return ctx.reply('❌ Telegram not connected.\nLogin from dashboard first.', { parse_mode: 'HTML' });
     const msg = await ctx.reply(`⏳ Joining <b>${esc(identifier)}</b>...`, { parse_mode: 'HTML' });
     try {
       await db.setTelegramId(adminId);
@@ -382,14 +401,14 @@ function registerCommands() {
     if (d === 'add_joined') { ctx.answerCallbackQuery(); return showJoinedChannels(ctx); }
 
     // Joined channel add
-    if (d.startsWith('join_add_')) { const id = d.slice(9); ctx.answerCallbackQuery(); return addJoinedChannel(ctx, id); }
-    if (d.startsWith('join_page_')) { const p = parseInt(d.slice(10)); ctx.answerCallbackQuery(); return showJoinedChannels(ctx, p); }
+    if (d.startsWith('ja_')) { const id = d.slice(3); ctx.answerCallbackQuery(); return addJoinedChannel(ctx, id); }
+    if (d.startsWith('jp_')) { const p = parseInt(d.slice(3)); ctx.answerCallbackQuery(); return showJoinedChannels(ctx, p); }
 
     // Channel list
     if (d === 'ch_refresh') return showChannels(ctx, 0, true);
     if (d === 'ch_nop') return ctx.answerCallbackQuery();
 
-    const toggleMatch = d.match(/^ch_toggle_(\d+)$/);
+    const toggleMatch = d.match(/^ch_t_(\d+)$/);
     if (toggleMatch) {
       const id = parseInt(toggleMatch[1]);
       const ch = await db.getChannel(id);
@@ -402,10 +421,10 @@ function registerCommands() {
       return showChannels(ctx, 0, true);
     }
 
-    const setupMatch = d.match(/^ch_setup_(\d+)$/);
+    const setupMatch = d.match(/^ch_s_(\d+)$/);
     if (setupMatch) { ctx.answerCallbackQuery(); return showChannelSetup(ctx, parseInt(setupMatch[1])); }
 
-    const removeMatch = d.match(/^ch_remove_(\d+)$/);
+    const removeMatch = d.match(/^ch_r_(\d+)$/);
     if (removeMatch) {
       const id = parseInt(removeMatch[1]);
       const ch = await db.getChannel(id);
@@ -427,7 +446,11 @@ export async function startBot() {
   bot = new Bot(TOKEN);
   registerCommands();
   attachLiveForwarding();
-  bot.catch(err => console.error('[Bot] Error:', err.message));
+  bot.catch(err => {
+    const desc = err.error?.description || err.message;
+    const on = err.ctx?.msg?.text || err.ctx?.callbackQuery?.data || '';
+    console.error('[Bot] Error:', desc, '| ctx:', on.slice(0, 100));
+  });
   bot.start({ drop_pending_updates: true }).catch(err => console.error('[Bot] Start error:', err.message));
   console.log('[Bot] ✅ Telegram bot active');
 }

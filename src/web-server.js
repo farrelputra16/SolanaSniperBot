@@ -407,7 +407,9 @@ export function createWebServer() {
         g.getWalletActivity('sol', wallet.address, { limit: 30 }),
       ]);
       const balanceData = balanceRes.status === 'fulfilled' ? (balanceRes.value?.data || balanceRes.value) : null;
-      const balance = balanceData?.balance ? (parseFloat(balanceData.balance) > 1e8 ? parseFloat(balanceData.balance) / 1e9 : parseFloat(balanceData.balance)) : null;
+      const balEntry = balanceData?.balances?.[0] || {};
+      const rawBal = parseFloat(balEntry.balance);
+      const balance = !isNaN(rawBal) && rawBal > 0 ? (rawBal / Math.pow(10, balEntry.decimal ?? 9)) : null;
       const holdingsData = holdingsRes.status === 'fulfilled' ? (holdingsRes.value?.data || holdingsRes.value) : null;
       const statsData = statsRes.status === 'fulfilled' ? (statsRes.value?.data || statsRes.value) : null;
       const activityData = activityRes.status === 'fulfilled' ? (activityRes.value?.data || activityRes.value) : null;
@@ -415,7 +417,7 @@ export function createWebServer() {
         address: wallet.address,
         label: wallet.label,
         balance,
-        holdings: holdingsData?.holdings || holdingsData || [],
+        holdings: holdingsData?.list || holdingsData?.holdings || holdingsData || [],
         stats: statsData,
         activity: activityData?.activities || activityData || [],
       });
@@ -435,8 +437,9 @@ export function createWebServer() {
         try {
           const r = await g.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
           const d = r?.data || r || {};
-          const raw = parseFloat(d.balance);
-          if (!isNaN(raw) && raw > 0) balance = raw > 1e8 ? (raw / 1e9) : raw;
+          const balEntry = d?.balances?.[0] || {};
+          const raw = parseFloat(balEntry.balance);
+          if (!isNaN(raw) && raw > 0) balance = raw / Math.pow(10, balEntry.decimal ?? 9);
         } catch {}
         if (balance === null || balance === 0) {
           try {
