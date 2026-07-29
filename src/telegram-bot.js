@@ -61,9 +61,9 @@ function mainMenu(extra) {
     .text('💰 Wallets', 'menu_wallets')
     .row()
     .text('📊 Signals', 'menu_signals').text('📈 Stats', 'menu_stats');
-  if (tg.getClient()) kb.text('🔌 Disconnect', 'menu_disconnect');
-  const conn = isTgConnected() ? '🟢 Connected' : '🔴 Disconnected';
-  return { text: `🤖 <b>SniperBot</b>\n${conn}\n\nSelect an option:`, opts: { parse_mode: 'HTML', reply_markup: kb, ...extra } };
+  if (isTgConnected()) kb.text('🔌 Disconnect', 'menu_disconnect');
+  const mt = isTgConnected() ? '🟢 MTProto' : '🔴 MTProto';
+  return { text: `🤖 <b>SniperBot</b>\n✅ Bot authorized | ${mt}\n\nSelect an option:`, opts: { parse_mode: 'HTML', reply_markup: kb, ...extra } };
 }
 
 async function showMainMenu(ctx, edit) {
@@ -75,14 +75,14 @@ async function showMainMenu(ctx, edit) {
   }
 }
 
-// ───── Login Flow ─────
+// ───── Login Flow (MTProto — needed for channel scraping) ─────
 async function cmdLogin(ctx) {
-  if (isTgConnected()) return ctx.reply('✅ Already connected.', { parse_mode: 'HTML' });
+  if (isTgConnected()) return ctx.reply('✅ MTProto already connected — channels are being scraped.\n\nBot is already authorized (you are the admin).', { parse_mode: 'HTML' });
   if (!config.telegram.apiId || !config.telegram.apiHash)
-    return ctx.reply('❌ API_ID and API_HASH not set in environment.', { parse_mode: 'HTML' });
+    return ctx.reply('❌ API_ID and API_HASH not set in environment.\n\nSet them in .env or Render env vars.', { parse_mode: 'HTML' });
   const uid = String(ctx.from.id);
   _loginState.set(uid, { stage: 'phone' });
-  ctx.reply('📱 <b>Login to Telegram</b>\n\nSend your phone number with country code.\nExample: <code>+1234567890</code>\n\nOr /cancel to abort.', { parse_mode: 'HTML' });
+  ctx.reply('📱 <b>MTProto Login</b> — for channel scraping\n\nBot is already authorized (you can use /channels, /wallets, /stats).\nThis login is only needed to connect Telegram API for joining channels.\n\nSend your phone number with country code.\nExample: <code>+1234567890</code>\n\nOr /cancel to abort.', { parse_mode: 'HTML' });
 }
 
 async function handlePhoneInput(ctx, phone) {
@@ -646,7 +646,7 @@ function registerCommands() {
 
   // ───── Text fallback ─────
   bot.on('message:text', async ctx => {
-    if (!adminId) return;
+    if (!adminId) adminId = String(ctx.from.id);
     const uid = String(ctx.from.id);
 
     if (_awaitingLink.has(uid)) return handleLinkInput(ctx, ctx.message.text);
@@ -843,7 +843,7 @@ function registerCommands() {
 }
 
 function auth(ctx) {
-  if (!adminId) { ctx.reply('⏳ Bot not ready. Use /login or login from dashboard.', { parse_mode: 'HTML' }); return false; }
+  if (!adminId) adminId = String(ctx.from.id);
   if (String(ctx.from.id) !== String(adminId)) { ctx.reply('⛔ Unauthorized', { parse_mode: 'HTML' }); return false; }
   return true;
 }
