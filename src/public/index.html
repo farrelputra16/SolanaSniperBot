@@ -440,6 +440,7 @@ const revealObserver=new IntersectionObserver((entries)=>{
 
 function observeReveals(){
   document.querySelectorAll('.shell,.stat,.channel-card,.page-header,.modal .form-grid').forEach(el=>{
+    if (el.classList.contains('shell') && el.closest('.channel-card')) return;
     if(!el.classList.contains('revealed')&&!el.classList.contains('will-reveal')){
       el.classList.add('will-reveal');
       revealObserver.observe(el);
@@ -1089,7 +1090,6 @@ function connectSSE(){
       grid.prepend(card);
       if (grid.children.length > 50) grid.lastElementChild?.remove();
     }
-    $('#navChanCount').textContent = String(Number($('#navChanCount').textContent||0)+1);
   });
   ev.addEventListener('signal_update', e => {
     const d = JSON.parse(e.data);
@@ -1109,7 +1109,6 @@ function connectSSE(){
       tbl.prepend(tr);
       if (tbl.children.length > 50) tbl.lastElementChild?.remove();
     }
-    $('#navPosCount').textContent = String(Number($('#navPosCount').textContent||0)+1);
   });
   ev.addEventListener('trade_update', e => {
     const d = JSON.parse(e.data);
@@ -1249,8 +1248,6 @@ function startNavPolling(){
   setInterval(async()=>{
     try{
       const st=await api('/status');
-      $('#navPosCount').textContent=st.openTrades;
-      $('#navChanCount').textContent=st.channelCount;
       document.querySelectorAll('.nav-item[data-p="positions"] .count').forEach(c=>c.textContent=st.openTrades);
       document.querySelectorAll('.nav-item[data-p="channels"] .count').forEach(c=>c.textContent=st.channelCount);
     }catch{}
