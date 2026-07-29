@@ -125,12 +125,12 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
 
   // Save signal — appears on dashboard
   const now = Math.floor(Date.now() / 1000);
-  const placeholder = { token_address: address, token_symbol: '', chain, source_channel: sourceChannel, source_text: text, price: 0, market_cap: 0, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
+  const placeholder = { token_address: address, token_symbol: '', chain, source_channel: sourceChannel, source_text: text, price: 0, market_cap: 0, liquidity: 0, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
   const signalId = await db.saveSignal(placeholder).catch(() => null);
 
   liveEvents.emit('signal', {
     _tid: db.getTelegramId(), token_symbol: '', id: signalId, token_address: address, source_channel: sourceChannel,
-    market_cap: 0, latency_ms: Date.now() - t0,
+    market_cap: 0, liquidity: 0, latency_ms: Date.now() - t0,
     sender_username: senderUsername, created_at: now,
   });
 
@@ -139,7 +139,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     executeAutoBuy(address, chain, rule, sourceChannel, t0);
   }
 
-  // Show DexScreener data immediately (fast), then override with GMGN (detailed)
+  // Fetch data from DexScreener (fast) + GMGN (detailed) — both fire-and-forget, non-blocking
   getDexScreenerInfo(chain, address).then(dexData => {
     if (!dexData || !signalId) return;
     const update = {
@@ -162,27 +162,23 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     forwardSignal(sourceChannel, address, update, text, null);
   }).catch(() => {});
 
-  const gmgnData = await Promise.all([getTokenInfo(chain, address), getTokenSecurity(chain, address).catch(() => null)])
+  Promise.all([getTokenInfo(chain, address).catch(() => null), getTokenSecurity(chain, address).catch(() => null)])
     .then(([info, security]) => {
-      if (!info || (info.code && info.code !== 0)) return null;
-      return parseTokenData(info, security, chain, address, sourceChannel, text, null);
+      if (!info || (info.code && info.code !== 0)) return;
+      const gmgnData = parseTokenData(info, security, chain, address, sourceChannel, text, null);
+      gmgnData.sender_username = senderUsername || '';
+      gmgnData.latency_ms = Date.now() - t0;
+      const gmgnLatency = Date.now() - t0;
+      if (signalId) db.updateSignal(signalId, gmgnData).catch(() => {});
+      liveEvents.emit('signal_update', {
+        _tid: db.getTelegramId(), id: signalId, token_symbol: gmgnData.token_symbol, token_address: address, source_channel: sourceChannel,
+        market_cap: gmgnData.market_cap, price: gmgnData.price, liquidity: gmgnData.liquidity, volume_24h: gmgnData.volume_24h,
+        rug_ratio: gmgnData.rug_ratio, smart_degen_count: gmgnData.smart_degen_count,
+        latency_ms: gmgnLatency, sender_username: senderUsername, created_at: now,
+      });
+      console.log(`⚡ SIGNAL ${gmgnData.token_symbol||address} | GMGN=${gmgnLatency}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
     })
-    .catch(() => null);
-
-  if (gmgnData) {
-    gmgnData.sender_username = senderUsername || '';
-    gmgnData.latency_ms = Date.now() - t0;
-    if (signalId) db.updateSignal(signalId, gmgnData).catch(() => {});
-    liveEvents.emit('signal_update', {
-      _tid: db.getTelegramId(), id: signalId, token_symbol: gmgnData.token_symbol, token_address: address, source_channel: sourceChannel,
-      market_cap: gmgnData.market_cap, price: gmgnData.price, liquidity: gmgnData.liquidity, volume_24h: gmgnData.volume_24h,
-      rug_ratio: gmgnData.rug_ratio, smart_degen_count: gmgnData.smart_degen_count,
-      latency_ms: Date.now() - t0, sender_username: senderUsername, created_at: now,
-    });
-    console.log(`⚡ SIGNAL ${gmgnData.token_symbol||address} | GMGN=${Date.now()-t0}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
-  } else {
-    console.warn(`[Router] GMGN failed for ${address}, DexScreener data used.`);
-  }
+    .catch(() => console.warn(`[Router] GMGN failed for ${address}, DexScreener data used.`));
 }
 
 function forwardSignal(sourceChannel, address, data, text, error) {

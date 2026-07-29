@@ -1114,8 +1114,8 @@ function connectSSE(){
       const sym = d.token_symbol || addrShort(d.token_address);
       card.innerHTML = `<div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right">${fmtCur(d.liquidity)}</span></div>
-<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span></div>
+<div class="sig-data" style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right" class="sig-liq">${fmtCur(d.liquidity)}</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span><span class="sig-latency"></span></div>
 </div>`;
       grid.prepend(card);
       if (grid.children.length > 50) grid.lastElementChild?.remove();
@@ -1126,8 +1126,13 @@ function connectSSE(){
     const card = $('#page-dashboard .signal-grid .signal-card[data-sid="'+d.id+'"]');
     if (!card) return;
     card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
-    const mcEl = card.querySelector('.sig-mc');
-    if (d.market_cap && mcEl) mcEl.textContent = fmtCur(d.market_cap);
+    const core = card.querySelector('.core');
+    if (!core) return;
+    const sym = d.token_symbol || addrShort(d.token_address);
+    const hasVol = d.volume_24h > 0;
+    core.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right" class="sig-liq">${fmtCur(d.liquidity)}</span>${hasVol?`<span class="text-muted">Vol</span><span style="text-align:right">${fmtCur(d.volume_24h)}</span>`:''}</div>
+<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span>${d.latency_ms?`<span class="badge badge-gr">${d.latency_ms}ms</span>`:''}</div>`;
   });
   ev.addEventListener('trade', e => {
     const d = JSON.parse(e.data);
