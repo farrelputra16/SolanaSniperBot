@@ -329,7 +329,9 @@ async function showChannelSetup(ctx, id) {
     .text('🎯 TP/SL', `r_tpsl_${ch.id}`)
     .text('💼 Group', `r_grp_${ch.id}`)
     .row()
-    .text('⚡ Fee', `r_fee_${ch.id}`)
+    .text(`⚡ ${fmtFee(r.priority_fee)}`, `f_fee_${ch.id}`)
+    .text(`💸 ${fmtFee(r.tip_fee)}`, `f_tip_${ch.id}`)
+    .row()
     .text(ch.active ? '🔇 Pause' : '🔊 Activate', `ch_t_${ch.id}`)
     .text('🗑 Remove', `ch_rem_${ch.id}`)
     .row()
@@ -387,32 +389,6 @@ async function showTPSEditor(ctx, id) {
   const kb = new InlineKeyboard()
     .text(`🎯 TP: ${r.take_profit_percent ? r.take_profit_percent + '%' : 'OFF'}`, `t_tp_${ch.id}`)
     .text(`🛑 SL: ${r.stop_loss_percent ? r.stop_loss_percent + '%' : 'OFF'}`, `t_sl_${ch.id}`)
-    .row()
-    .text('🔙 Back', `ch_s_${ch.id}`);
-
-  ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb }).catch(() => {});
-}
-
-async function showFeeEditor(ctx, id) {
-  await db.setTelegramId(adminId);
-  const ch = await db.getChannelWithRule(id);
-  if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
-  const r = ch.rule || {};
-  const name = btnText(ch.display_name || ch.channel_username);
-
-  const lines = [
-    `⚡ <b>Gas Fees — ${esc(name)}</b>`,
-    `━━━━━━━━━━━━━━━━`,
-    `Priority Fee: ${fmtFee(r.priority_fee)} SOL`,
-    `Tip Fee: ${fmtFee(r.tip_fee)} SOL`,
-    `━━━━━━━━━━━━━━━━`,
-    `SOL min: 0.00001 each. Tap to toggle OFF or set new value.`,
-  ].join('\n');
-
-  const kb = new InlineKeyboard()
-    .text(`✅ Priority Fee: ${fmtFee(r.priority_fee)}`, `f_fee_${ch.id}`)
-    .row()
-    .text(`✅ Tip Fee: ${fmtFee(r.tip_fee)}`, `f_tip_${ch.id}`)
     .row()
     .text('🔙 Back', `ch_s_${ch.id}`);
 
@@ -948,10 +924,7 @@ function registerCommands() {
     const rTpslMatch = d.match(/^r_tpsl_(\d+)$/);
     if (rTpslMatch) { ctx.answerCallbackQuery(); return showTPSEditor(ctx, parseInt(rTpslMatch[1])); }
 
-    const rFeeMatch = d.match(/^r_fee_(\d+)$/);
-    if (rFeeMatch) { ctx.answerCallbackQuery(); return showFeeEditor(ctx, parseInt(rFeeMatch[1])); }
-
-    // Fee toggles
+    // Fee toggles — inline in main setup
     const feeMap = { 'f_fee_': 'priority_fee', 'f_tip_': 'tip_fee' };
     for (const [prefix, field] of Object.entries(feeMap)) {
       if (d.startsWith(prefix)) {
@@ -964,7 +937,7 @@ function registerCommands() {
           const clean = { ...rule }; delete clean.channel_id;
           await db.upsertChannelRule({ channel_id: id, ...clean });
           ctx.answerCallbackQuery({ text: 'Cleared' });
-          return showFeeEditor(ctx, id);
+          return showChannelSetup(ctx, id);
         } else {
           ctx.answerCallbackQuery();
           return startRuleInput(ctx, String(id), field, `⚡ <b>Enter ${field === 'priority_fee' ? 'Priority Fee' : 'Tip Fee'}</b>\n\nEnter amount in SOL.\nMin: <code>0.00001</code>\nExample: <code>0.0001</code>`);
