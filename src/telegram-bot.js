@@ -270,6 +270,10 @@ async function showChannels(ctx, page = 0, edit = true) {
 }
 
 // ───── Channel Setup / Rule Editor ─────
+function fmtFee(v) {
+  if (v == null || v <= 0) return '—';
+  return v < 0.01 ? v.toFixed(5) : v.toFixed(3);
+}
 async function showChannelSetup(ctx, id) {
   await db.setTelegramId(adminId);
   const ch = await db.getChannelWithRule(id);
@@ -277,43 +281,60 @@ async function showChannelSetup(ctx, id) {
   const r = ch.rule || {};
   const name = btnText(ch.display_name || ch.channel_username);
 
-  const baseLines = [
-    `⚙️ <b>${esc(name)}</b>`,
-    `Status: ${ch.active ? '🟢 Active' : '🔴 Paused'} · Track: ${r.track_mode || 'admin'}`,
-    `━━━━━━━━━━━━━━━━`,
-    `💵 <b>Auto-buy:</b> ${r.auto_buy ? '🟢 ON' : '🔴 OFF'}  |  ${r.buy_amount_sol || 0.01} SOL`,
-    `🌀 <b>Blind Buy:</b> ${r.blind_buy ? '🟢 ON' : '🔴 OFF'}  |  💼 ${r.wallet_group_id ? (r.wallet_group_id > 0 ? 'Group ' + r.wallet_group_id : 'Wallet ' + Math.abs(r.wallet_group_id)) : 'Active wallet'}`,
-    `━━━━━━━━━━━━━━━━`,
-    `<b>📊 Filters</b>`,
-    `  Min MC: ${r.min_market_cap ? fmtCur(r.min_market_cap) : '—'}`,
-    `  Max MC: ${r.max_market_cap ? fmtCur(r.max_market_cap) : '—'}`,
-    `  Min Liq: ${r.min_liquidity ? fmtCur(r.min_liquidity) : '—'}`,
-    `  Max Liq: ${r.max_liquidity ? fmtCur(r.max_liquidity) : '—'}`,
-    `━━━━━━━━━━━━━━━━`,
-    `🎯 TP: ${r.take_profit_percent ? r.take_profit_percent + '%' : '—'}  |  🛑 SL: ${r.stop_loss_percent ? r.stop_loss_percent + '%' : '—'}`,
+  let tpLevels = [];
+  try { tpLevels = typeof r.tp_levels === 'string' ? JSON.parse(r.tp_levels) : (r.tp_levels || []); } catch {}
+
+  const multi = r.wallet_group_id ? (r.wallet_group_id > 0 ? 'Group ' + r.wallet_group_id : 'Wallet ' + Math.abs(r.wallet_group_id)) : 'Default only';
+  const sellOrders = [];
+  if (r.take_profit_percent) sellOrders.push(`‣ TP | ${r.take_profit_percent}% • 100%`);
+  if (r.stop_loss_percent) sellOrders.push(`‣ SL | −${Math.abs(r.stop_loss_percent)}% • 100%`);
+  for (const tp of tpLevels) {
+    if (tp.percent) sellOrders.push(`‣ TP | ${tp.percent}% • ${tp.sell_ratio || 100}%`);
+  }
+  const sellBlock = sellOrders.length
+    ? `\nSell Limit Orders\n${sellOrders.join('\n')}`
+    : '\nSell Limit Orders\n‣ <i>None configured</i>';
+
+  const lines = [
+    `‎@${esc(name)} 🔗 SOL`,
+    `ID: ${ch.id}`,
+    ``,
+    `📌 <b>Auto Buy</b>`,
+    `Active: ${r.auto_buy ? '🟢 Active' : '🔴 Paused'}`,
+    `Amount: ${r.buy_amount_sol || 0.01} SOL`,
+    `Slippage: ${r.slippage || 30}%`,
+    `Gas Price: ${fmtFee(r.priority_fee)} SOL + ${fmtFee(r.tip_fee)} SOL tip`,
+    `Anti-MEV: ${r.anti_mev ? '🟢 ON' : '🔴 OFF'}`,
+    `Multi: ${multi}`,
+    `Min MarketCap: ${r.min_market_cap ? '$' + fmtCur(r.min_market_cap) : 'Disabled'}`,
+    `Max MarketCap: ${r.max_market_cap ? '$' + fmtCur(r.max_market_cap) : 'Disabled'}`,
+    `Min Liquidity: ${r.min_liquidity ? '$' + fmtCur(r.min_liquidity) : 'Disabled'}`,
+    `Max Liquidity: ${r.max_liquidity ? '$' + fmtCur(r.max_liquidity) : 'Disabled'}`,
+    ``,
+    `📌 <b>Sell</b>`,
+    `Auto Sell: ${r.take_profit_percent || r.stop_loss_percent || tpLevels.length ? '🟢' : '🔴'}`,
+    sellBlock,
   ];
-  if (r.blind_buy) baseLines.push(
-    `━━━━━━━━━━━━━━━━`,
-    `⚠️ <b>Blind Buy active</b> — all MC, liquidity, and security filters are bypassed. The bot will buy EVERY signal from this channel with no checks. Suitable for early-signal alpha channels, but <b>high risk</b> — rug/honeypot tokens won't be caught. Disable Blind Buy if you want filters applied.`
+  if (r.blind_buy) lines.push(
+    ``,
+    `⚠️ Blind Buy active — all filters bypassed. High risk.`
   );
-  const lines = baseLines.join('\n');
 
   const kb = new InlineKeyboard()
-    .text(r.auto_buy ? '💵 Buy ON' : '💵 Buy OFF', `r_buy_${ch.id}`)
+    .text(r.auto_buy ? '💵 ON' : '💵 OFF', `r_buy_${ch.id}`)
     .text('💰 Amount', `r_amt_${ch.id}`)
-    .row()
-    .text(r.blind_buy ? '🌀 Blind ON' : '🌀 Blind OFF', `r_blind_${ch.id}`)
-    .text('💼 Group', `r_grp_${ch.id}`)
+    .text('🌀 Blind', `r_blind_${ch.id}`)
     .row()
     .text('📊 Filters', `r_filt_${ch.id}`)
     .text('🎯 TP/SL', `r_tpsl_${ch.id}`)
+    .text('💼 Group', `r_grp_${ch.id}`)
     .row()
     .text(ch.active ? '🔇 Pause' : '🔊 Activate', `ch_t_${ch.id}`)
     .text('🗑 Remove', `ch_rem_${ch.id}`)
     .row()
     .text('🔙 Back', 'menu_channels');
 
-  ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines, { parse_mode: 'HTML', reply_markup: kb }));
+  ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }));
 }
 
 async function showFilterEditor(ctx, id) {
