@@ -444,7 +444,7 @@ async function showWallets(ctx, edit = true) {
   await db.setTelegramId(adminId);
   const wallets = await db.getAllWallets();
   if (!wallets.length) {
-    const kb = new InlineKeyboard().text('➕ Add Wallet', 'wallet_add').row().text('🔙 Menu', 'menu_main');
+    const kb = new InlineKeyboard().text('➕ Add Wallet', 'wallet_add').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
     const text = `💰 <b>Wallets</b>
 ━━━━━━━━━━━━━━━━
 No wallets yet.
@@ -471,7 +471,7 @@ Add your first wallet to start trading.`;
     const label = btnText(w.label || addrShort(w.address));
     kb.text(`${label}`, `wallet_v_${w.id}`).text('🗑', `wallet_d_${w.id}`).row();
   }
-  kb.text('➕ Add Wallet', 'wallet_add').row().text('🔙 Menu', 'menu_main');
+  kb.text('➕ Add Wallet', 'wallet_add').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
 
   const opts = { parse_mode: 'HTML', reply_markup: kb };
   const text = lines.join('\n\n');
@@ -555,6 +555,92 @@ async function removeWallet(ctx, id) {
   await db.removeWallet(id);
   ctx.answerCallbackQuery({ text: 'Removed' });
   showWallets(ctx, true);
+}
+
+// ───── Wallet Groups ─────
+let _awaitingGroupName = new Set();
+async function showGroups(ctx, edit = true) {
+  await db.setTelegramId(adminId);
+  const groups = await db.getWalletGroups();
+  const lines = [`👥 <b>Wallet Groups</b>  ${groups.length} total`, `━━━━━━━━━━━━━━━━`];
+  for (const g of groups) {
+    lines.push(`<b>${esc(g.name)}</b> — ${g.member_count || 0} wallet${g.member_count !== 1 ? 's' : ''}`);
+  }
+  if (!groups.length) lines.push('No groups yet.');
+  const kb = new InlineKeyboard();
+  for (const g of groups) {
+    kb.text(btnText(g.name), `grp_v_${g.id}`).text('🗑', `grp_d_${g.id}`).row();
+  }
+  kb.text('➕ Create Group', 'grp_add').row().text('🔙 Wallets', 'menu_wallets');
+  const opts = { parse_mode: 'HTML', reply_markup: kb };
+  const text = lines.join('\n');
+  if (edit) {
+    try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); }
+  } else {
+    await ctx.reply(text, opts);
+  }
+}
+async function promptGroupName(ctx) {
+  _awaitingGroupName.add(String(ctx.from.id));
+  const kb = new InlineKeyboard().text('🔙 Back', 'menu_wallets');
+  ctx.reply('👥 <b>Create Wallet Group</b>\n\nSend a name for the new group.\n\nOr /cancel to abort.', { parse_mode: 'HTML', reply_markup: kb });
+}
+async function handleGroupNameInput(ctx, text) {
+  _awaitingGroupName.delete(String(ctx.from.id));
+  const name = text.trim();
+  if (!name) return ctx.reply('❌ Name cannot be empty.', { parse_mode: 'HTML' });
+  await db.setTelegramId(adminId);
+  await db.createWalletGroup(name);
+  const kb = new InlineKeyboard().text('👥 Groups', 'menu_groups').text('🔙 Menu', 'menu_main');
+  ctx.reply(`✅ Group <b>${esc(name)}</b> created!`, { parse_mode: 'HTML', reply_markup: kb });
+  showGroups(ctx, false);
+}
+
+let _awaitingGroupWallets = new Set();
+async function showGroupDetail(ctx, id) {
+  await db.setTelegramId(adminId);
+  const g = await db.getWalletGroups().then(gs => gs.find(gg => gg.id === id));
+  if (!g) return ctx.answerCallbackQuery({ text: 'Not found' });
+  const wallets = await db.getGroupWallets(id);
+  const lines = [`👥 <b>${esc(g.name)}</b>`, `━━━━━━━━━━━━━━━━`];
+  if (wallets.length) {
+    for (const w of wallets) {
+      lines.push(`<code>${esc(w.address)}</code>${w.label ? ' — ' + esc(w.label) : ''}`);
+    }
+  } else {
+    lines.push('No wallets in this group.');
+  }
+  const text = lines.join('\n');
+  const kb = new InlineKeyboard()
+    .text('➕ Add Wallet', `grp_aw_${g.id}`)
+    .row()
+    .text('🔙 Groups', 'menu_groups');
+  ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb }));
+}
+async function promptGroupWalletAdd(ctx, groupId) {
+  _awaitingGroupWallets.add(String(ctx.from.id));
+  _pendingGroupId = groupId;
+  const kb = new InlineKeyboard().text('🔙 Back', 'menu_groups');
+  ctx.reply('➕ <b>Add Wallet to Group</b>\n\nSend the wallet ID number to add.\n\nGet wallet IDs from 💰 Wallets menu.\n\nOr /cancel to abort.', { parse_mode: 'HTML', reply_markup: kb });
+}
+let _pendingGroupId = null;
+async function handleGroupWalletInput(ctx, text) {
+  _awaitingGroupWallets.delete(String(ctx.from.id));
+  const walletId = parseInt(text.trim());
+  if (isNaN(walletId)) return ctx.reply('❌ Enter a valid wallet ID number.', { parse_mode: 'HTML' });
+  await db.setTelegramId(adminId);
+  if (_pendingGroupId) {
+    await db.addWalletToGroup(_pendingGroupId, walletId);
+    _pendingGroupId = null;
+    const kb = new InlineKeyboard().text('👥 Groups', 'menu_groups').text('🔙 Menu', 'menu_main');
+    ctx.reply(`✅ Wallet #${walletId} added to group!`, { parse_mode: 'HTML', reply_markup: kb });
+  }
+}
+async function removeGroup(ctx, id) {
+  await db.setTelegramId(adminId);
+  await db.deleteWalletGroup(id);
+  ctx.answerCallbackQuery({ text: 'Removed' });
+  showGroups(ctx, true);
 }
 
 // ───── Signals ─────
@@ -663,6 +749,9 @@ function registerCommands() {
     _awaitingLink.delete(uid);
     _awaitingWalletKey.delete(uid);
     _awaitingRuleInput.delete(uid);
+    _awaitingGroupName.delete(uid);
+    _awaitingGroupWallets.delete(uid);
+    _pendingGroupId = null;
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
     ctx.reply('Cancelled.', { parse_mode: 'HTML', reply_markup: kb });
     showMainMenu(ctx, false);
@@ -683,6 +772,8 @@ function registerCommands() {
     if (_awaitingLink.has(uid)) return handleLinkInput(ctx, ctx.message.text);
     if (_awaitingWalletKey.has(uid)) return handleWalletKeyInput(ctx, ctx.message.text);
     if (_awaitingRuleInput.has(uid)) return handleRuleInput(ctx, ctx.message.text);
+    if (_awaitingGroupName.has(uid)) return handleGroupNameInput(ctx, ctx.message.text);
+    if (_awaitingGroupWallets.has(uid)) return handleGroupWalletInput(ctx, ctx.message.text);
 
     if (!auth(ctx)) return;
     showMainMenu(ctx, false);
@@ -698,6 +789,7 @@ function registerCommands() {
     if (d === 'menu_main') return showMainMenu(ctx, true);
     if (d === 'menu_channels') return showChannels(ctx, 0, true);
     if (d === 'menu_wallets') return showWallets(ctx, true);
+    if (d === 'menu_groups') { ctx.answerCallbackQuery(); return showGroups(ctx, true); }
     if (d === 'menu_signals') { ctx.answerCallbackQuery(); return showSignals(ctx); }
     if (d === 'menu_stats') { ctx.answerCallbackQuery(); return showStats(ctx); }
     if (d === 'menu_disconnect') { ctx.answerCallbackQuery({ text: 'Disconnecting...' }); return cmdDisconnect(ctx); }
@@ -889,6 +981,21 @@ function registerCommands() {
       ctx.answerCallbackQuery({ text: 'Removed' });
       return removeWallet(ctx, parseInt(walletDelMatch[1]));
     }
+
+    // ───── Wallet Groups ─────
+    if (d === 'grp_add') { ctx.answerCallbackQuery(); return promptGroupName(ctx); }
+
+    const grpViewMatch = d.match(/^grp_v_(\d+)$/);
+    if (grpViewMatch) { ctx.answerCallbackQuery(); return showGroupDetail(ctx, parseInt(grpViewMatch[1])); }
+
+    const grpDelMatch = d.match(/^grp_d_(\d+)$/);
+    if (grpDelMatch) {
+      ctx.answerCallbackQuery({ text: 'Removed' });
+      return removeGroup(ctx, parseInt(grpDelMatch[1]));
+    }
+
+    const grpAwMatch = d.match(/^grp_aw_(\d+)$/);
+    if (grpAwMatch) { ctx.answerCallbackQuery(); return promptGroupWalletAdd(ctx, parseInt(grpAwMatch[1])); }
   });
 }
 

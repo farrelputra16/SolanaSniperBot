@@ -157,11 +157,6 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     sender_username: senderUsername, created_at: now,
   });
 
-  // Normal auto-buys (fire-and-forget, data fetched below)
-  for (const rule of normalRules) {
-    executeAutoBuy(address, chain, rule, sourceChannel, t0);
-  }
-
   // Fetch data from DexScreener (fast) + GMGN (detailed) — both fire-and-forget, non-blocking
   getDexScreenerInfo(chain, address).then(dexData => {
     if (!dexData || !signalId) return;
@@ -199,9 +194,26 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
         rug_ratio: gmgnData.rug_ratio, smart_degen_count: gmgnData.smart_degen_count,
         latency_ms: gmgnLatency, sender_username: senderUsername, created_at: now,
       });
-      console.log(`⚡ SIGNAL ${gmgnData.token_symbol||address} | GMGN=${gmgnLatency}ms ${matchingRules.length?'🟢 swap ✅':'⏸️'}`);
+
+      // Normal auto-buy with filter check — only executes after GMGN data arrives
+      for (const rule of normalRules) {
+        if (passesFilter(rule, gmgnData)) {
+          executeAutoBuy(address, chain, rule, sourceChannel, t0);
+        }
+      }
+
+      console.log(`⚡ SIGNAL ${gmgnData.token_symbol||address} | GMGN=${gmgnLatency}ms ${normalRules.filter(r => passesFilter(r, gmgnData)).length?'🟢 swap ✅':'⏸️'}`);
     })
     .catch(() => console.warn(`[Router] GMGN failed for ${address}, DexScreener data used.`));
+}
+
+function passesFilter(rule, tokenData) {
+  if (rule.blind_buy) return true;
+  if (rule.min_market_cap != null && tokenData.market_cap < rule.min_market_cap) return false;
+  if (rule.max_market_cap != null && tokenData.market_cap > rule.max_market_cap) return false;
+  if (rule.min_liquidity != null && tokenData.liquidity < rule.min_liquidity) return false;
+  if (rule.max_liquidity != null && tokenData.liquidity > rule.max_liquidity) return false;
+  return true;
 }
 
 function forwardSignal(sourceChannel, address, data, text, error) {

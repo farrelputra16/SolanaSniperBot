@@ -777,7 +777,7 @@ async function renderPositions(){
     ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">${t.take_profit_percent?'<span class="badge badge-g">TP '+t.take_profit_percent+'%</span>':''} ${t.stop_loss_percent?'<span class="badge badge-r">SL '+t.stop_loss_percent+'%</span>':''} ${!t.take_profit_percent&&!t.stop_loss_percent?'<span class="text-muted">—</span>':''}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📈</div><h4>No open positions</h4><p>Trades appear here after auto-buy executes. Set TP/SL in channel config.</p></div>`}
   </div>
   <div id="pos-closed" class="tab-content">
-    ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&amp;L</th><th>ROI</th><th>Closed</th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?(t.pnl_percent>=0?'+':'')+t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📊</div><h4>No closed positions</h4><p>Sell history appears here. Use TP/SL to auto-close.</p></div>`}
+    ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&amp;L</th><th>ROI</th><th>Closed</th><th></th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?(t.pnl_percent>=0?'+':'')+t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td><td><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📊</div><h4>No closed positions</h4><p>Sell history appears here. Use TP/SL to auto-close.</p></div>`}
   </div>
 </div></div>`;}
 
@@ -891,16 +891,18 @@ async function renderWallets(){
 
 <div class="shell"><div class="core"><div class="card-h"><h3>👥 Wallet Groups</h3><button class="btn btn-sm btn-p" onclick="openGroupForm()">+ Create Group</button></div>
 <p class="text-sm text-muted mb-8">Groups distribute a single buy across multiple wallets for better position concealment. Buy amount is divided equally.</p>
-  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.35rem">${groups.map(g=>`<div class="shell" style="border-radius:var(--radius-sm);padding:1px;cursor:pointer" onclick="viewGroup(${g.id})"><div class="core" style="padding:0.45rem 0.75rem;border-radius:calc(var(--radius-sm) - 0.25rem);display:flex;align-items:center;gap:0.35rem"><span style="font-weight:600;font-size:0.78rem">${esc(g.name)}</span><span class="badge badge-b">${g.member_count||0}</span></div></div>`).join('')}</div>`:`<div class="text-muted text-sm" style="padding:0.5rem 0">No groups yet. Create a group, then assign it in <span style="color:var(--accent)">channel settings → Buy Wallet</span>.</div>`}
+  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.35rem">${groups.map(g=>`<div class="shell" style="border-radius:var(--radius-sm);padding:1px"><div class="core" style="padding:0.45rem 0.75rem;border-radius:calc(var(--radius-sm) - 0.25rem);display:flex;align-items:center;gap:0.35rem"><span style="font-weight:600;font-size:0.78rem;cursor:pointer" onclick="viewGroup(${g.id})">${esc(g.name)}</span><span class="badge badge-b">${g.member_count||0}</span><button class="btn btn-sm btn-ghost" onclick="delGroup(${g.id})" style="color:var(--red);margin-left:0.25rem;font-size:0.65rem">✕</button></div></div>`).join('')}</div>`:`<div class="text-muted text-sm" style="padding:0.5rem 0">No groups yet. Create a group, then assign it in <span style="color:var(--accent)">channel settings → Buy Wallet</span>.</div>`}
 </div></div>`;}
 
 window.actW=async function(id){await api('/wallets/'+id+'/activate',{method:'POST'});toast('Wallet activated','ok');renderPage('wallets')};
 window.delW=async function(id){
   if(!confirm('Remove this wallet?'))return;
-  const r=await api('/wallets/'+id,{method:'DELETE'});
-  if(r.error)return toast(r.error,'err');
-  toast('Wallet removed','info');
-  renderPage('wallets')
+  try{
+    const r=await api('/wallets/'+id,{method:'DELETE'});
+    if(r.error)return toast(r.error,'err');
+    toast('Wallet removed','info');
+    renderPage('wallets');
+  }catch(e){toast(e.message,'err')}
 };
 window.copyAddr=function(a){navigator.clipboard.writeText(a);toast('Copied','ok')};
 
@@ -1021,7 +1023,16 @@ window.viewGroup=async function(id){
   const info=await api('/wallet-groups').then(gs=>gs.find(gg=>gg.id===id));
   openModal(`<h2>${esc(info?.name||'Group')}</h2><p class="text-muted text-sm mb-8">${g.length} wallet${g.length!==1?'s':''}</p>
   ${g.length?`<div class="table-wrap"><table><thead><tr><th>Wallet</th><th>Label</th><th></th></tr></thead><tbody>${g.map(w=>`<tr><td><span class="mono addr">${w.address}</span></td><td class="text-muted">${esc(w.label||'')}</td><td><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')">Copy</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="text-muted">No wallets in this group.</div>'}
-  <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+  <div class="modal-actions"><button class="btn btn-r" onclick="delGroup(${id})">Delete Group</button><button class="btn" onclick="closeModal()">Close</button></div>`);
+};
+window.delGroup=async function(id){
+  if(!confirm('Delete this wallet group?'))return;
+  try{
+    await api('/wallet-groups/'+id,{method:'DELETE'});
+    toast('Group deleted','info');
+    closeModal();
+    renderPage('wallets');
+  }catch(e){toast(e.message,'err')}
 };
 
 // ═══ SETTINGS ───
