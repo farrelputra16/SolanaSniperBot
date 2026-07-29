@@ -115,7 +115,7 @@ async function showHelp(ctx, edit) {
 💡 Add wallets under 💰 Wallets before trading
 💡 Configure auto-buy per channel in ⚙️ settings
 
-<b>Blind Buy</b> — saat diaktifkan, bot akan membeli <b>setiap</b> signal tanpa filter MC, liquidity, atau keamanan. Berisiko tinggi — hanya gunakan untuk channel alpha yang diyakini. Sebaiknya tetap aktifkan filter (Blind Buy OFF) untuk keamanan.`;
+<b>Blind Buy</b> — when enabled, the bot buys <b>every</b> signal with no MC, liquidity, or security checks. High risk — only use on trusted alpha channels. Keep Blind Buy OFF for safer filtered trading.`;
 
   const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
   const opts = { parse_mode: 'HTML', reply_markup: kb, ...(edit ? {} : {}) };
@@ -294,7 +294,7 @@ async function showChannelSetup(ctx, id) {
   ];
   if (r.blind_buy) baseLines.push(
     `━━━━━━━━━━━━━━━━`,
-    `⚠️ <b>Blind Buy aktif</b> — semua filter MC, liquidity, dan keamanan token diabaikan. Bot akan membeli SETIAP signal dari channel ini tanpa filter. Cocok untuk channel alpha early signal, tapi <b>berisiko tinggi</b> karena token rug/honeypot tidak terdeteksi. Matikan Blind Buy jika ingin tetap pakai filter.`
+    `⚠️ <b>Blind Buy active</b> — all MC, liquidity, and security filters are bypassed. The bot will buy EVERY signal from this channel with no checks. Suitable for early-signal alpha channels, but <b>high risk</b> — rug/honeypot tokens won't be caught. Disable Blind Buy if you want filters applied.`
   );
   const lines = baseLines.join('\n');
 
