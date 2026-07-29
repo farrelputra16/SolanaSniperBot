@@ -700,11 +700,9 @@ Tap 🔄 to refresh`,
 function attachLiveForwarding() {
   liveEvents.on('signal', async data => {
     if (!adminId || (data._tid && data._tid !== adminId)) return;
-    const sym = data.token_symbol || addrShort(data.token_address);
-    const latency = data.latency_ms != null ? (data.latency_ms < 1000 ? `${data.latency_ms}ms` : `${(data.latency_ms / 1000).toFixed(1)}s`) : '?';
     try {
       const msg = await bot.api.sendMessage(adminId,
-        `📡 <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n📡 ${esc(data.source_channel || '')} · ⏱ ${latency}\n💰 <i>Fetching data...</i>`,
+        `<code>${esc(data.token_address)}</code>`,
         { parse_mode: 'HTML' });
       if (data.id != null) _pendingSignals.set(String(data.id), { chatId: msg.chat.id, messageId: msg.message_id });
     } catch {}
@@ -717,14 +715,15 @@ function attachLiveForwarding() {
     if (!pending) return;
     const sym = data.token_symbol || addrShort(data.token_address);
     const latency = data.latency_ms != null ? (data.latency_ms < 1000 ? `${data.latency_ms}ms` : `${(data.latency_ms / 1000).toFixed(1)}s`) : '?';
+    const catchedMc = data.catched_mc || data.market_cap || 0;
     const hasVol = data.volume_24h > 0;
     const lvl = data.volume_24h > 500000 ? '🔥' : data.volume_24h > 100000 ? '⚡' : '';
     try {
-      await bot.api.editMessageText(pending.chatId, pending.messageId,
-        `📡 <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n📡 ${esc(data.source_channel || '')} · ⏱ ${latency}\n💰 ${fmtCur(data.market_cap)} MC · 💧 ${fmtCur(data.liquidity)} Liq${hasVol ? ` · 📊 ${fmtCur(data.volume_24h)} Vol ${lvl}` : ''}`,
+      await bot.api.sendMessage(pending.chatId,
+        `📡 <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n📡 ${esc(data.source_channel || '')} · ⏱ ${latency}\n💰 ${fmtCur(catchedMc)} MC catched at · 💧 ${fmtCur(data.liquidity)} Liq${hasVol ? ` · 📊 ${fmtCur(data.volume_24h)} Vol ${lvl}` : ''}\n🔗 gmgn.ai/chain/sol/token/${data.token_address}`,
         { parse_mode: 'HTML' });
     } catch {}
-    setTimeout(() => _pendingSignals.delete(sid), 30000);
+    _pendingSignals.delete(sid);
   });
 
   liveEvents.on('trade', async data => {
