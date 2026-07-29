@@ -204,9 +204,8 @@
     const meta = _channelMeta.get(chatId);
     if (!meta) return;
     const identifier = meta.identifier;
-    const trackMode = meta.trackMode || 'admin';
 
-    if (trackMode === 'admin' && !msg.post) return;
+    if (!meta.isBroadcast && meta.trackMode === 'admin' && !msg.post) return;
 
     const text = msg.text;
 
@@ -322,10 +321,12 @@
       const entity = await resolveAndJoin(identifier);
       const label = entity.username || `t.me/+${identifier.replace('+', '')}`;
       const chatId = String(entity.id);
+      const isBroadcast = entity.broadcast === true;
+      const effectiveMode = isBroadcast ? 'admin' : (trackMode || 'admin');
       installGlobalHandler();
       _listeners.add(chatId);
-      _channelMeta.set(chatId, { identifier, trackMode: trackMode || 'admin' });
-      console.log(`[Telegram] Listening: ${label} (${trackMode || 'admin'})`);
+      _channelMeta.set(chatId, { identifier, trackMode: effectiveMode, isBroadcast });
+      console.log(`[Telegram] Listening: ${label} (${effectiveMode}${isBroadcast?' broadcast':' group'})`);
       db.addScraperLog(identifier, 'info', `Listening: ${label}`);
       return true;
     } catch (err) {

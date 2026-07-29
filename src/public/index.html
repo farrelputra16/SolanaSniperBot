@@ -581,7 +581,7 @@ window.openChannelForm=async function(id){
   <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="Channel username or link"/></div>
   <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/></div>
 </div>
-<div class="form-group"><label>Track Messages</label><select id="f-track-mode"><option value="admin" ${(ch.track_mode||'admin')==='admin'?'selected':''}>Admin only (broadcast posts)</option><option value="all" ${ch.track_mode==='all'?'selected':''}>All messages (including group chat)</option></select></div>
+<div id="f-track-mode-grp" class="form-group"><label>Track Messages</label><select id="f-track-mode"><option value="admin" ${(ch.track_mode||'admin')==='admin'?'selected':''}>Admin only</option><option value="all" ${ch.track_mode==='all'?'selected':''}>All messages</option></select><p class="text-muted text-sm" style="margin-top:0.2rem">Channels auto-set to Admin only. Groups can also track all user messages.</p></div>
 <h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Filters</h3>
 <div class="form-grid filter-fields" style="${r.blind_buy?'opacity:0.3':''}">
   <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/></div>
