@@ -336,6 +336,27 @@ async function handleRuleInput(ctx, text) {
   }
 }
 
+async function fetchSolBalance(address) {
+  try {
+    const { getWalletTokenBalance } = await import('./gmgn.js');
+    const raw = await getWalletTokenBalance('sol', address, 'So11111111111111111111111111111111111111112');
+    const entry = raw?.data?.balances?.[0] || {};
+    const b = Number(entry.balance ?? 0);
+    const d = entry.decimal ?? 9;
+    if (b > 0) return b / Math.pow(10, d);
+  } catch {}
+  try {
+    const r = await fetch('https://api.mainnet-beta.solana.com', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [address] }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const j = await r.json();
+    if (j.result?.value != null) return j.result.value / 1e9;
+  } catch {}
+  return null;
+}
+
 // ───── Wallets ─────
 async function showWallets(ctx, edit = true) {
   await db.setTelegramId(adminId);
@@ -351,20 +372,12 @@ async function showWallets(ctx, edit = true) {
     return;
   }
 
-  const { getWalletTokenBalance } = await import('./gmgn.js');
   const lines = [`💰 <b>Wallets</b> (${wallets.length})`, ''];
 
   for (const w of wallets) {
     const label = w.label || addrShort(w.address);
-    let bal = '?';
-    try {
-      const raw = await getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
-      const entry = raw?.data?.balances?.[0] || {};
-      const balRaw = Number(entry.balance ?? 0);
-      const dec = entry.decimal ?? 9;
-      bal = balRaw > 0 ? (balRaw / Math.pow(10, dec)).toFixed(4) + ' SOL' : '0 SOL';
-    } catch {}
-    lines.push(`<b>${esc(label)}</b> — 💳 ${bal}`);
+    let sol = await fetchSolBalance(w.address);
+    lines.push(`<b>${esc(label)}</b>\n<code>${esc(w.address)}</code>\n💳 ${sol != null ? sol.toFixed(4) + ' SOL' : '?'}`);
   }
 
   const kb = new InlineKeyboard();
@@ -374,7 +387,7 @@ async function showWallets(ctx, edit = true) {
   }
   kb.text('➕ Add Wallet', 'wallet_add').row().text('🔙 Menu', 'menu_main');
 
-  const text = lines.join('\n');
+  const text = lines.join('\n\n');
   if (edit) {
     try { await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: kb }); } catch { await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb }); }
   } else {
@@ -412,37 +425,36 @@ async function showWalletDetail(ctx, id) {
   await db.setTelegramId(adminId);
   const w = await db.getWallet(id);
   if (!w) return ctx.answerCallbackQuery({ text: 'Not found' });
-  const { getWalletTokenBalance, getWalletHoldings, getWalletStats } = await import('./gmgn.js');
+  const { getWalletHoldings, getWalletStats } = await import('./gmgn.js');
   const label = w.label || addrShort(w.address);
-  let solBal = '?';
-  let totalUsd = '?';
-  let holdingsCount = 0;
+  let sol = await fetchSolBalance(w.address);
+  let holdingsText = '';
   try {
-    const raw = await getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
-    const entry = raw?.data?.balances?.[0] || {};
-    const b = Number(entry.balance ?? 0);
-    const d = entry.decimal ?? 9;
-    solBal = b > 0 ? (b / Math.pow(10, d)).toFixed(4) + ' SOL' : '0 SOL';
-  } catch {}
-  try {
-    const h = await getWalletHoldings('sol', w.address, { limit: 10 });
+    const h = await getWalletHoldings('sol', w.address, { limit: 5 });
     const list = h?.data?.list || [];
-    holdingsCount = list.length;
-    totalUsd = list.reduce((s, t) => s + (Number(t.usd_value) || 0), 0).toFixed(2);
+    if (list.length) {
+      if (sol != null) {
+        const solIdx = list.findIndex(t => t.token_address === 'So11111111111111111111111111111111111111112');
+        if (solIdx >= 0) list.splice(solIdx, 1);
+      }
+      holdingsText = '\n\n📊 <b>Top Holdings</b>\n' + list.slice(0, 5).map(t =>
+        `  ${t.symbol || addrShort(t.token_address)}: ${fmtCur(Number(t.usd_value) || 0)}`
+      ).join('\n');
+    }
   } catch {}
   const lines = [
     `💰 <b>${esc(label)}</b>`,
     `<code>${esc(w.address)}</code>`,
     '',
-    `💳 SOL: ${solBal}`,
-    `📊 Holdings: ${holdingsCount} tokens${totalUsd !== '?' ? ` ($${totalUsd})` : ''}`,
-  ];
+    `💳 <b>${sol != null ? sol.toFixed(4) + ' SOL' : '?'}</b>`,
+    holdingsText,
+  ].filter(Boolean).join('\n');
   const kb = new InlineKeyboard()
     .text('🔄 Refresh', `wallet_v_${w.id}`)
     .text('🗑 Remove', `wallet_d_${w.id}`)
     .row()
-    .text('🔙 Back', 'menu_wallets');
-  ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }));
+    .text('🔙 Menu', 'menu_wallets');
+  ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines, { parse_mode: 'HTML', reply_markup: kb }));
 }
 
 async function removeWallet(ctx, id) {
