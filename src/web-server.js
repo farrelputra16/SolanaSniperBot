@@ -231,6 +231,17 @@ export function createWebServer() {
     res.json({ success: true, track_mode: mode });
   });
 
+  app.post('/api/clear-all', async (req, res) => {
+    try {
+      const { destroyClient } = await import('./telegram.js');
+      await db.clearAllChannelsAndSignals();
+      await destroyClient();
+      res.json({ success: true });
+    } catch (e) {
+      res.json({ error: e.message });
+    }
+  });
+
   app.get('/api/scraper-stats', async (req, res) => {
     const { getDedupStats } = await import('./router.js');
     res.json(getDedupStats());

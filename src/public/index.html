@@ -493,7 +493,7 @@ ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr
 async function renderChannels(){
   const channels=await api('/channels');
   return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules</div></div>
-<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add</button><button class="btn btn-sm" onclick="fetchJoinedChannels()">From Telegram</button></div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add</button><button class="btn btn-sm" onclick="fetchJoinedChannels()">From Telegram</button><button class="btn btn-sm btn-r" onclick="clearAllData()" style="font-size:0.6rem">Clear All</button></div></div>
 ${channels.length?channels.map(c=>{try{return renderChannelCard(c)}catch(e){console.error('Card error',c.id,e.message);return''}}).join('')||`<div class="empty-state"><p class="text-muted">Failed to render channel cards</p></div>`:`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
 </div></div>`;}
 
@@ -541,6 +541,12 @@ function renderChannelCard(c){
   </div></div>
 </div>`;}
 
+window.clearAllData=async function(){
+  if(!confirm('Delete ALL channels, signals, trades, and rules? This cannot be undone.'))return;
+  if(!confirm('Are you sure? All data will be permanently deleted.'))return;
+  await api('/clear-all',{method:'POST'});
+  window.location.reload();
+};
 window.togCh=async function(id){await api('/channels/'+id+'/toggle',{method:'PATCH'});renderPage('channels')};
 window.delCh=async function(id){if(!confirm('Delete channel and its rules?'))return;await api('/channels/'+id,{method:'DELETE'});toast('Deleted','info');renderPage('channels')};
 window.fetchJoinedChannels=async function(){

@@ -156,6 +156,22 @@ export async function addChannel(username, displayName) {
   }
   try { sqliteDb.prepare('INSERT OR IGNORE INTO channels (channel_username, display_name, telegram_id) VALUES (?,?,?)').run(username, displayName || username, _tid() || 'NONE'); } catch {}
 }
+export async function clearAllChannelsAndSignals() {
+  const tid = _tid() || 'NONE';
+  if (!sqliteMode && mdb) {
+    await collections.channels.deleteMany({ telegram_id: tid });
+    await collections.rules.deleteMany({ telegram_id: tid });
+    await collections.signals.deleteMany({ telegram_id: tid });
+    await collections.trades.deleteMany({ telegram_id: tid });
+    await collections.scraper_logs.deleteMany({ telegram_id: tid });
+    return;
+  }
+  sqliteDb.prepare('DELETE FROM channels WHERE telegram_id = ?').run(tid);
+  sqliteDb.prepare('DELETE FROM rules WHERE telegram_id = ?').run(tid);
+  sqliteDb.prepare('DELETE FROM signals WHERE telegram_id = ?').run(tid);
+  sqliteDb.prepare('DELETE FROM trades WHERE telegram_id = ?').run(tid);
+  sqliteDb.prepare('DELETE FROM scraper_logs WHERE telegram_id = ?').run(tid);
+}
 export async function removeChannel(id) {
   if (!sqliteMode && mdb) { await collections.channels.deleteOne({ id: Number(id), telegram_id: _tid() || 'NONE' }); await collections.rules.deleteOne({ channel_id: Number(id), telegram_id: _tid() || 'NONE' }); return; }
   sqliteDb.prepare('DELETE FROM channels WHERE id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
