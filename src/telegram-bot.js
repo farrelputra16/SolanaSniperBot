@@ -4,8 +4,6 @@ import { join } from 'path';
 import * as db from './database.js';
 import * as tg from './telegram.js';
 import { liveEvents } from './web-server.js';
-import { config } from './config.js';
-
 function env(key, dv) {
   if (process.env[key] !== undefined) return process.env[key];
   try {
@@ -30,7 +28,6 @@ export function isBotActive() { return !!bot; }
 // ───── State ─────
 const _awaitingLink = new Set();
 const _pendingSignals = new Map();
-const _loginState = new Map();
 
 // ───── Helpers ─────
 function esc(s) { return s ? String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]) : ''; }
@@ -61,9 +58,9 @@ function mainMenu(extra) {
     .text('💰 Wallets', 'menu_wallets')
     .row()
     .text('📊 Signals', 'menu_signals').text('📈 Stats', 'menu_stats');
-  if (isTgConnected()) kb.text('🔌 Disconnect', 'menu_disconnect');
-  const mt = isTgConnected() ? '🟢 MTProto' : '🔴 MTProto';
-  return { text: `🤖 <b>SniperBot</b>\n✅ Bot authorized | ${mt}\n\nSelect an option:`, opts: { parse_mode: 'HTML', reply_markup: kb, ...extra } };
+  if (isTgConnected()) kb.row().text('🔌 Disconnect', 'menu_disconnect');
+  const mt = isTgConnected() ? '🟢' : '🔴';
+  return { text: `🤖 <b>SniperBot</b>\n${mt} TG ${isTgConnected() ? 'Connected' : 'Disconnected (login from dashboard)'}\n\nSelect an option:`, opts: { parse_mode: 'HTML', reply_markup: kb, ...extra } };
 }
 
 async function showMainMenu(ctx, edit) {
@@ -75,90 +72,11 @@ async function showMainMenu(ctx, edit) {
   }
 }
 
-// ───── Login Flow (MTProto — needed for channel scraping) ─────
-async function cmdLogin(ctx) {
-  if (isTgConnected()) return ctx.reply('✅ MTProto already connected — channels are being scraped.\n\nBot is already authorized (you are the admin).', { parse_mode: 'HTML' });
-  if (!config.telegram.apiId || !config.telegram.apiHash)
-    return ctx.reply('❌ API_ID and API_HASH not set in environment.\n\nSet them in .env or Render env vars.', { parse_mode: 'HTML' });
-  const uid = String(ctx.from.id);
-  _loginState.set(uid, { stage: 'phone' });
-  ctx.reply('📱 <b>MTProto Login</b> — for channel scraping\n\nBot is already authorized (you can use /channels, /wallets, /stats).\nThis login is only needed to connect Telegram API for joining channels.\n\nSend your phone number with country code.\nExample: <code>+1234567890</code>\n\nOr /cancel to abort.', { parse_mode: 'HTML' });
-}
-
-async function handlePhoneInput(ctx, phone) {
-  const uid = String(ctx.from.id);
-  const state = _loginState.get(uid);
-  if (!state || state.stage !== 'phone') return;
-
-  phone = phone.replace(/[^0-9+]/g, '');
-  if (!phone.startsWith('+')) phone = '+' + phone;
-  if (phone.length < 8) return ctx.reply('❌ Invalid phone. Send with country code, e.g. <code>+1234567890</code>', { parse_mode: 'HTML' });
-
-  state.stage = 'sending_code';
-  state.phone = phone;
-  await ctx.reply('⏳ Sending code...', { parse_mode: 'HTML' });
-
-  startLogin(ctx, uid).catch(e => {
-    ctx.reply(`❌ ${esc(e.message)}`, { parse_mode: 'HTML' });
-    _loginState.delete(uid);
-  });
-}
-
-async function startLogin(ctx, uid) {
-  const state = _loginState.get(uid);
-  const sessionStr = await tg.loginNewSession(
-    config.telegram.apiId,
-    config.telegram.apiHash,
-    state.phone,
-    () => new Promise(resolve => {
-      state.stage = 'code';
-      state.codeResolve = resolve;
-      ctx.reply('📨 <b>Code sent to Telegram</b>\n\nReply with: <code>/code 12345</code>', { parse_mode: 'HTML' }).catch(() => {});
-    }),
-    () => new Promise(resolve => {
-      state.stage = 'password';
-      state.passwordResolve = resolve;
-      ctx.reply('🔑 <b>2FA password required</b>\n\nReply with: <code>/password your_password</code>', { parse_mode: 'HTML' }).catch(() => {});
-    })
-  );
-
-  await db.setSetting('telegram_session', sessionStr);
-  await db.setSetting('telegram_id', uid);
-  db.setTelegramId(uid);
-  setAdminId(uid);
-
-  if (tg.getClient()) await tg.destroyClient();
-  await tg.initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, sessionStr);
-  await tg.startListeners();
-
-  _loginState.delete(uid);
-  ctx.reply('✅ <b>Login successful!</b>\nBot is now connected to Telegram.', { parse_mode: 'HTML' });
-  showMainMenu(ctx, false);
-}
-
-async function cmdCode(ctx, code) {
-  const uid = String(ctx.from.id);
-  const state = _loginState.get(uid);
-  if (!state || state.stage !== 'code' || !state.codeResolve) return ctx.reply('❌ No pending login. Use /login first.', { parse_mode: 'HTML' });
-  state.stage = 'verifying';
-  state.codeResolve(code.trim());
-  ctx.reply('⏳ Verifying code...', { parse_mode: 'HTML' });
-}
-
-async function cmdPassword(ctx, pass) {
-  const uid = String(ctx.from.id);
-  const state = _loginState.get(uid);
-  if (!state || state.stage !== 'password' || !state.passwordResolve) return ctx.reply('❌ No password needed. Use /login first.', { parse_mode: 'HTML' });
-  state.stage = 'verifying';
-  state.passwordResolve(pass.trim());
-  ctx.reply('⏳ Verifying...', { parse_mode: 'HTML' });
-}
-
 async function cmdDisconnect(ctx) {
   if (isTgConnected()) {
     await tg.destroyClient();
     await db.setSetting('telegram_session', '');
-    ctx.reply('🔌 Disconnected. Use /login to reconnect.', { parse_mode: 'HTML' });
+    ctx.reply('🔌 Disconnected. Login from dashboard to reconnect.', { parse_mode: 'HTML' });
   }
 }
 
@@ -173,7 +91,7 @@ async function handleLinkInput(ctx, text) {
   _awaitingLink.delete(String(ctx.from.id));
   const identifier = text.replace(/^https?:\/\/t\.me\//, '').replace(/^@/, '').trim();
   if (!identifier) return ctx.reply('❌ Invalid. Try again.', { parse_mode: 'HTML' });
-  if (!isTgConnected()) return ctx.reply('❌ Telegram not connected. Use /login first.', { parse_mode: 'HTML' });
+  if (!isTgConnected()) return ctx.reply('❌ Telegram not connected. Login from web dashboard first.', { parse_mode: 'HTML' });
   const msg = await ctx.reply(`⏳ Joining <b>${esc(identifier)}</b>...`, { parse_mode: 'HTML' });
   try {
     await db.setTelegramId(adminId);
@@ -239,7 +157,7 @@ async function showJoinedChannels(ctx, page = 0) {
 
 async function addJoinedChannel(ctx, identifier) {
   await ctx.answerCallbackQuery({ text: 'Adding...' });
-  if (!isTgConnected()) return ctx.reply('❌ Telegram not connected. Use /login first.', { parse_mode: 'HTML' });
+  if (!isTgConnected()) return ctx.reply('❌ Telegram not connected. Login from web dashboard first.', { parse_mode: 'HTML' });
   try {
     await db.setTelegramId(adminId);
     await db.addChannel(identifier, identifier);
@@ -617,24 +535,8 @@ function registerCommands() {
     _awaitingLink.delete(uid);
     _awaitingWalletKey.delete(uid);
     _awaitingRuleInput.delete(uid);
-    _loginState.delete(uid);
     ctx.reply('Cancelled.', { parse_mode: 'HTML' });
     showMainMenu(ctx, false);
-  });
-  bot.command('login', async ctx => {
-    if (!config.telegram.apiId || !config.telegram.apiHash)
-      return ctx.reply('❌ API_ID and API_HASH not configured.', { parse_mode: 'HTML' });
-    cmdLogin(ctx);
-  });
-  bot.command('code', async ctx => {
-    const parts = (ctx.message?.text || '').split(/\s+/).slice(1);
-    if (!parts.length) return ctx.reply('Usage: /code <otp_code>', { parse_mode: 'HTML' });
-    cmdCode(ctx, parts[0]);
-  });
-  bot.command('password', async ctx => {
-    const parts = (ctx.message?.text || '').split(/\s+/).slice(1);
-    if (!parts.length) return ctx.reply('Usage: /password <2fa_password>', { parse_mode: 'HTML' });
-    cmdPassword(ctx, parts.join(' '));
   });
 
   bot.command('channels', async ctx => { if (!auth(ctx)) return; showChannels(ctx, 0, false); });
@@ -652,9 +554,6 @@ function registerCommands() {
     if (_awaitingLink.has(uid)) return handleLinkInput(ctx, ctx.message.text);
     if (_awaitingWalletKey.has(uid)) return handleWalletKeyInput(ctx, ctx.message.text);
     if (_awaitingRuleInput.has(uid)) return handleRuleInput(ctx, ctx.message.text);
-
-    const loginState = _loginState.get(uid);
-    if (loginState?.stage === 'phone') return handlePhoneInput(ctx, ctx.message.text);
 
     if (!auth(ctx)) return;
     showMainMenu(ctx, false);
