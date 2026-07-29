@@ -113,7 +113,9 @@ async function showHelp(ctx, edit) {
 ━━━━━━━━━━━━━━━━
 💡 Tap 📡 Channels to add signal sources
 💡 Add wallets under 💰 Wallets before trading
-💡 Configure auto-buy per channel in ⚙️ settings`;
+💡 Configure auto-buy per channel in ⚙️ settings
+
+<b>Blind Buy</b> — saat diaktifkan, bot akan membeli <b>setiap</b> signal tanpa filter MC, liquidity, atau keamanan. Berisiko tinggi — hanya gunakan untuk channel alpha yang diyakini. Sebaiknya tetap aktifkan filter (Blind Buy OFF) untuk keamanan.`;
 
   const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
   const opts = { parse_mode: 'HTML', reply_markup: kb, ...(edit ? {} : {}) };
@@ -275,12 +277,12 @@ async function showChannelSetup(ctx, id) {
   const r = ch.rule || {};
   const name = btnText(ch.display_name || ch.channel_username);
 
-  const lines = [
+  const baseLines = [
     `⚙️ <b>${esc(name)}</b>`,
-    `Status: ${ch.active ? '🟢 Active' : '🔴 Paused'} · Track: ${ch.track_mode || 'admin'}`,
+    `Status: ${ch.active ? '🟢 Active' : '🔴 Paused'} · Track: ${r.track_mode || 'admin'}`,
     `━━━━━━━━━━━━━━━━`,
     `💵 <b>Auto-buy:</b> ${r.auto_buy ? '🟢 ON' : '🔴 OFF'}  |  ${r.buy_amount_sol || 0.01} SOL`,
-    `🌀 <b>Blind:</b> ${r.blind_buy ? '🟢 ON' : '🔴 OFF'}  |  💼 ${r.wallet_group_id ? (r.wallet_group_id > 0 ? 'Group ' + r.wallet_group_id : 'Wallet ' + Math.abs(r.wallet_group_id)) : 'Active wallet'}`,
+    `🌀 <b>Blind Buy:</b> ${r.blind_buy ? '🟢 ON' : '🔴 OFF'}  |  💼 ${r.wallet_group_id ? (r.wallet_group_id > 0 ? 'Group ' + r.wallet_group_id : 'Wallet ' + Math.abs(r.wallet_group_id)) : 'Active wallet'}`,
     `━━━━━━━━━━━━━━━━`,
     `<b>📊 Filters</b>`,
     `  Min MC: ${r.min_market_cap ? fmtCur(r.min_market_cap) : '—'}`,
@@ -289,7 +291,12 @@ async function showChannelSetup(ctx, id) {
     `  Max Liq: ${r.max_liquidity ? fmtCur(r.max_liquidity) : '—'}`,
     `━━━━━━━━━━━━━━━━`,
     `🎯 TP: ${r.take_profit_percent ? r.take_profit_percent + '%' : '—'}  |  🛑 SL: ${r.stop_loss_percent ? r.stop_loss_percent + '%' : '—'}`,
-  ].join('\n');
+  ];
+  if (r.blind_buy) baseLines.push(
+    `━━━━━━━━━━━━━━━━`,
+    `⚠️ <b>Blind Buy aktif</b> — semua filter MC, liquidity, dan keamanan token diabaikan. Bot akan membeli SETIAP signal dari channel ini tanpa filter. Cocok untuk channel alpha early signal, tapi <b>berisiko tinggi</b> karena token rug/honeypot tidak terdeteksi. Matikan Blind Buy jika ingin tetap pakai filter.`
+  );
+  const lines = baseLines.join('\n');
 
   const kb = new InlineKeyboard()
     .text(r.auto_buy ? '💵 Buy ON' : '💵 Buy OFF', `r_buy_${ch.id}`)

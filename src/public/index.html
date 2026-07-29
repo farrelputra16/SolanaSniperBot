@@ -219,9 +219,30 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 @keyframes toastIn{from{transform:translateX(80px);opacity:0}to{transform:translateX(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.toast{animation:none}}
 
-/* Skeleton */
+/* Skeleton / Loading */
 @keyframes shimmer{0%{background-position:200% 0}to{background-position:-200% 0}}
 .skeleton{background:linear-gradient(90deg,var(--border) 25%,rgba(255,255,255,0.06) 50%,var(--border) 75%);background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite;border-radius:var(--radius-xs)}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.loading-dots::after{content:'...';animation:pulse 1.5s ease-in-out infinite;display:inline-block;width:1.2rem;text-align:left}
+.btn.loading{pointer-events:none;opacity:.7}
+.btn.loading::after{content:'';width:.65rem;height:.65rem;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Hint / Helper text */
+.hint{font-size:0.65rem;color:var(--text3);margin-top:0.2rem;line-height:1.35;display:block}
+.hint .key{font-family:var(--font-mono);background:rgba(255,255,255,0.04);padding:0.05rem 0.25rem;border-radius:2px;font-size:0.6rem}
+.hint .em{color:var(--accent);font-weight:600}
+
+/* Feature label with description */
+.feat{display:flex;align-items:flex-start;gap:0.5rem;padding:0.4rem 0}
+.feat .icon{width:1.5rem;height:1.5rem;border-radius:var(--radius-xs);background:rgba(255,255,255,0.03);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.75rem;flex-shrink:0}
+.feat .body{flex:1}
+.feat .body .title{font-size:0.78rem;font-weight:600;margin-bottom:0.05rem}
+.feat .body .desc{font-size:0.65rem;color:var(--text3);line-height:1.35}
+
+/* Section divider */
+.section-div{display:flex;align-items:center;gap:0.65rem;margin:1.25rem 0 0.85rem;color:var(--text3);font-size:0.6rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em}
+.section-div::after{content:'';flex:1;height:1px;background:var(--border)}
 
 /* Position Detail Grid */
 .pos-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.65rem}
@@ -330,43 +351,53 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
 <div class="modal-overlay" id="modal"><div class="modal" id="modal-c"></div></div>
 <div class="toast-container" id="toast-c"></div>
 
-<div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1.25rem">
-  <img src="/logo.jpg" alt="SS" style="width:4rem;height:4rem;border-radius:9999px;object-fit:cover">
-  <h1 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-0.03em">SniperBot</h1>
-  <p class="text-sm text-muted" style="margin-top:-0.5rem">Connect your Telegram account</p>
-  <div id="tg-login-step1" style="width:340px;max-width:90vw;display:flex;flex-direction:column;gap:0.6rem">
-    <input id="tg-login-api-id" type="number" placeholder="API ID" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
-    <input id="tg-login-api-hash" placeholder="API Hash" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
-    <input id="tg-login-phone" placeholder="Phone +1234567890" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)">
-    <select id="tg-login-dc" style="text-align:center;font-size:0.8rem;padding:0.6rem 1rem;border-radius:var(--radius-md);cursor:pointer">
-      <option value="0">Server: Auto</option>
-      <option value="1">US / Miami (DC 1)</option>
-      <option value="2">Europe / Amsterdam (DC 2)</option>
-      <option value="5">Asia / Singapore (DC 5)</option>
-    </select>
-    <label class="cb" style="justify-content:center;margin:0"><input type="checkbox" id="tg-login-remember" checked/> Remember me</label>
-    <button class="btn btn-p" onclick="tgLoginSendCode()" style="padding:0.75rem;font-size:1rem;width:100%">Send Code</button>
+<div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem;padding:1.5rem">
+  <img src="/logo.jpg" alt="SS" style="width:3.5rem;height:3.5rem;border-radius:9999px;object-fit:cover">
+  <div style="text-align:center">
+    <h1 style="font-family:var(--font-heading);font-size:1.5rem;font-weight:700;letter-spacing:-0.03em;margin-bottom:0.2rem">SniperBot</h1>
+    <p class="text-muted" style="font-size:0.72rem">Connect Telegram to start scraping signals</p>
   </div>
-  <div id="tg-login-step2" style="width:340px;max-width:90vw;display:none;flex-direction:column;gap:0.6rem">
-    <input id="tg-login-code" type="text" placeholder="OTP code" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')tgLoginVerifyCode()">
+  <div id="tg-login-step1" style="width:340px;max-width:90vw;display:flex;flex-direction:column;gap:0.5rem">
+    <div class="form-group"><label>API ID</label><input id="tg-login-api-id" type="number" placeholder="e.g. 123456" style="text-align:center;font-size:0.85rem;padding:0.6rem 1rem;border-radius:var(--radius-md)"><span class="hint">From <span class="key">my.telegram.org/app</span></span></div>
+    <div class="form-group"><label>API Hash</label><input id="tg-login-api-hash" placeholder="Your API hash" style="text-align:center;font-size:0.85rem;padding:0.6rem 1rem;border-radius:var(--radius-md)"><span class="hint">Required for MTProto connection</span></div>
+    <div class="form-group"><label>Phone Number</label><input id="tg-login-phone" placeholder="+1234567890" style="text-align:center;font-size:0.85rem;padding:0.6rem 1rem;border-radius:var(--radius-md)"><span class="hint">With country code, e.g. <span class="key">+1</span> for US</span></div>
+    <div class="form-group"><label>Server Region</label><select id="tg-login-dc" style="text-align:center;font-size:0.8rem;padding:0.55rem 1rem;border-radius:var(--radius-md);cursor:pointer">
+      <option value="0">Auto (recommended)</option>
+      <option value="1">US / Miami</option>
+      <option value="2">Europe / Amsterdam</option>
+      <option value="5">Asia / Singapore</option>
+    </select><span class="hint">Choose closest for best latency</span></div>
+    <label class="cb" style="justify-content:center;margin:0.2rem 0"><input type="checkbox" id="tg-login-remember" checked/> Remember credentials</label>
+    <button class="btn btn-p" onclick="tgLoginSendCode()" style="padding:0.7rem;font-size:0.9rem;width:100%">Send Code</button>
+  </div>
+  <div id="tg-login-step2" style="width:340px;max-width:90vw;display:none;flex-direction:column;gap:0.5rem">
+    <div class="form-group"><label>OTP Code</label><input id="tg-login-code" type="text" placeholder="Check Telegram app" style="text-align:center;font-size:0.85rem;padding:0.6rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')tgLoginVerifyCode()"><span class="hint">Sent via Telegram to your account</span></div>
     <div id="tg-login-2fa" style="display:none">
-      <input id="tg-login-password" type="password" placeholder="2FA password" style="text-align:center;font-size:0.9rem;padding:0.65rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')tgLoginVerifyPassword()">
+      <div class="form-group"><label>2FA Password</label><input id="tg-login-password" type="password" placeholder="Cloud password" style="text-align:center;font-size:0.85rem;padding:0.6rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')tgLoginVerifyPassword()"><span class="hint">Required if 2FA is enabled on your account</span></div>
     </div>
-    <button class="btn btn-p" id="tg-login-btn" onclick="tgLoginVerifyCode()" style="padding:0.75rem;font-size:1rem;width:100%">Verify</button>
+    <button class="btn btn-p" id="tg-login-btn" onclick="tgLoginVerifyCode()" style="padding:0.7rem;font-size:0.9rem;width:100%">Verify</button>
   </div>
   <div id="tg-login-step3" style="display:none;flex-direction:column;align-items:center;gap:0.75rem">
-    <div class="badge badge-g" style="font-size:1.2rem;padding:0.75rem 2rem">✅ Connected</div>
-    <p class="text-sm text-muted" id="tg-login-done-msg"></p>
+    <div style="width:3rem;height:3rem;border-radius:9999px;background:var(--green-bg);display:flex;align-items:center;justify-content:center;font-size:1.5rem">✓</div>
+    <div style="text-align:center"><div style="font-weight:600;font-size:1rem">Connected</div><p class="text-sm text-muted" id="tg-login-done-msg" style="margin-top:0.15rem"></p></div>
   </div>
-  <p id="loginError" class="text-sm" style="color:var(--red);display:none"></p>
-  <p style="margin-top:1rem;font-size:0.65rem;color:var(--text3);text-align:center;max-width:360px;line-height:1.4">All data stays local. API keys and session strings stored only on your device. Token data via GMGN API.</p>
-  <a href="#" onclick="skipLogin()" style="font-size:0.7rem;color:var(--text3)">Skip to Dashboard (read-only)</a>
+  <p id="loginError" class="text-sm" style="color:var(--red);display:none;text-align:center;max-width:340px"></p>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:0.5rem;margin-top:0.5rem">
+    <p style="font-size:0.6rem;color:var(--text3);text-align:center;max-width:320px;line-height:1.4">Credentials stored locally. Telegram session saved on server. Token data via GMGN API.</p>
+    <a href="#" onclick="skipLogin()" style="font-size:0.65rem;color:var(--text3);text-decoration:underline;text-underline-offset:3px">Skip to Dashboard (read-only)</a>
+  </div>
 </div>
 
 <script>
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 function authToken(){return localStorage.getItem('auth_token')||''}
+const _apiCache=new Map();
 const api=async(p,o)=>{
+  const cacheKey=p+(o?.method||'GET')+(o?.body?.slice?.(0,100)||'');
+  if (!o?.method||o.method==='GET'){
+    const cached=_apiCache.get(cacheKey);
+    if (cached&&Date.now()-cached.ts<800)return cached.data;
+  }
   const h={'Content-Type':'application/json'};
   const t=authToken();
   if(t) h['x-auth-token']=t;
@@ -383,12 +414,17 @@ const api=async(p,o)=>{
       try{e=await r.json()}catch{e={error:r.statusText}}
       throw new Error(e.error||e.message||r.statusText);
     }
-    return await r.json();
+    const data=await r.json();
+    if (!o?.method||o.method==='GET')_apiCache.set(cacheKey,{data,ts:Date.now()});
+    return data;
   } catch(err) {
+    _apiCache.delete(cacheKey);
     if (err instanceof TypeError) {
        toast('Server connection issue', 'err');
     }
     throw err;
+  } finally {
+    if (_apiCache.size>50){const k=[..._apiCache.keys()];for(let i=0;i<20;i++)_apiCache.delete(k[i])}
   }
 };
 function toast(m,t='info'){const c=$('#toast-c'),e=document.createElement('div');e.className='toast '+t;e.textContent=m;c.appendChild(e);setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),200)},2800)}
@@ -411,7 +447,7 @@ function showPage(n){
   if (_autoRefresh) clearInterval(_autoRefresh);
   const autoPages = ['dashboard','positions','scraper'];
   if (autoPages.includes(n)) {
-    _autoRefresh = setInterval(refreshCurrentPage, 1000);
+    _autoRefresh = setInterval(refreshCurrentPage, n === 'dashboard' ? 2000 : 3000);
   }
 }
 document.querySelectorAll('.nav-item').forEach(a=>{
@@ -469,33 +505,33 @@ function pnlBadge(p,pct){if(p==null)return'-';const pos=p>=0;return`<span class=
 // ═══ DASHBOARD ═══
 async function renderDashboard(){
   const[st,act]=await Promise.all([api('/status'),api('/activity')]);
-  return`<div class="page-header"><span class="eyebrow">Overview</span><h2>Dashboard</h2><div class="sub">Real-time signal and trade activity</div></div>
+  return`<div class="page-header"><span class="eyebrow">Overview</span><h2>Dashboard</h2><div class="sub">Real-time signal and trade activity — tap any signal or token for details</div></div>
 <div class="stats">
-  <div class="stat accent"><div class="shell"><div class="core"><div class="num">${st.channelCount}</div><div class="lbl">Channels</div></div></div></div>
-  <div class="stat ${st.openTrades>0?'green':''}"><div class="shell"><div class="core"><div class="num">${st.openTrades}</div><div class="lbl">Open Positions</div></div></div></div>
-  <div class="stat yellow"><div class="shell"><div class="core"><div class="num">${st.todaySignals}</div><div class="lbl">Signals Today</div></div></div></div>
-  <div class="stat ${st.hasActiveWallet?'green':'red'}"><div class="shell"><div class="core"><div class="num">${st.walletCount}</div><div class="lbl">${st.hasActiveWallet?'Wallet':'No Wallet'}</div></div></div></div>
-  <div class="stat cyan"><div class="shell"><div class="core"><div class="num">${st.activeOrders}</div><div class="lbl">Active Orders</div></div></div></div>
-  <div class="stat"><div class="shell"><div class="core"><div class="num">${Math.floor(st.uptime/3600)}h${Math.floor((st.uptime%3600)/60)}m</div><div class="lbl">Uptime</div></div></div></div>
-  <div class="stat ${st.tgConnected?'green':'red'}"><div class="shell"><div class="core"><div class="num" style="font-size:1.2rem">${st.tgConnected?'●':'○'}</div><div class="lbl">Telegram</div></div></div></div>
+  <div class="stat accent"><div class="shell"><div class="core"><div class="num">${st.channelCount}</div><div class="lbl">📡 Channels</div><span class="hint" style="margin-top:0.2rem">Signal sources added</span></div></div></div>
+  <div class="stat ${st.openTrades>0?'green':''}"><div class="shell"><div class="core"><div class="num">${st.openTrades}</div><div class="lbl">📈 Open Positions</div><span class="hint" style="margin-top:0.2rem">Active bought tokens</span></div></div></div>
+  <div class="stat yellow"><div class="shell"><div class="core"><div class="num">${st.todaySignals}</div><div class="lbl">🚨 Signals Today</div><span class="hint" style="margin-top:0.2rem">CA addresses detected</span></div></div></div>
+  <div class="stat ${st.hasActiveWallet?'green':'red'}"><div class="shell"><div class="core"><div class="num">${st.walletCount}</div><div class="lbl">💰 ${st.hasActiveWallet?'Wallet Ready':'No Wallet'}</div><span class="hint" style="margin-top:0.2rem">${st.hasActiveWallet?'Active buy wallet set':'Import a wallet to trade'}</span></div></div></div>
+  <div class="stat cyan"><div class="shell"><div class="core"><div class="num">${st.activeOrders}</div><div class="lbl">📋 Active Orders</div><span class="hint" style="margin-top:0.2rem">TP/SL + limit orders</span></div></div></div>
+  <div class="stat"><div class="shell"><div class="core"><div class="num">${Math.floor(st.uptime/3600)}h${Math.floor((st.uptime%3600)/60)}m</div><div class="lbl">⏱ Uptime</div><span class="hint" style="margin-top:0.2rem">Bot running since start</span></div></div></div>
+  <div class="stat ${st.tgConnected?'green':'red'}"><div class="shell"><div class="core"><div class="num" style="font-size:1.2rem">${st.tgConnected?'●':'○'}</div><div class="lbl">📡 Telegram</div><span class="hint" style="margin-top:0.2rem">${st.tgConnected?'Connected to MTProto':'Disconnected'}</span></div></div></div>
 </div>
-<div class="shell"><div class="core"><div class="card-h"><h3>Signals</h3><span class="text-muted text-sm">${act.signals.length} recent</span></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>📡 Live Signals</h3><span class="text-muted text-sm">${act.signals.length} recent · tap for detail</span></div>
 ${act.signals.length?`<div class="signal-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.5rem">${act.signals.map(s=>`<div class="shell signal-card" data-sid="${s.id||''}" style="cursor:pointer;border-radius:var(--radius-md)" onclick="openTokenDetail('${s.token_address}',${s.market_cap||0})"><div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${s.token_symbol||addrShort(s.token_address)}</span><span class="badge badge-o" style="font-size:0.55rem">${s.source_channel||''}</span></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(s.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right">${fmtCur(s.liquidity)}</span></div>
-<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(s.created_at)}</span>${s.latency_ms?`<span class="badge badge-gr">${s.latency_ms}ms</span>`:''}</div>
-</div></div>`).join('')}</div>`:'<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>'}
+<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(s.created_at)}</span>${s.latency_ms?`<span class="badge badge-gr">${s.latency_ms < 1000 ? s.latency_ms + 'ms' : (s.latency_ms/1000).toFixed(1) + 's'}</span>`:''}</div>
+</div></div>`).join('')}</div>`:'<div class="empty-state" style="padding:2rem"><div class="ico">📡</div><h4>No signals yet</h4><p>Signals appear here when a CA address is detected from your channels.</p></div>'}
 </div></div>
-<div class="shell"><div class="core"><div class="card-h"><h3>Trades</h3><span class="text-sm text-muted">${act.trades.length} recent</span></div>
-${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>SOL</th><th>P&L</th><th>Latency</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted" style="font-size:0.6rem">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.buy_latency_ms!=null?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
+<div class="shell"><div class="core"><div class="card-h"><h3>💱 Recent Trades</h3><span class="text-sm text-muted">${act.trades.length} recent</span></div>
+${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>Amount</th><th>P&amp;L</th><th>Speed</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted" style="font-size:0.6rem">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.buy_latency_ms!=null?(t.buy_latency_ms<1000?t.buy_latency_ms+'ms':(t.buy_latency_ms/1000).toFixed(1)+'s'):'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">💱</div><h4>No trades yet</h4><p>Configure auto-buy in channel settings to start trading.</p></div>`}
 </div></div>`;}
 
 // ═══ CHANNELS ───
 async function renderChannels(){
   const channels=await api('/channels');
-  return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules</div></div>
-<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add</button><button class="btn btn-sm" onclick="fetchJoinedChannels()">From Telegram</button><button class="btn btn-sm btn-r" onclick="clearAllData()" style="font-size:0.6rem">Clear All</button></div></div>
-${channels.length?channels.map(c=>{try{return renderChannelCard(c)}catch(e){console.error('Card error',c.id,e.message);return''}}).join('')||`<div class="empty-state"><p class="text-muted">Failed to render channel cards</p></div>`:`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
+  return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add Telegram channels and configure per-channel rules for signal filtering and auto-buy</div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add Channel</button><button class="btn btn-sm" onclick="fetchJoinedChannels()">📡 From Telegram</button><button class="btn btn-sm btn-ghost" onclick="clearAllData()" style="font-size:0.6rem;color:var(--red)">Clear All</button></div></div>
+${channels.length?channels.map(c=>{try{return renderChannelCard(c)}catch(e){console.error('Card error',c.id,e.message);return''}}).join('')||`<div class="empty-state"><p class="text-muted">Failed to render channel cards</p></div>`:`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals. Signals are detected from messages containing contract addresses.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
 </div></div>`;}
 
 function renderChannelCard(c){
@@ -615,44 +651,47 @@ window.openChannelForm=async function(id){
 
   openModal(`<h2>${isEdit?'Edit':'Add'} Channel</h2>
 <div class="form-grid">
-  <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="Channel username or link"/></div>
-  <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/></div>
+  <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="Channel username or link"/><span class="hint">Username, invite link, or <span class="key">https://t.me/+hash</span></span></div>
+  <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/><span class="hint">Optional label for easy identification</span></div>
 </div>
-<div id="f-track-mode-grp" class="form-group"><label>Track Messages</label><select id="f-track-mode"><option value="admin" ${(ch.track_mode||'admin')==='admin'?'selected':''}>Admin only</option><option value="all" ${ch.track_mode==='all'?'selected':''}>All messages</option></select><p class="text-muted text-sm" style="margin-top:0.2rem">Channels auto-set to Admin only. Groups can also track all user messages.</p></div>
-<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Filters</h3>
+<div class="form-group"><label>Track Messages</label><select id="f-track-mode"><option value="admin" ${(ch.track_mode||'admin')==='admin'?'selected':''}>Admin/Channel posts only</option><option value="all" ${ch.track_mode==='all'?'selected':''}>All messages (groups only)</option></select><span class="hint"><span class="em">Broadcast channels</span> always track admin posts. <span class="em">Groups</span> can track all user messages.</span></div>
+<div class="section-div">Signal Filters</div>
 <div class="form-grid filter-fields" style="${r.blind_buy?'opacity:0.3':''}">
-  <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/></div>
-  <div class="form-group"><label>Max Market Cap ($)</label><input id="f-max-mc" type="number" value="${r.max_market_cap||''}" placeholder="Any"/></div>
-  <div class="form-group"><label>Min Liquidity ($)</label><input id="f-min-liq" type="number" value="${r.min_liquidity||''}" placeholder="Any"/></div>
-  <div class="form-group"><label>Max Liquidity ($)</label><input id="f-max-liq" type="number" value="${r.max_liquidity||''}" placeholder="Any"/></div>
+  <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/><span class="hint">Skip tokens below this MC</span></div>
+  <div class="form-group"><label>Max Market Cap ($)</label><input id="f-max-mc" type="number" value="${r.max_market_cap||''}" placeholder="Any"/><span class="hint">Skip tokens above this MC</span></div>
+  <div class="form-group"><label>Min Liquidity ($)</label><input id="f-min-liq" type="number" value="${r.min_liquidity||''}" placeholder="Any"/><span class="hint">Skip low-liquidity tokens</span></div>
+  <div class="form-group"><label>Max Liquidity ($)</label><input id="f-max-liq" type="number" value="${r.max_liquidity||''}" placeholder="Any"/><span class="hint">Skip high-liquidity tokens</span></div>
 </div>
-<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Execution</h3>
+<div class="section-div">Execution</div>
 <div class="form-grid">
-  <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-buy" type="number" step="0.001" value="${r.buy_amount_sol||0.01}"/></div>
-  <div class="form-group"><label>Slippage (%)</label><input id="f-slip" type="number" value="${r.slippage||30}"/></div>
-  <div class="form-group"><label>Priority Fee (SOL)</label><input id="f-fee" type="number" value="${r.priority_fee??''}" placeholder="Auto (≥0.00001)"/></div>
-  <div class="form-group"><label>Tip Fee (SOL)</label><input id="f-tip" type="number" value="${r.tip_fee??''}" placeholder="Auto (≥0.00001)"/></div>
+  <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-buy" type="number" step="0.001" value="${r.buy_amount_sol||0.01}"/><span class="hint">SOL amount per buy signal</span></div>
+  <div class="form-group"><label>Slippage (%)</label><input id="f-slip" type="number" value="${r.slippage||30}"/><span class="hint">Max price slippage tolerance</span></div>
+  <div class="form-group"><label>Priority Fee (SOL)</label><input id="f-fee" type="number" value="${r.priority_fee??''}" placeholder="Auto"/><span class="hint">Extra fee for faster tx (<span class="key">≥0.00001</span>)</span></div>
+  <div class="form-group"><label>Tip Fee (SOL)</label><input id="f-tip" type="number" value="${r.tip_fee??''}" placeholder="Auto"/><span class="hint">Jito tip for frontrun protection</span></div>
 </div>
-<label class="cb"><input type="checkbox" id="f-anti" ${(r.anti_mev||true)?'checked':''}/> Anti-MEV</label>
-<label class="cb mt-8"><input type="checkbox" id="f-track" ${r.track_only?'checked':''}/> Track Only (no auto-buy)</label>
-<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Take Profit Levels</h3>
+<label class="cb"><input type="checkbox" id="f-anti" ${(r.anti_mev||true)?'checked':''}/> 🛡️ Anti-MEV <span class="hint" style="display:inline">Protects against sandwich attacks</span></label>
+<label class="cb mt-8"><input type="checkbox" id="f-track" ${r.track_only?'checked':''}/> 👁️ Track Only <span class="hint" style="display:inline">Monitor signals without auto-buying</span></label>
+<div class="section-div">Take Profit</div>
 <div id="tp-levels-container">${tps.map((tp,i)=>renderTPLevel(i,tp.percent,tp.sell_ratio)).join('')}</div>
 <div class="form-actions" style="padding-top:0.5rem;border:none;margin-top:0.25rem">
   <button class="btn btn-sm" onclick="addTPLevel()">+ Add TP Level</button>
+  <span class="hint" style="margin-left:0.5rem">Auto-sell when price hits % gain</span>
 </div>
-<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Stop Loss</h3>
-<div class="form-group"><label>Stop Loss (%)</label><input id="f-sl" type="number" value="${r.stop_loss_percent??''}" placeholder="Disabled"/></div>
-<h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Buy Wallet</h3>
+<div class="section-div">Stop Loss</div>
+<div class="form-group"><label>Stop Loss (%)</label><input id="f-sl" type="number" value="${r.stop_loss_percent??''}" placeholder="Disabled"/><span class="hint">Auto-sell if price drops this %. Leave empty to disable.</span></div>
+<div class="section-div">Buy Wallet</div>
 <div class="form-grid">
-  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select></div>
+  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select><span class="hint">Single wallet or group for distributed buys</span></div>
 </div>
-<label class="cb"><input type="checkbox" id="f-blind" ${r.blind_buy?'checked':''} onchange="if(this.checked){$('#f-auto').checked=true;$('#f-auto').disabled=true;this.closest('.core').querySelectorAll('.filter-fields').forEach(e=>e.style.opacity='0.3')}else{$('#f-auto').disabled=false;$('#f-auto').checked=false;this.closest('.core').querySelectorAll('.filter-fields').forEach(e=>e.style.opacity='1')}"/> Blind Buy (skip all filters, buy immediately)</label>
-<label class="cb mt-8"><input type="checkbox" id="f-dedup" ${ch.ignore_duplicate?'checked':''}/> Ignore Duplicate CA (skip if same address already caught from this channel)</label>
-<label class="cb mt-8"><input type="checkbox" id="f-auto" ${r.blind_buy||r.auto_buy?'checked':''} onchange="$('#autobuy-fields').style.display=this.checked?'block':'none'" ${r.blind_buy?'disabled':''}/> Enable Auto-Buy</label>
+<div class="section-div">Buy Mode</div>
+<div class="feat"><div class="icon">🎯</div><div class="body"><div class="title">Auto-Buy (Filtered)</div><div class="desc">Buys when a signal passes all MC, liquidity, and other filters. Safe, targeted entry.</div></div></div>
+<div class="feat" style="margin-top:0"><div class="icon">🌀</div><div class="body"><div class="title">Blind Buy</div><div class="desc"><b>Skips all filters</b> and buys immediately on every signal from this channel. Higher risk — for alpha calls where speed matters more than safety. <span style="color:var(--accent)">Disables market cap &amp; liquidity checks.</span></div></div></div>
+<label class="cb" style="margin-top:0.25rem"><input type="checkbox" id="f-auto" ${r.blind_buy||r.auto_buy?'checked':''} onchange="if(!this.checked){$('#f-blind').checked=false}const bf=this.closest('.core').querySelector('#autobuy-fields');if(bf)bf.style.display=this.checked?'block':'none'" ${r.blind_buy?'disabled':''}/> Enable Auto-Buy</label>
 <div id="autobuy-fields" style="display:${(r.blind_buy||r.auto_buy)?'block':'none'}" class="mt-8">
-  <p class="text-sm text-muted">Auto-buy executes when signal passes filters. Blind buy ignores all filters.</p>
+  <label class="cb"><input type="checkbox" id="f-blind" ${r.blind_buy?'checked':''} onchange="if(this.checked){var dd=this.closest('.core').querySelectorAll('.filter-fields');dd.forEach(function(e){e.style.opacity='0.3'});var ab=$('#f-auto');ab.checked=true;ab.disabled=true}else{var dd2=this.closest('.core').querySelectorAll('.filter-fields');dd2.forEach(function(e){e.style.opacity='1'});$('#f-auto').disabled=false}"/> 🌀 Blind Buy Mode — <span class="text-muted">Buy instantly, skip all filters</span></label>
 </div>
-<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitChannelForm(${isEdit?ch.id:'null'})">${isEdit?'Update':'Save'}</button></div>`);
+<label class="cb mt-8"><input type="checkbox" id="f-dedup" ${ch.ignore_duplicate?'checked':''}/> 🔄 Ignore Duplicates <span class="hint" style="display:inline">Skip if CA was already caught from this channel</span></label>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitChannelForm(${isEdit?ch.id:'null'})">${isEdit?'Update Channel':'Add Channel'}</button></div>`);
 }
 
 function renderTPLevel(idx,percent,ratio){
@@ -713,14 +752,14 @@ window.submitChannelForm=async function(id){
 async function renderPositions(){
   const[open,all]=await Promise.all([api('/positions'),api('/positions/all')]);
   const closed=all.filter(t=>t.status==='closed');
-  return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades and position details</div></div>
+  return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view closed positions, and set TP/SL exit strategies</div></div>
 <div class="shell"><div class="core">
   <div class="tabs"><div class="tab active" data-tab="pos-open">Open (${open.length})</div><div class="tab" data-tab="pos-closed">Closed (${closed.length})</div></div>
   <div id="pos-open" class="tab-content active">
-    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>TP/SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">${t.take_profit_percent?'TP '+t.take_profit_percent+'%':'-'}/${t.stop_loss_percent?'SL '+t.stop_loss_percent+'%':'-'}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No open positions</p></div>`}
+    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">${t.take_profit_percent?'<span class="badge badge-g">TP '+t.take_profit_percent+'%</span>':''} ${t.stop_loss_percent?'<span class="badge badge-r">SL '+t.stop_loss_percent+'%</span>':''} ${!t.take_profit_percent&&!t.stop_loss_percent?'<span class="text-muted">—</span>':''}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📈</div><h4>No open positions</h4><p>Trades appear here after auto-buy executes. Set TP/SL in channel config.</p></div>`}
   </div>
   <div id="pos-closed" class="tab-content">
-    ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&L</th><th>ROI</th><th>Closed</th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No closed positions</p></div>`}
+    ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&amp;L</th><th>ROI</th><th>Closed</th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?(t.pnl_percent>=0?'+':'')+t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📊</div><h4>No closed positions</h4><p>Sell history appears here. Use TP/SL to auto-close.</p></div>`}
   </div>
 </div></div>`;}
 
@@ -751,11 +790,12 @@ ${t.strategy_orders?.length?`<h3 style="font-size:0.75rem;margin-top:0.85rem;col
 window.openSell=async function(tradeId){
   const t=await api('/positions/'+tradeId);
   openModal(`<h2>Sell ${t.token_symbol||addrShort(t.token_address)}</h2>
+<p class="text-sm text-muted mb-8">Choose how much to sell and at what price.</p>
 <div class="form-grid">
-  <div class="form-group"><label>Sell %</label><select id="f-s-pct"><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option></select></div>
-  <div class="form-group"><label>Slippage</label><input id="f-s-slip" type="number" value="30"/></div>
+  <div class="form-group"><label>Sell Percentage</label><select id="f-s-pct"><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option></select><span class="hint">Portion of your position to sell</span></div>
+  <div class="form-group"><label>Slippage (%)</label><input id="f-s-slip" type="number" value="30"/><span class="hint">Max acceptable price change</span></div>
 </div>
-<div class="form-group"><label>Limit Price (USD)</label><input id="f-s-limit" type="number" step=".00000001" placeholder="Target price for limit order"/></div>
+<div class="form-group"><label>Limit Price (USD) <span class="text-muted" style="font-weight:400">— optional</span></label><input id="f-s-limit" type="number" step=".00000001" placeholder="Leave empty for market sell"/><span class="hint">Set a target price for limit order. Leave empty to sell at current market price.</span></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-r" onclick="execSell(${tradeId})">Sell</button></div>`);
 };
 
@@ -812,30 +852,28 @@ ${chanKeys.length?`<div class="shell"><div class="core"><div class="card-h"><h3>
 async function renderWallets(){
   const[data,groups]=await Promise.all([api('/wallets/portfolio'),api('/wallet-groups')]);
   const wallets=data.wallets||[];
-  return`<div class="page-header"><span class="eyebrow">Buy Wallets</span><h2>Wallets</h2><div class="sub">Import, generate, and manage wallets — portfolio, holdings, and multi-wallet buy groups</div></div>
+  return`<div class="page-header"><span class="eyebrow">Buy Wallets</span><h2>Wallets</h2><div class="sub">Import, generate, and manage wallets — portfolio, holdings, and buy groups</div></div>
 <div class="stats">
-  <div class="stat accent"><div class="shell"><div class="core"><div class="num">${wallets.length}</div><div class="lbl">Total Wallets</div></div></div></div>
-  <div class="stat green"><div class="shell"><div class="core"><div class="num">${groups.length}</div><div class="lbl">Wallet Groups</div></div></div></div>
-  <div class="stat cyan"><div class="shell"><div class="core"><div class="num">${wallets.filter(w=>w.active).length||0}</div><div class="lbl">Active</div></div></div></div>
-  <div class="stat"><div class="shell"><div class="core"><div class="num">${wallets.reduce((s,w)=>s+(parseFloat(w.balance)||0),0).toFixed(2)}</div><div class="lbl">Total SOL</div></div></div></div>
+  <div class="stat accent"><div class="shell"><div class="core"><div class="num">${wallets.length}</div><div class="lbl">💼 Total Wallets</div><span class="hint" style="margin-top:0.2rem">Imported buy wallets</span></div></div></div>
+  <div class="stat green"><div class="shell"><div class="core"><div class="num">${groups.length}</div><div class="lbl">👥 Wallet Groups</div><span class="hint" style="margin-top:0.2rem">Distribute buys across wallets</span></div></div></div>
+  <div class="stat cyan"><div class="shell"><div class="core"><div class="num">${wallets.filter(w=>w.active).length||0}</div><div class="lbl">⭐ Active</div><span class="hint" style="margin-top:0.2rem">Currently used for buys</span></div></div></div>
+  <div class="stat"><div class="shell"><div class="core"><div class="num">${wallets.reduce((s,w)=>s+(parseFloat(w.balance)||0),0).toFixed(2)}</div><div class="lbl">💰 Total SOL</div><span class="hint" style="margin-top:0.2rem">Sum of all wallet balances</span></div></div></div>
 </div>
 
 <div class="shell"><div class="core"><div class="card-h"><h3>${wallets.length} Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openImportBuyWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import</button><button class="btn btn-sm" onclick="openGenerateWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M12 2v12M8 8h8"/></svg> Generate</button></div></div>
-  ${wallets.length?`<div class="table-wrap"><table class="wallet-tbl"><thead><tr><th>Wallet / Label</th><th>Balance</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${wallets.map(w=>{
+  ${wallets.length?`<div class="table-wrap"><table class="wallet-tbl"><thead><tr><th>Wallet / Label</th><th>Balance</th><th>Est. Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${wallets.map(w=>{
     const bal=parseFloat(w.balance)||0;
     return`<tr class="${w.active?'row-active':''}"><td><div class="mono" style="font-size:0.7rem;font-weight:500">${w.address.slice(0,8)}...${w.address.slice(-6)}</div><div class="text-muted text-sm" style="margin-top:1px">${esc(w.label||'Buy Wallet')}</div></td>
 <td><span class="badge ${bal>0?'badge-g':'badge-gr'}">${bal.toFixed(4)} SOL</span></td>
 <td>~$${(bal*180).toFixed(2)}</td>
 <td>${w.active?'<span class="badge badge-g" style="gap:0.3rem"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW('+w.id+')">Activate</button>'}</td>
-<td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio('+w.id+')" title="Portfolio"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy Address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn btn-sm btn-r" onclick="delW('+w.id+')" title="Remove">✕</button></div></td></tr>`
-  }).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">&#x1F91B;</div><h4>No buy wallets</h4><p>Import wallets to enable auto-buy on filtered signals.</p></div>`}
+<td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio('+w.id+')" title="View Portfolio"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy Address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn btn-sm btn-ghost" onclick="delW('+w.id+')" title="Remove" style="color:var(--red)">✕</button></div></td></tr>`
+  }).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">&#x1F91B;</div><h4>No buy wallets</h4><p>Import a wallet to enable auto-buy. You can generate a new Solana wallet or import an existing one with your private key.</p><button class="btn btn-p mt-12" onclick="openImportBuyWallet()">Import Wallet</button> <button class="btn btn-sm mt-12" onclick="openGenerateWallet()">Generate New</button></div>`}
 </div></div>
 
-<div class="shell"><div class="core"><div class="card-h"><h3>Wallet Groups</h3><button class="btn btn-sm btn-p" onclick="openGroupForm()">+ Group</button></div>
-  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.35rem">${groups.map(g=>`<div class="shell" style="border-radius:var(--radius-sm);padding:1px;cursor:pointer" onclick="viewGroup(${g.id})"><div class="core" style="padding:0.45rem 0.75rem;border-radius:calc(var(--radius-sm) - 0.25rem);display:flex;align-items:center;gap:0.35rem"><span style="font-weight:600;font-size:0.78rem">${esc(g.name)}</span><span class="badge badge-b">${g.member_count||0}</span></div></div>`).join('')}</div>`:`<div class="text-muted text-sm">No groups — create a group to distribute buys across multiple wallets.</div>`}
-</div></div>
-<div class="shell"><div class="core"><div class="card-h"><h3>Multi-Wallet Buy</h3></div><p class="text-sm text-muted mb-8">When a wallet group is selected in channel rules, the buy amount is divided equally across all wallets in the group. Buys execute in parallel.</p>
-<div class="text-sm">${groups.length?`Available groups: ${groups.map(g=>`<span class="badge badge-b">${esc(g.name)} (${g.member_count||0})</span>`).join(' ')}`:'Create a group first, then assign it in channel rules → "Execute with".'}</div>
+<div class="shell"><div class="core"><div class="card-h"><h3>👥 Wallet Groups</h3><button class="btn btn-sm btn-p" onclick="openGroupForm()">+ Create Group</button></div>
+<p class="text-sm text-muted mb-8">Groups distribute a single buy across multiple wallets for better position concealment. Buy amount is divided equally.</p>
+  ${groups.length?`<div style="display:flex;flex-wrap:wrap;gap:0.35rem">${groups.map(g=>`<div class="shell" style="border-radius:var(--radius-sm);padding:1px;cursor:pointer" onclick="viewGroup(${g.id})"><div class="core" style="padding:0.45rem 0.75rem;border-radius:calc(var(--radius-sm) - 0.25rem);display:flex;align-items:center;gap:0.35rem"><span style="font-weight:600;font-size:0.78rem">${esc(g.name)}</span><span class="badge badge-b">${g.member_count||0}</span></div></div>`).join('')}</div>`:`<div class="text-muted text-sm" style="padding:0.5rem 0">No groups yet. Create a group, then assign it in <span style="color:var(--accent)">channel settings → Buy Wallet</span>.</div>`}
 </div></div>`;}
 
 window.actW=async function(id){await api('/wallets/'+id+'/activate',{method:'POST'});toast('Wallet activated','ok');renderPage('wallets')};
@@ -852,10 +890,11 @@ window.openGenerateWallet=async function(){
   const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
   if(!r)return toast('Failed to generate wallet','err');
   openModal(`<h2>Wallet Generated</h2>
-<p class="text-sm text-muted mb-12">Save the private key before closing — it won't be shown again.</p>
-<div class="form-group"><label>Address</label><input value="${r.address}" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer"/></div>
-<div class="form-group"><label>Private Key <span class="badge badge-r">Save this!</span></label><textarea rows="2" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;color:#f1c40f;resize:none">${r.privateKey}</textarea></div>
-<div class="form-group"><label>Label</label><input id="f-gl" placeholder="Generated Wallet"/></div>
+<div style="text-align:center;padding:0.5rem 0;margin-bottom:0.75rem"><div style="width:2.5rem;height:2.5rem;border-radius:9999px;background:var(--green-bg);display:inline-flex;align-items:center;justify-content:center;font-size:1.25rem">✓</div></div>
+<p class="text-sm text-muted mb-8" style="text-align:center"><span class="badge badge-r">⚠️ Save the private key now</span> — it won't be shown again after closing.</p>
+<div class="form-group"><label>Address</label><input value="${r.address}" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer"/><span class="hint">Your new Solana wallet address</span></div>
+<div class="form-group"><label>Private Key <span class="badge badge-r">Save this!</span></label><textarea rows="2" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;color:#f1c40f;resize:none">${r.privateKey}</textarea><span class="hint" style="color:var(--yellow)">Store securely. Irrecoverable if lost.</span></div>
+<div class="form-group"><label>Label</label><input id="f-gl" placeholder="Generated Wallet"/><span class="hint">Optional name for this wallet</span></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitGeneratedWallet('${r.address}','${r.privateKey}')">Save Wallet</button></div>`);
 };
 window.submitGeneratedWallet=async function(addr,pk){
@@ -879,10 +918,10 @@ function deriveAddrFromPk(pk){
 }
 window.openImportBuyWallet=function(){
   openModal(`<h2>Import Wallet</h2>
-<p class="text-sm text-muted mb-12">Paste private key — address auto-derives on blur.</p>
-<div class="form-group"><label>Private Key <span class="badge badge-r">Required</span></label><textarea id="f-pk" rows="2" style="font-family:var(--font-mono);font-size:0.75rem;resize:vertical" placeholder="Base58 private key..." onblur="var a=deriveAddrFromPk(this.value);if(a)document.getElementById('f-wa').value=a"></textarea></div>
-<div class="form-group"><label>Address <span class="badge badge-b">Auto-derived</span></label><input id="f-wa" placeholder="Derived from private key..." readonly style="font-family:var(--font-mono);font-size:0.7rem;cursor:default;opacity:0.7"/></div>
-<div class="form-group"><label>Label</label><input id="f-wl" placeholder="Buy Wallet" value="Buy Wallet"/></div>
+<p class="text-sm text-muted mb-8">Paste your Solana private key. Address auto-derives when you leave the field.</p>
+<div class="form-group"><label>Private Key <span class="badge badge-r">Required</span></label><textarea id="f-pk" rows="2" style="font-family:var(--font-mono);font-size:0.75rem;resize:vertical" placeholder="Base58 private key..." onblur="var a=deriveAddrFromPk(this.value);if(a)document.getElementById('f-wa').value=a"></textarea><span class="hint">Base58-encoded Solana private key. <span style="color:var(--accent)">Never share this.</span></span></div>
+<div class="form-group"><label>Wallet Address <span class="badge badge-b">Auto-derived</span></label><input id="f-wa" placeholder="Derived from private key..." readonly style="font-family:var(--font-mono);font-size:0.7rem;cursor:default;opacity:0.7"/><span class="hint">Read-only. Automatically extracted from private key.</span></div>
+<div class="form-group"><label>Label</label><input id="f-wl" placeholder="Buy Wallet" value="Buy Wallet"/><span class="hint">Friendly name for easy identification</span></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitBuyWallet()">Import Wallet</button></div>`);
 };
 window.submitBuyWallet=async function(){
@@ -947,10 +986,10 @@ window.switchPfTab=function(t){
 
 window.openGroupForm=async function(){
   const w=await api('/wallets');
-  openModal(`<h2>Create Wallet Group</h2><p class="text-sm text-muted mb-8">Groups distribute buys across multiple wallets in parallel.</p>
-<div class="form-group"><label>Group Name</label><input id="f-gn" placeholder="e.g. Mega Sniper Set"/></div>
-<div class="form-group"><label>Description <span class="text-muted">(optional)</span></label><input id="f-gd" placeholder="For high-cap snipes"/></div>
-<div class="form-group"><label>Add Wallets</label><div style="display:flex;flex-wrap:wrap;gap:0.3rem">${w.map(w=>`<label class="cb" style="font-size:0.75rem;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-xs);border:1px solid var(--border)"><input type="checkbox" class="gw" value="${w.id}"/> ${w.label||addrShort(w.address)}</label>`).join('')}</div></div>
+  openModal(`<h2>Create Wallet Group</h2><p class="text-sm text-muted mb-8">Groups split each buy across multiple wallets for better position concealment. Buy amount ÷ wallets in group.</p>
+<div class="form-group"><label>Group Name</label><input id="f-gn" placeholder="e.g. Mega Sniper Set"/><span class="hint">Pick a recognizable name</span></div>
+<div class="form-group"><label>Description <span class="text-muted" style="font-weight:400">— optional</span></label><input id="f-gd" placeholder="For high-cap snipes"/><span class="hint">Notes about this group's purpose</span></div>
+<div class="form-group"><label>Select Wallets</label><div style="display:flex;flex-wrap:wrap;gap:0.3rem">${w.map(w=>`<label class="cb" style="font-size:0.75rem;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-xs);border:1px solid var(--border)"><input type="checkbox" class="gw" value="${w.id}"/> ${w.label||addrShort(w.address)}</label>`).join('')}</div><span class="hint">All selected wallets share the buy amount equally</span></div>
 <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitGroup()">Create Group</button></div>`);
 };
 window.submitGroup=async function(){
@@ -970,36 +1009,37 @@ window.viewGroup=async function(id){
 // ═══ SETTINGS ───
 async function renderSettings(){
   const[settings,setup,tg]=await Promise.all([api('/settings'),api('/setup'),api('/telegram/status')]);
-  return`<div class="page-header"><span class="eyebrow">Configuration</span><h2>Settings</h2></div>
+  return`<div class="page-header"><span class="eyebrow">Configuration</span><h2>Settings</h2><div class="sub">Global defaults, API keys, and system status</div></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-  <div class="shell"><div class="core"><div class="card-h"><h3>Config</h3></div>
+  <div class="shell"><div class="core"><div class="card-h"><h3>⚙️ Defaults</h3></div>
     <div class="form-grid">
-      <div class="form-group"><label>Default Buy (SOL)</label><input id="s-buy" value="${settings.default_buy_amount||'0.01'}" type="number" step=".001"/></div>
-      <div class="form-group"><label>Default Slippage (%)</label><input id="s-slip" value="${settings.default_slippage||'30'}" type="number"/></div>
-      <div class="form-group"><label>Anti-MEV</label><select id="s-anti"><option value="true" ${settings.default_anti_mev==='true'?'selected':''}>On</option><option value="false" ${settings.default_anti_mev==='false'?'selected':''}>Off</option></select></div>
+      <div class="form-group"><label>Default Buy (SOL)</label><input id="s-buy" value="${settings.default_buy_amount||'0.01'}" type="number" step=".001"/><span class="hint">Fallback when channel has no buy amount set</span></div>
+      <div class="form-group"><label>Default Slippage (%)</label><input id="s-slip" value="${settings.default_slippage||'30'}" type="number"/><span class="hint">Max price deviation for swap execution</span></div>
+      <div class="form-group"><label>Anti-MEV</label><select id="s-anti"><option value="true" ${settings.default_anti_mev==='true'?'selected':''}>On</option><option value="false" ${settings.default_anti_mev==='false'?'selected':''}>Off</option></select><span class="hint">Protects against sandwich attacks</span></div>
     </div>
-    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveSettings()">Save</button></div>
+    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveSettings()">Save Defaults</button></div>
   </div></div>
-  <div class="shell"><div class="core"><div class="card-h"><h3>GMGN API (Per-User)</h3></div>
+  <div class="shell"><div class="core"><div class="card-h"><h3>🔑 GMGN API Keys</h3></div>
     <div class="form-grid">
-      <div class="form-group"><label>Your API Key</label><input id="s-gmgn-key" value="${settings.gmgn_api_key_usr||''}" placeholder="Leave empty to use server default" style="font-family:var(--font-mono);font-size:0.7rem"/></div>
-      <div class="form-group"><label>Your Private Key</label><input id="s-gmgn-pk" type="password" placeholder="${settings.has_gmgn_private_key_usr?'***** (set)':'Set your private key'}" style="font-family:var(--font-mono);font-size:0.7rem"/></div>
+      <div class="form-group"><label>Your API Key</label><input id="s-gmgn-key" value="${settings.gmgn_api_key_usr||''}" placeholder="Leave empty to use server default" style="font-family:var(--font-mono);font-size:0.7rem"/><span class="hint">Per-user override. Leave blank to use the server key.</span></div>
+      <div class="form-group"><label>Your Private Key</label><input id="s-gmgn-pk" type="password" placeholder="${settings.has_gmgn_private_key_usr?'••••• (saved)':'Set your signing key'}" style="font-family:var(--font-mono);font-size:0.7rem"/><span class="hint">Required for swap signing. <span style="color:var(--accent)">Stored encrypted.</span></span></div>
     </div>
-    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveGmgnKeys()">Save GMGN Keys</button> <button class="btn btn-sm" onclick="testGmgn()">Test Connection</button></div>
+    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveGmgnKeys()">Save Keys</button> <button class="btn btn-sm" onclick="testGmgn()">Test Connection</button></div>
   </div></div>
-  <div class="shell"><div class="core"><div class="card-h"><h3>Status</h3></div>
+  <div class="shell"><div class="core"><div class="card-h"><h3>📊 System Status</h3></div>
     <div style="display:grid;gap:0.3rem">${[
-      ['API Key',setup.gmgnConfigured,'ok','no'],
-      ['Channels',setup.hasChannels,setup.hasChannels?'ok':'0','Add'],
-      ['Telegram',tg.connected,'Connected','Off '+(tg.hasSession?'(saved)':'(not set)')],
-    ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.72rem"><span>${l}</span><span class="badge ${ok?'badge-g':'badge-gr'}">${ok?y:n}</span></div>`).join('')}</div>
+      ['GMGN API Key',setup.gmgnConfigured,'Configured','Missing'],
+      ['Channels',setup.hasChannels,setup.hasChannels?setup.channelCount+' active':'0'],
+      ['Telegram MTProto',tg.connected,tg.connected?'Connected':(tg.hasSession?'Disconnected (saved)':'Not set up')],
+    ].map(([l,ok,y,n])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);font-size:0.72rem"><span>${l}</span><span class="badge ${ok?'badge-g':tg.hasSession?'badge-y':'badge-gr'}">${ok?y:n}</span></div>`).join('')}</div>
   </div></div>
 </div>
-<div class="shell"><div class="core"><div class="card-h"><h3>Telegram</h3>${tg.connected?'<button class="btn btn-sm btn-r" onclick="tgDisconnect()">Disconnect</button>':'<button class="btn btn-sm btn-p" onclick="showLogin()">Connect</button>'}</div>
-  <div class="text-sm text-muted">${tg.connected?'Connected and listening.':(tg.hasSession?'Session saved but not connected.':'No Telegram session.')}</div>
+<div class="shell"><div class="core"><div class="card-h"><h3>📡 Telegram Connection</h3>${tg.connected?'<button class="btn btn-sm btn-r" onclick="tgDisconnect()">Disconnect</button>':'<button class="btn btn-sm btn-p" onclick="showLogin()">Connect Telegram</button>'}</div>
+  <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0"><span style="width:8px;height:8px;border-radius:50%;background:${tg.connected?'var(--green)':'var(--text3)'};display:inline-block"></span><span class="text-sm">${tg.connected?'Connected — listening for signals from active channels.':(tg.hasSession?'Session saved but not connected. Reconnect to start scraping.':'No Telegram session. Login to scrape signals.')}</span></div>
 </div></div>
-<div class="shell"><div class="core"><div class="card-h"><h3>Environment</h3></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>🖥 Environment</h3></div>
     <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key_usr||settings.gmgn_api_key||'Not set'}</span></div>
+    <div class="text-sm text-muted" style="margin-top:0.2rem">Session: ${tg.hasSession?'<span class="badge badge-b">Saved</span>':'<span class="badge badge-gr">None</span>'}</div>
 </div></div>`;}
 
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
@@ -1100,26 +1140,43 @@ window.skipLogin=async function(){
 };
 
 // ═══ SSE Real-time ───
+let _sseBuffer={signal:[],trade:[]};
+let _sseFlushTimer=null;
+function flushSSE(){
+  if(_sseBuffer.signal.length){
+    const grid=$('#page-dashboard .signal-grid');
+    if(grid){
+      for(const d of _sseBuffer.signal){
+        const card=document.createElement('div');card.className='shell signal-card';
+        card.dataset.sid=d.id||'';card.style.cssText='cursor:pointer;border-radius:var(--radius-md)';
+        card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
+        const sym=d.token_symbol||addrShort(d.token_address);
+        card.innerHTML=`<div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div><div class="sig-data" style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right" class="sig-liq">${fmtCur(d.liquidity)}</span></div><div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span><span class="sig-latency"></span></div></div>`;
+        grid.prepend(card);
+        if(grid.children.length>50)grid.lastElementChild?.remove();
+      }
+    }
+    _sseBuffer.signal=[];
+  }
+  if(_sseBuffer.trade.length){
+    const tbl=$('#page-dashboard .trade-tbl');
+    if(tbl){
+      for(const d of _sseBuffer.trade){
+        const tr=document.createElement('tr');tr.dataset.tradeId=d.trade_id||'';
+        tr.innerHTML=`<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span><br><span class="text-muted" style="font-size:0.6rem">${esc(d.source_channel||'')}</span></td><td>${d.amount||'-'} SOL</td><td>-</td><td class="text-sm">${d.buy_latency_ms?(d.buy_latency_ms<1000?d.buy_latency_ms+'ms':(d.buy_latency_ms/1000).toFixed(1)+'s'):'-'}</td><td>${sb(d.status)}</td>`;
+        tbl.prepend(tr);
+        if(tbl.children.length>50)tbl.lastElementChild?.remove();
+      }
+    }
+    _sseBuffer.trade=[];
+  }
+  _sseFlushTimer=null;
+}
 function connectSSE(){
   const ev = new EventSource('/api/events');
   ev.addEventListener('signal', e => {
-    const d = JSON.parse(e.data);
-    const grid = $('#page-dashboard .signal-grid');
-    if (grid) {
-      const card = document.createElement('div');
-      card.className = 'shell signal-card';
-      card.dataset.sid = d.id || '';
-      card.style.cssText='cursor:pointer;border-radius:var(--radius-md)';
-      card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
-      const sym = d.token_symbol || addrShort(d.token_address);
-      card.innerHTML = `<div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div>
-<div class="sig-data" style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right" class="sig-liq">${fmtCur(d.liquidity)}</span></div>
-<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span><span class="sig-latency"></span></div>
-</div>`;
-      grid.prepend(card);
-      if (grid.children.length > 50) grid.lastElementChild?.remove();
-    }
+    _sseBuffer.signal.push(JSON.parse(e.data));
+    if(!_sseFlushTimer)_sseFlushTimer=requestAnimationFrame(flushSSE);
   });
   ev.addEventListener('signal_update', e => {
     const d = JSON.parse(e.data);
@@ -1130,36 +1187,32 @@ function connectSSE(){
     if (!core) return;
     const sym = d.token_symbol || addrShort(d.token_address);
     const hasVol = d.volume_24h > 0;
+    const lat = d.latency_ms != null ? (d.latency_ms < 1000 ? d.latency_ms+'ms' : (d.latency_ms/1000).toFixed(1)+'s') : '';
     core.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right" class="sig-liq">${fmtCur(d.liquidity)}</span>${hasVol?`<span class="text-muted">Vol</span><span style="text-align:right">${fmtCur(d.volume_24h)}</span>`:''}</div>
-<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span>${d.latency_ms?`<span class="badge badge-gr">${d.latency_ms}ms</span>`:''}</div>`;
+<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span>${lat?`<span class="badge badge-gr">${lat}</span>`:''}</div>`;
   });
   ev.addEventListener('trade', e => {
-    const d = JSON.parse(e.data);
-    const tbl = $('#page-dashboard .trade-tbl');
-    if (tbl) {
-      const tr = document.createElement('tr');
-      tr.dataset.tradeId = d.trade_id || '';
-      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span><br><span class="text-muted" style="font-size:0.6rem">${esc(d.source_channel||'')}</span></td><td>${d.amount||'-'} SOL</td><td>-</td><td class="text-sm">${d.buy_latency_ms?d.buy_latency_ms+'ms':'-'}</td><td>${sb(d.status)}</td>`;
-      tbl.prepend(tr);
-      if (tbl.children.length > 50) tbl.lastElementChild?.remove();
-    }
+    _sseBuffer.trade.push(JSON.parse(e.data));
+    if(!_sseFlushTimer)_sseFlushTimer=requestAnimationFrame(flushSSE);
   });
+  let _tradeUpdatePending=null;
   ev.addEventListener('trade_update', e => {
-    const d = JSON.parse(e.data);
-    const row = d.trade_id ? $('#page-dashboard .trade-tbl tr[data-trade-id="'+d.trade_id+'"]') : null;
-    if (row) {
-      const statusCell = row.cells[4];
-      if (statusCell) statusCell.innerHTML = sb(d.status);
-      if (d.buy_tx && row.cells[0]) {
-        const a = row.cells[0].querySelector('a') || document.createElement('a');
-        a.href = 'https://solscan.io/tx/'+d.buy_tx;
-        a.target = '_blank';
-        a.textContent = row.cells[0].textContent;
-        row.cells[0].innerHTML = '';
-        row.cells[0].appendChild(a);
+    _tradeUpdatePending=JSON.parse(e.data);
+    if(!_sseFlushTimer)_sseFlushTimer=requestAnimationFrame(()=>{
+      if(!_tradeUpdatePending)return;
+      const d=_tradeUpdatePending;_tradeUpdatePending=null;
+      const row=d.trade_id?$('#page-dashboard .trade-tbl tr[data-trade-id="'+d.trade_id+'"]'):null;
+      if(row){
+        if(row.cells[4])row.cells[4].innerHTML=sb(d.status);
+        if(d.buy_tx&&row.cells[0]){
+          const a=row.cells[0].querySelector('a')||document.createElement('a');
+          a.href='https://solscan.io/tx/'+d.buy_tx;a.target='_blank';
+          a.textContent=row.cells[0].textContent;
+          row.cells[0].innerHTML='';row.cells[0].appendChild(a);
+        }
       }
-    }
+    });
   });
   ev.onerror = () => { ev.close(); setTimeout(connectSSE, 2000); };
 }
@@ -1243,7 +1296,11 @@ ${hld.length?`<div class="text-sm text-muted mb-8" style="font-weight:600">Top H
 // ═══ AUTO REFRESH ───
 let _autoRefresh = null;
 
+let _lastRefresh=0;
 async function refreshCurrentPage() {
+  const now=Date.now();
+  if(now-_lastRefresh<1000)return;
+  _lastRefresh=now;
   if (!$('#modal').classList.contains('active')) {
     const el = $('#page-'+cp);
     if (el) {
@@ -1283,10 +1340,11 @@ function startNavPolling(){
   setInterval(async()=>{
     try{
       const st=await api('/status');
+      if(!st)return;
       document.querySelectorAll('.nav-item[data-p="positions"] .count').forEach(c=>c.textContent=st.openTrades);
       document.querySelectorAll('.nav-item[data-p="channels"] .count').forEach(c=>c.textContent=st.channelCount);
     }catch{}
-  },8000);
+  },10000);
 }
 initDashboard();
 </script>
