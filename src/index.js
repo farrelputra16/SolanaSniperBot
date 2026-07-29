@@ -4,7 +4,7 @@ import { config, validateConfig } from './config.js';
 import { initDatabase } from './database.js';
 import * as db from './database.js';
 import { onSignal } from './telegram.js';
-import { processSignal } from './router.js';
+import { processSignal, startWalletWarmer } from './router.js';
 import { createWebServer, startWebServer } from './web-server.js';
 import { warmupConnection } from './gmgn.js';
 import { startBot, setAdminId } from './telegram-bot.js';
@@ -37,6 +37,7 @@ async function main() {
   await initDatabase();
   await loadTelegramId();
   warmupConnection().then(() => console.log('   GMGN: 🔥 Connection warmed up')).catch(() => {});
+  startWalletWarmer();
 
   onSignal(async (sourceChannel, text, message, senderUsername) => {
     await processSignal(sourceChannel, text, message, senderUsername);

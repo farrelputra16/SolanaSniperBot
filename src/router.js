@@ -55,6 +55,24 @@ function getCachedWallet(key, fetcher) {
   return data;
 }
 
+// Background wallet cache warmer — keeps cache hot so blind buy never waits on DB
+let _warmingTimer = null;
+export function startWalletWarmer() {
+  if (_warmingTimer) return;
+  _warmingTimer = setInterval(async () => {
+    try {
+      const [active, groups] = await Promise.all([
+        db.getActiveWallet(),
+        db.getWalletGroups(),
+      ]);
+      if (active) _walletCache.set('active', { data: active, ts: Date.now() });
+      for (const g of (groups || [])) {
+        getCachedWallet(`group:${g.id}`, () => db.getGroupWallets(g.id));
+      }
+    } catch {}
+  }, 25000);
+}
+
 export async function processSignal(sourceChannel, text, message, senderUsername) {
   const t0 = Date.now();
 
@@ -66,6 +84,11 @@ export async function processSignal(sourceChannel, text, message, senderUsername
   db.addScraperLog(sourceChannel, 'info', `CA ${found.map(f=>f.address).join(', ')}`).catch(() => {});
   const captureLatency = Date.now() - t0;
   console.log(`📡 CA captured in ${captureLatency}ms | ${found.length} address(es)`);
+
+  // Pre-warm wallet cache for faster blind buy
+  for (const rule of allRules) {
+    if (rule.blind_buy || rule.auto_buy) resolveWallets(rule).catch(() => {});
+  }
 
   await Promise.allSettled(found.map(({ address, chain }) =>
     processAddress(address, chain, sourceChannel, text, senderUsername, allRules, t0)
@@ -97,7 +120,12 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   const blindRules = matchingRules.filter(r => r.blind_buy);
   const normalRules = matchingRules.filter(r => !r.blind_buy && r.auto_buy);
 
-  // Check ignore_duplicate — skip if same CA already caught from this channel
+  // BLIND BUY: fire IMMEDIATELY — zero delay, no await, no dedup check
+  for (const rule of blindRules) {
+    executeAutoBuy(address, chain, rule, sourceChannel, t0);
+  }
+
+  // Dedup check runs in parallel — doesn't block blind buy
   const ignoreDup = await isIgnoreDuplicate(sourceChannel);
   if (ignoreDup) {
     const key = `${sourceChannel}:${address}`;
@@ -108,7 +136,6 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
       return;
     }
     _seenCAs.set(key, Date.now());
-    // Clean stale entries periodically
     if (_seenCAs.size > 1000) {
       const threshold = Date.now() - SEEN_CA_TTL;
       for (const [k, ts] of _seenCAs) if (ts < threshold) _seenCAs.delete(k);
@@ -117,11 +144,6 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   _dedupStats.total_caught++;
   if (!_dedupStats.per_channel[sourceChannel]) _dedupStats.per_channel[sourceChannel] = { caught: 0, ignored: 0 };
   _dedupStats.per_channel[sourceChannel].caught = (_dedupStats.per_channel[sourceChannel].caught || 0) + 1;
-
-  // BLIND BUY: swap IMMEDIATELY before ANY async I/O — zero delay
-  for (const rule of blindRules) {
-    executeAutoBuy(address, chain, rule, sourceChannel, t0);
-  }
 
   // Save signal — appears on dashboard
   const now = Math.floor(Date.now() / 1000);
@@ -196,7 +218,23 @@ function forwardSignal(sourceChannel, address, data, text, error) {
   }).catch(() => {});
 }
 
+function resolveWalletsSync(rule) {
+  if (rule.wallet_group_id && rule.wallet_group_id > 0) {
+    const cached = _walletCache.get(`group:${rule.wallet_group_id}`);
+    if (cached && Date.now() - cached.ts < 30000) return cached.data || [];
+  }
+  if (rule.wallet_group_id && rule.wallet_group_id < 0) {
+    const cached = _walletCache.get(`wallet:${Math.abs(rule.wallet_group_id)}`);
+    if (cached && Date.now() - cached.ts < 30000) return cached.data ? [cached.data] : [];
+  }
+  const cached = _walletCache.get('active');
+  if (cached && Date.now() - cached.ts < 30000) return cached.data ? [cached.data] : [];
+  return null;
+}
+
 function resolveWallets(rule) {
+  const sync = resolveWalletsSync(rule);
+  if (sync) return Promise.resolve(sync);
   if (rule.wallet_group_id && rule.wallet_group_id > 0) {
     return Promise.resolve(getCachedWallet(`group:${rule.wallet_group_id}`, () => db.getGroupWallets(rule.wallet_group_id)));
   }
