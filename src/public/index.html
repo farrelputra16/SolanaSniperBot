@@ -478,15 +478,16 @@ async function renderDashboard(){
   <div class="stat"><div class="shell"><div class="core"><div class="num">${Math.floor(st.uptime/3600)}h${Math.floor((st.uptime%3600)/60)}m</div><div class="lbl">Uptime</div></div></div></div>
   <div class="stat ${st.tgConnected?'green':'red'}"><div class="shell"><div class="core"><div class="num" style="font-size:1.2rem">${st.tgConnected?'●':'○'}</div><div class="lbl">Telegram</div></div></div></div>
 </div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-  <div class="shell"><div class="core" style="padding:1.25rem"><div class="card-h"><h3>Signals</h3><span class="text-muted text-sm">${act.signals.length} recent</span></div>
-    ${act.signals.length?('<div class="table-wrap"><table class="signal-tbl"><thead><tr><th>Token</th><th>Chan</th><th>MC</th><th>Liq</th><th>Time</th></tr></thead><tbody>' + act.signals.map(s=>'<tr style="cursor:pointer" onclick="openTokenDetail(\''+s.token_address+'\','+(s.market_cap||0)+')"><td><span class="mono addr" title="'+s.token_address+'">'+(s.token_symbol||addrShort(s.token_address))+'</span></td><td>'+(s.source_channel||'-')+'</td><td>'+fmtCur(s.market_cap)+'</td><td class="text-sm">'+fmtCur(s.liquidity)+'</td><td class="text-muted text-sm">'+fmtShort(s.created_at)+'</td></tr>').join('')+'</tbody></table></div>'
-+ '<div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">' + act.signals.slice(0,4).map(s=>'<div class="shell" style="cursor:pointer;border-radius:var(--radius-md)" onclick="openTokenDetail(\''+s.token_address+'\','+(s.market_cap||0)+')"><div class="core" style="padding:0.6rem 0.75rem;border-radius:calc(var(--radius-md) - 0.25rem)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem"><span class="mono" style="font-weight:600;font-size:0.8rem">'+(s.token_symbol||addrShort(s.token_address))+'</span><span class="text-muted text-sm">'+(s.source_channel||'')+'</span></div><div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.15rem"><span class="text-muted">MC</span><span>'+fmtCur(s.market_cap)+'</span></div></div></div></div>').join('')+'</div>'):'<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>'}
-  </div></div>
-  <div class="shell"><div class="core" style="padding:1.25rem"><div class="card-h"><h3>Trades</h3><span class="text-sm text-muted">${act.trades.length} recent</span></div>
-    ${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>SOL</th><th>P&L</th><th>Signal</th><th>Buy</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${t.buy_amount_sol||'-'}</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.signal_latency_ms!=null?t.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${t.buy_latency_ms!=null?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
-  </div></div>
-</div>`;}
+<div class="shell"><div class="core"><div class="card-h"><h3>Signals</h3><span class="text-muted text-sm">${act.signals.length} recent</span></div>
+${act.signals.length?`<div class="signal-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.5rem">${act.signals.map(s=>`<div class="shell signal-card" data-sid="${s.id||''}" style="cursor:pointer;border-radius:var(--radius-md)" onclick="openTokenDetail('${s.token_address}',${s.market_cap||0})"><div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${s.token_symbol||addrShort(s.token_address)}</span><span class="badge badge-o" style="font-size:0.55rem">${s.source_channel||''}</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right;class="sig-mc"">${fmtCur(s.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right">${fmtCur(s.liquidity)}</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(s.created_at)}</span>${s.latency_ms?`<span class="badge badge-gr">${s.latency_ms}ms</span>`:''}</div>
+</div></div>`).join('')}</div>`:'<div class="empty-state" style="padding:2rem"><p>No signals yet</p></div>'}
+</div></div>
+<div class="shell"><div class="core"><div class="card-h"><h3>Trades</h3><span class="text-sm text-muted">${act.trades.length} recent</span></div>
+${act.trades.length?`<div class="table-wrap"><table class="trade-tbl"><thead><tr><th>Token</th><th>SOL</th><th>P&L</th><th>Latency</th><th>Status</th></tr></thead><tbody>${act.trades.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted" style="font-size:0.6rem">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td>${pnlBadge(t.pnl,t.pnl_percent)}</td><td class="text-sm">${t.buy_latency_ms!=null?t.buy_latency_ms+'ms':'-'}</td><td>${sb(t.status)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><p>No trades yet</p></div>`}
+</div></div>`;}
 
 // ═══ CHANNELS ───
 async function renderChannels(){
@@ -1061,29 +1062,31 @@ function connectSSE(){
   const ev = new EventSource('/api/events');
   ev.addEventListener('signal', e => {
     const d = JSON.parse(e.data);
-    const tbl = $('#page-dashboard .signal-tbl');
-    if (tbl) {
-      const tr = document.createElement('tr');
-      tr.dataset.sid = d.id || '';
-      tr.style.cursor='pointer';
-      tr.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
+    const grid = $('#page-dashboard .signal-grid');
+    if (grid) {
+      const card = document.createElement('div');
+      card.className = 'shell signal-card';
+      card.dataset.sid = d.id || '';
+      card.style.cssText='cursor:pointer;border-radius:var(--radius-md)';
+      card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
       const sym = d.token_symbol || addrShort(d.token_address);
-      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(sym)}</span></td><td>${esc(d.source_channel||'')}</td><td class="sig-mc">${fmtCur(d.market_cap)}</td><td class="text-muted text-sm sig-time">${fmtShort(d.created_at)}</td>`;
-      tbl.prepend(tr);
-      if (tbl.children.length > 50) tbl.lastElementChild?.remove();
+      card.innerHTML = `<div class="core" style="padding:0.7rem 0.8rem;border-radius:calc(var(--radius-md) - 0.25rem)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem"><span class="mono" style="font-weight:600;font-size:0.8rem">${esc(sym)}</span><span class="badge badge-o" style="font-size:0.55rem">${esc(d.source_channel||'')}</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.2rem;font-size:0.68rem"><span class="text-muted">MC</span><span style="text-align:right" class="sig-mc">${fmtCur(d.market_cap)}</span><span class="text-muted">Liq</span><span style="text-align:right">${fmtCur(d.liquidity)}</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:0.35rem;padding-top:0.35rem;border-top:1px solid var(--border-subtle);font-size:0.6rem"><span class="text-muted sig-time">${fmtShort(d.created_at)}</span></div>
+</div>`;
+      grid.prepend(card);
+      if (grid.children.length > 50) grid.lastElementChild?.remove();
     }
     $('#navChanCount').textContent = String(Number($('#navChanCount').textContent||0)+1);
   });
   ev.addEventListener('signal_update', e => {
     const d = JSON.parse(e.data);
-    const tbl = $('#page-dashboard .signal-tbl');
-    if (!tbl) return;
-    const row = tbl.querySelector(`tr[data-sid="${d.id}"]`);
-    if (!row) return;
-    row.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
-    const sym = d.token_symbol || addrShort(d.token_address);
-    row.cells[0].innerHTML = `<span class="mono addr" title="${esc(d.token_address)}">${esc(sym)}</span>`;
-    if (d.market_cap) row.cells[2].textContent = fmtCur(d.market_cap);
+    const card = $('#page-dashboard .signal-grid .signal-card[data-sid="'+d.id+'"]');
+    if (!card) return;
+    card.onclick=()=>openTokenDetail(d.token_address,d.market_cap||0);
+    const mcEl = card.querySelector('.sig-mc');
+    if (d.market_cap && mcEl) mcEl.textContent = fmtCur(d.market_cap);
   });
   ev.addEventListener('trade', e => {
     const d = JSON.parse(e.data);
@@ -1091,7 +1094,7 @@ function connectSSE(){
     if (tbl) {
       const tr = document.createElement('tr');
       tr.dataset.tradeId = d.trade_id || '';
-      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span></td><td>${d.amount||'-'}</td><td>-</td><td class="text-sm">${d.signal_latency_ms!=null?d.signal_latency_ms+'ms':'-'}</td><td class="text-sm">${d.buy_latency_ms?d.buy_latency_ms+'ms':'-'}</td><td>${sb(d.status)}</td>`;
+      tr.innerHTML = `<td><span class="mono addr" title="${esc(d.token_address)}">${esc(d.token_symbol||addrShort(d.token_address))}</span><br><span class="text-muted" style="font-size:0.6rem">${esc(d.source_channel||'')}</span></td><td>${d.amount||'-'} SOL</td><td>-</td><td class="text-sm">${d.buy_latency_ms?d.buy_latency_ms+'ms':'-'}</td><td>${sb(d.status)}</td>`;
       tbl.prepend(tr);
       if (tbl.children.length > 50) tbl.lastElementChild?.remove();
     }
@@ -1101,7 +1104,7 @@ function connectSSE(){
     const d = JSON.parse(e.data);
     const row = d.trade_id ? $('#page-dashboard .trade-tbl tr[data-trade-id="'+d.trade_id+'"]') : null;
     if (row) {
-      const statusCell = row.cells[5];
+      const statusCell = row.cells[4];
       if (statusCell) statusCell.innerHTML = sb(d.status);
       if (d.buy_tx && row.cells[0]) {
         const a = row.cells[0].querySelector('a') || document.createElement('a');

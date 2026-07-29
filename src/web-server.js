@@ -136,6 +136,16 @@ export function createWebServer() {
     res.json(enriched);
   });
 
+  app.get('/api/channels/joined', async (req, res) => {
+    try {
+      const { getJoinedChannels } = await import('./telegram.js');
+      const joined = await getJoinedChannels();
+      res.json(joined || []);
+    } catch (err) {
+      res.json({ error: err.message });
+    }
+  });
+
   app.get('/api/channels/:id', async (req, res) => {
     const c = await db.getChannelWithRule(req.params.id);
     if (!c) return res.status(404).json({ error: 'not found' });
@@ -195,16 +205,6 @@ export function createWebServer() {
     const newVal = value !== undefined ? (value ? 1 : 0) : (ch.ignore_duplicate ? 0 : 1);
     await db.updateChannelSetting(req.params.id, 'ignore_duplicate', newVal);
     res.json({ success: true, ignore_duplicate: newVal });
-  });
-
-  app.get('/api/channels/joined', async (req, res) => {
-    try {
-      const { getJoinedChannels } = await import('./telegram.js');
-      const joined = await getJoinedChannels();
-      res.json(joined || []);
-    } catch (err) {
-      res.json({ error: err.message });
-    }
   });
 
   app.get('/api/scraper-stats', async (req, res) => {
