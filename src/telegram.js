@@ -160,7 +160,7 @@
   let _pingInterval = null;
   let _globalHandlerInstalled = false;
   const _listeners = new Set();
-  const _entityIdMap = new Map();
+  const _channelMeta = new Map(); // chatId → { identifier, trackMode }
 
   export function startKeepAlive() {
     if (_pingInterval) clearInterval(_pingInterval);
@@ -181,8 +181,10 @@
   }
 
   export function isChannelListening(identifier) {
-    const chatId = _entityIdMap.get(identifier);
-    return chatId ? _listeners.has(chatId) : false;
+    for (const [chatId, meta] of _channelMeta) {
+      if (meta.identifier === identifier) return _listeners.has(chatId);
+    }
+    return false;
   }
 
   function installGlobalHandler() {
@@ -199,8 +201,12 @@
     if (chatId.startsWith('-100')) chatId = chatId.slice(4);
     if (!chatId || !_listeners.has(chatId)) return;
 
-    const identifier = resolveIdentifier(chatId);
-    if (!identifier) return;
+    const meta = _channelMeta.get(chatId);
+    if (!meta) return;
+    const identifier = meta.identifier;
+    const trackMode = meta.trackMode || 'admin';
+
+    if (trackMode === 'admin' && !msg.post) return;
 
     const text = msg.text;
 
@@ -217,10 +223,8 @@
   }
 
   function resolveIdentifier(chatId) {
-    for (const [id, val] of _entityIdMap) {
-      if (String(val) === chatId) return id;
-    }
-    return null;
+    const meta = _channelMeta.get(chatId);
+    return meta ? meta.identifier : null;
   }
 
   async function getSenderUsername(message) {
@@ -243,7 +247,7 @@
 
     for (const ch of channels) {
       const identifier = ch.channel_username || ch.channel_id?.toString();
-      if (identifier) await addChannelListener(identifier).catch(() => {});
+      if (identifier) await addChannelListener(identifier, ch.track_mode).catch(() => {});
     }
 
     console.log(`[Telegram] Listening ${channels.length} channel(s)`);
@@ -312,7 +316,7 @@
     throw new Error(`Could not resolve invite link. Make sure your Telegram account has joined the channel`);
   }
 
-  export async function addChannelListener(identifier) {
+  export async function addChannelListener(identifier, trackMode) {
     if (!client) return false;
     try {
       const entity = await resolveAndJoin(identifier);
@@ -320,8 +324,8 @@
       const chatId = String(entity.id);
       installGlobalHandler();
       _listeners.add(chatId);
-      _entityIdMap.set(identifier, chatId);
-      console.log(`[Telegram] Listening: ${label}`);
+      _channelMeta.set(chatId, { identifier, trackMode: trackMode || 'admin' });
+      console.log(`[Telegram] Listening: ${label} (${trackMode || 'admin'})`);
       db.addScraperLog(identifier, 'info', `Listening: ${label}`);
       return true;
     } catch (err) {
@@ -333,13 +337,14 @@
 
   export async function removeChannelListener(identifier) {
     if (!client) return;
-    const chatId = _entityIdMap.get(identifier);
-    if (chatId) {
-      _listeners.delete(chatId);
-      _entityIdMap.delete(identifier);
-      const label = identifier || chatId;
-      console.log(`[Telegram] Stopped listening: ${label}`);
-      db.addScraperLog(identifier, 'info', `Stopped listening: ${label}`);
+    for (const [chatId, meta] of _channelMeta) {
+      if (meta.identifier === identifier) {
+        _listeners.delete(chatId);
+        _channelMeta.delete(chatId);
+        console.log(`[Telegram] Stopped listening: ${identifier}`);
+        db.addScraperLog(identifier, 'info', `Stopped listening: ${identifier}`);
+        return;
+      }
     }
   }
 
@@ -353,13 +358,22 @@
   }
 
   export function setEntityId(identifier, id) {
-    _entityIdMap.set(identifier, id);
+    const chatId = String(id);
+    if (!_channelMeta.has(chatId)) _channelMeta.set(chatId, { identifier, trackMode: 'admin' });
+  }
+
+  export function updateTrackMode(chatId, trackMode) {
+    const meta = _channelMeta.get(chatId);
+    if (meta) _channelMeta.set(chatId, { ...meta, trackMode });
   }
 
   export async function sendToChat(target, text) {
     if (!client) return;
     try {
-      const chatId = _entityIdMap.get(target) || target;
+      let chatId = target;
+      for (const [cid, meta] of _channelMeta) {
+        if (meta.identifier === target) { chatId = cid; break; }
+      }
       await client.sendMessage(chatId, { message: text });
     } catch (err) {
       console.error('[Telegram] Send error:', err.message);

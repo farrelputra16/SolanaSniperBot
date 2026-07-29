@@ -514,6 +514,8 @@ function renderChannelCard(c){
   if(r.priority_fee)chips.push(`Fee:${r.priority_fee}`);
   if(r.wallet_group_id>0)chips.push(`Group#${r.wallet_group_id}`);
   if(c.ignore_duplicate)chips.push(`<span style="color:var(--accent)">Dedup</span>`);
+  if(c.track_mode==='admin')chips.push(`<span style="color:var(--cyan)">Admin</span>`);
+  else if(c.track_mode==='all')chips.push(`<span style="color:var(--cyan)">All</span>`);
 
   const listeningDot = c.listening ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-left:6px" title="Listening"></span>' : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-left:6px" title="Not listening"></span>';
 
@@ -579,6 +581,7 @@ window.openChannelForm=async function(id){
   <div class="form-group"><label>Channel</label><input id="f-ch" value="${esc(ch.channel_username)}" ${isEdit?'readonly':''} placeholder="Channel username or link"/></div>
   <div class="form-group"><label>Display Name</label><input id="f-ch-name" value="${esc(ch.display_name||'')}" placeholder="${isEdit?'':'My Channel'}"/></div>
 </div>
+<div class="form-group"><label>Track Messages</label><select id="f-track-mode"><option value="admin" ${(ch.track_mode||'admin')==='admin'?'selected':''}>Admin only (broadcast posts)</option><option value="all" ${ch.track_mode==='all'?'selected':''}>All messages (including group chat)</option></select></div>
 <h3 style="font-size:0.75rem;margin:0.85rem 0 0.55rem;color:var(--text2);font-weight:600">Filters</h3>
 <div class="form-grid filter-fields" style="${r.blind_buy?'opacity:0.3':''}">
   <div class="form-group"><label>Min Market Cap ($)</label><input id="f-min-mc" type="number" value="${r.min_market_cap||''}" placeholder="Any"/></div>
@@ -665,6 +668,7 @@ window.submitChannelForm=async function(id){
     track_only:$('#f-track').checked,
   })});
   await api('/channels/'+id+'/ignore-duplicate',{method:'PATCH',body:JSON.stringify({value:$('#f-dedup').checked})});
+  await api('/channels/'+id+'/track-mode',{method:'PATCH',body:JSON.stringify({mode:$('#f-track-mode').value})});
   closeModal();toast(isNew?'Channel added':'Channel updated','ok');renderPage('channels');
 };
 

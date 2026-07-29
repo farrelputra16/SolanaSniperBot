@@ -108,6 +108,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE settings ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch {}
   try { sqliteDb.exec("ALTER TABLE rules ADD COLUMN blind_buy INTEGER DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN ignore_duplicate INTEGER DEFAULT 0"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN track_mode TEXT DEFAULT 'admin'"); } catch {}
   console.log('[DB] Using SQLite');
 }
 

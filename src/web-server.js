@@ -163,7 +163,7 @@ export function createWebServer() {
     let joined = false;
     try {
       const { addChannelListener } = await import('./telegram.js');
-      joined = await addChannelListener(clean);
+      joined = await addChannelListener(clean, req.body.track_mode || 'admin');
     } catch (e) {
       console.error('[Channel] join error:', e.message);
     }
@@ -190,7 +190,7 @@ export function createWebServer() {
     await db.toggleChannel(req.params.id, newActive);
     try {
       const { addChannelListener, removeChannelListener } = await import('./telegram.js');
-      if (newActive) await addChannelListener(ch.channel_username);
+      if (newActive) await addChannelListener(ch.channel_username, ch.track_mode || 'admin');
       else await removeChannelListener(ch.channel_username);
     } catch (e) {
       console.error('[Channel] toggle listener error:', e.message);
@@ -205,6 +205,24 @@ export function createWebServer() {
     const newVal = value !== undefined ? (value ? 1 : 0) : (ch.ignore_duplicate ? 0 : 1);
     await db.updateChannelSetting(req.params.id, 'ignore_duplicate', newVal);
     res.json({ success: true, ignore_duplicate: newVal });
+  });
+
+  app.patch('/api/channels/:id/track-mode', async (req, res) => {
+    const ch = await db.getChannel(req.params.id);
+    if (!ch) return res.status(404).json({ error: 'not found' });
+    const { mode } = req.body;
+    if (mode !== 'admin' && mode !== 'all') return res.status(400).json({ error: 'mode must be admin or all' });
+    await db.updateChannelSetting(req.params.id, 'track_mode', mode);
+    if (ch.active) {
+      try {
+        const { addChannelListener, removeChannelListener } = await import('./telegram.js');
+        await removeChannelListener(ch.channel_username);
+        await addChannelListener(ch.channel_username, mode);
+      } catch (e) {
+        console.error('[Channel] track-mode listener error:', e.message);
+      }
+    }
+    res.json({ success: true, track_mode: mode });
   });
 
   app.get('/api/scraper-stats', async (req, res) => {
