@@ -8,10 +8,10 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "setup-telegram": "node src/setup-telegram.js",
-"test": "node --test --test-concurrency=1 src/test/*.test.js",
-"test:watch": "node --test --watch src/test/*.test.js",
-"test:coverage": "node --experimental-test-coverage --test src/test/*.test.js",
-"prepush": "node --test --test-concurrency=1 src/test/*.test.js",
+    "test": "node --test --test-concurrency=1 src/test/*.test.js",
+    "test:watch": "node --test --watch src/test/*.test.js",
+    "test:coverage": "node --experimental-test-coverage --test src/test/*.test.js",
+    "prepush": "node --test --test-concurrency=1 src/test/*.test.js",
     "lint": "node -e \"console.log('No linter configured')\"",
     "typecheck": "node -e \"console.log('No typechecker configured')\"",
     "vercel-build": "npm install && echo 'Build complete'",
@@ -20,6 +20,7 @@
   "dependencies": {
     "better-sqlite3": "^12.11.1",
     "express": "^4.21.0",
+    "grammy": "^1.45.1",
     "mongodb": "^7.4.0",
     "sql.js": "^1.11.0",
     "telegram": "^2.26.0"

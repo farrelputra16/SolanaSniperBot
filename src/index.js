@@ -7,6 +7,7 @@ import { onSignal } from './telegram.js';
 import { processSignal } from './router.js';
 import { createWebServer, startWebServer } from './web-server.js';
 import { warmupConnection } from './gmgn.js';
+import { startBot, setAdminId } from './telegram-bot.js';
 
 async function loadTelegramId() {
   const savedTid = await db.getSetting('telegram_id', '');
@@ -57,19 +58,22 @@ async function main() {
       await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, savedSession);
       const c = getClient();
       const me = c ? await c.getMe() : null;
-      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); }
+      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); setAdminId(String(me.id)); }
       console.log('   Telegram: ✅ Connected via saved session');
       await startListeners();
+      startBot().catch(e => console.warn('[Bot]', e.message));
     } else if (config.telegram.apiId && config.telegram.apiHash) {
       const { initTelegram, startListeners, getClient } = await import('./telegram.js');
       await initTelegram();
       const c = getClient();
       const me = c ? await c.getMe() : null;
-      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); }
+      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); setAdminId(String(me.id)); }
       console.log('   Telegram: ✅ Connected via .env');
       await startListeners();
+      startBot().catch(e => console.warn('[Bot]', e.message));
     } else {
       console.warn('   Telegram: ⏸️  No session — login from dashboard');
+      startBot().catch(() => {});
     }
   } catch (err) {
     const msg = err?.message || '';
