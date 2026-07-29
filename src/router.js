@@ -125,9 +125,6 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     executeAutoBuy(address, chain, rule, sourceChannel, t0);
   }
 
-  // Forward CA immediately — placeholder, data comes later
-  forwardSignal(sourceChannel, address, null, text, null);
-
   // Dedup check runs in parallel — doesn't block blind buy
   const ignoreDup = await isIgnoreDuplicate(sourceChannel);
   if (ignoreDup) {
@@ -226,13 +223,14 @@ function forwardSignal(sourceChannel, address, data, text, error) {
     if (!target) return;
     let msg;
     if (error && !data) {
-      msg = `⚠️ ${sourceChannel}\n${address}\nError: ${error}`;
-    } else if (!data) {
-      msg = address;
+      msg = `⚠️ ${sourceChannel}\n\`${address}\`\n${error}`;
     } else if (error) {
-      msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n\`${address}\`\n🔗 gmgn.ai/chain/sol/token/${address}\n❌ ${error}`;
+      msg = `⚠️ ${sourceChannel} | ${data.token_symbol || address}\n\`${address}\`\n${error}`;
+    } else if (!data) {
+      return;
     } else {
-      msg = `📡 *${sourceChannel}*\n\`${address}\`\n💰 ${data.token_symbol || '?'} | 🎯 Catched at $${data.market_cap ? data.market_cap.toFixed(0) : '?'} MC\n💧 $${data.liquidity ? data.liquidity.toFixed(0) : '?'} Liq\n🔗 gmgn.ai/chain/sol/token/${address}`;
+      const hasVol = data.volume_24h > 0;
+      msg = `📡 *${sourceChannel}*\n\`${address}\`\n💰 *${data.token_symbol || '?'}* · 🎯 Catched at $${data.market_cap ? data.market_cap.toFixed(0) : '?'} MC\n💧 $${data.liquidity ? data.liquidity.toFixed(0) : '?'} Liq${hasVol ? ` · 📊 $${data.volume_24h > 1000 ? (data.volume_24h / 1000).toFixed(1) + 'K' : data.volume_24h.toFixed(0)} Vol` : ''}`;
     }
     sendToChat(target, msg).catch(() => {});
   }).catch(() => {});
