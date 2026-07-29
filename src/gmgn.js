@@ -109,6 +109,13 @@ async function request(method, path, params = {}, body = null, signed = false, o
 
     if (res.status === 429 && json) {
       const resetAt = json.reset_at || Math.floor(Date.now() / 1000) + 30;
+      if (method === 'POST') {
+        const err = new Error(json.message || `RATE_LIMITED — reset at ${new Date(resetAt * 1000).toLocaleTimeString()}`);
+        err.status = 429;
+        err.body = json;
+        err.code = json.code;
+        throw err;
+      }
       const wait = Math.max(1000, (resetAt - Math.floor(Date.now() / 1000)) * 1000);
       await new Promise(r => setTimeout(r, Math.min(wait, 5000)));
       return request(method, path, params, body, signed, overrideCreds);
