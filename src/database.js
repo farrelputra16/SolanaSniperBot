@@ -461,6 +461,16 @@ export async function getRecentSignals(limit) {
   if (!sqliteMode && mdb) return collections.signals.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).limit(limit).toArray();
   return sqliteDb.prepare('SELECT * FROM signals WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC LIMIT ?').all(...(_tid() ? [_tid()] : []), limit);
 }
+export async function trimSignals(maxCount = 5) {
+  const tid = _tid() || 'NONE';
+  if (!sqliteMode && mdb) {
+    const toKeep = await collections.signals.find({ telegram_id: tid }).sort({ created_at: -1 }).limit(maxCount).toArray();
+    const keepIds = toKeep.map(s => s._id);
+    await collections.signals.deleteMany({ telegram_id: tid, _id: { $nin: keepIds } });
+    return;
+  }
+  sqliteDb.prepare(`DELETE FROM signals WHERE id NOT IN (SELECT id FROM signals WHERE telegram_id = ? ORDER BY created_at DESC LIMIT ?) AND telegram_id = ?`).run(tid, maxCount, tid);
+}
 export async function getSignalCountToday() {
   const start = sqliteNow() - 86400;
   if (!sqliteMode && mdb) return collections.signals.countDocuments({ created_at: { $gte: start }, telegram_id: _tid() || 'NONE' });

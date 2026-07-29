@@ -149,6 +149,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   const now = Math.floor(Date.now() / 1000);
   const placeholder = { token_address: address, token_symbol: '', chain, source_channel: sourceChannel, source_text: text, price: 0, market_cap: 0, liquidity: 0, sender_username: senderUsername || '', latency_ms: Date.now() - t0 };
   const signalId = await db.saveSignal(placeholder).catch(() => null);
+  db.trimSignals(5).catch(()=>{});
 
   liveEvents.emit('signal', {
     _tid: db.getTelegramId(), token_symbol: '', id: signalId, token_address: address, source_channel: sourceChannel,
