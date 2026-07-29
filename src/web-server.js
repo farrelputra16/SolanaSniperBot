@@ -161,14 +161,20 @@ export function createWebServer() {
     if (!clean) return res.status(400).json({ error: 'invalid channel' });
     await db.addChannel(clean, display_name || clean);
     let joined = false;
-    try {
-      const { addChannelListener } = await import('./telegram.js');
-      joined = await addChannelListener(clean, req.body.track_mode || 'admin');
-    } catch (e) {
-      console.error('[Channel] join error:', e.message);
-    }
+    const listen = req.body.listen !== false;
     const channels = await db.getAllChannels();
     const ch = channels.find(c => c.channel_username === clean);
+    if (!listen && ch) {
+      await db.toggleChannel(ch.id, 0);
+    }
+    if (listen) {
+      try {
+        const { addChannelListener } = await import('./telegram.js');
+        joined = await addChannelListener(clean, req.body.track_mode || 'admin');
+      } catch (e) {
+        console.error('[Channel] join error:', e.message);
+      }
+    }
     res.json({ success: true, id: ch?.id, username: clean, joined });
   });
 

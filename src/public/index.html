@@ -494,7 +494,7 @@ async function renderChannels(){
   const channels=await api('/channels');
   return`<div class="page-header"><span class="eyebrow">Scraper Setup</span><h2>Channels</h2><div class="sub">Add channels and configure scraper rules</div></div>
 <div class="shell"><div class="core"><div class="card-h"><h3>${channels.length} Channel${channels.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-p btn-sm" onclick="openChannelForm()">+ Add</button><button class="btn btn-sm" onclick="fetchJoinedChannels()">From Telegram</button></div></div>
-${channels.length?channels.map(c=>renderChannelCard(c)).join(''):`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
+${channels.length?channels.map(c=>{try{return renderChannelCard(c)}catch(e){console.error('Card error',c.id,e.message);return''}}).join('')||`<div class="empty-state"><p class="text-muted">Failed to render channel cards</p></div>`:`<div class="empty-state"><div class="ico">📡</div><h4>No channels</h4><p>Add a Telegram channel to start scraping token signals.</p><button class="btn btn-p mt-12" onclick="openChannelForm()">+ Add Channel</button></div>`}
 </div></div>`;}
 
 function renderChannelCard(c){
@@ -560,7 +560,7 @@ window.submitFetchChannels=async function(){
   const cbs=document.querySelectorAll('.fetch-ch-cb:checked');
   if(!cbs.length)return toast('Select at least one','err');
   let added=0;
-  for(const cb of cbs){try{await api('/channels',{method:'POST',body:JSON.stringify({username:cb.dataset.username,display_name:cb.dataset.display})});added++}catch(e){console.error(cb.dataset.username,e.message)}}
+  for(const cb of cbs){try{await api('/channels',{method:'POST',body:JSON.stringify({username:cb.dataset.username,display_name:cb.dataset.display,listen:false})});added++}catch(e){console.error(cb.dataset.username,e.message)}}
   closeModal();toast(added+' channel(s) added','ok');renderPage('channels');
 };
 
