@@ -559,9 +559,39 @@ window.fetchJoinedChannels=async function(){
     const existingNames=new Set(existing.map(c=>c.channel_username));
     const newChs=joined.filter(ch=>{const n=ch.username||ch.name||'';return n&&!existingNames.has(n)});
     if(!newChs.length)return toast('All channels already added','info');
-    openModal('<h2>Select Channels to Add</h2><p class="text-sm text-muted mb-8">'+newChs.length+' new channels found</p><div style="max-height:400px;overflow-y:auto">'+newChs.map((ch,i)=>{const n=ch.username||'';return'<label class="cb" style="padding:0.5rem 0;border-bottom:1px solid var(--border-subtle)"><input type="checkbox" class="fetch-ch-cb" data-username="'+esc(n)+'" data-display="'+esc(ch.name||n)+'" checked/> <span class="mono">'+esc(n)+'</span> <span class="text-muted text-sm">'+esc(ch.title||ch.name||'')+'</span>'+(ch.participants?' <span class="badge badge-gr">'+ch.participants+'</span>':'')+'</label>'}).join('')+'</div><div class="modal-actions" style="margin-top:0.75rem"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitFetchChannels()">Add Selected</button></div>');
+    openModal(`<h2 style="font-size:1.05rem">Import from Telegram</h2>
+<p class="text-sm text-muted mb-8">${newChs.length} new channels found</p>
+<div style="display:flex;gap:0.35rem;align-items:center;margin-bottom:0.5rem">
+  <input id="fetch-ch-search" type="text" placeholder="Search channels..." oninput="filterFetchChannels(this.value)" style="flex:1;padding:0.5rem 0.75rem;border-radius:9999px;border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--text);font-size:0.78rem;outline:none;font-family:var(--font-sans)">
+  <button class="btn btn-sm" onclick="selectAllFetch(true)" style="padding:0.4rem 0.7rem">All</button>
+  <button class="btn btn-sm" onclick="selectAllFetch(false)" style="padding:0.4rem 0.7rem">None</button>
+</div>
+<div id="fetch-ch-count" class="text-sm text-muted mb-8" style="padding:0 0.2rem">0 selected</div>
+<div id="fetch-ch-list" style="max-height:55vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md)">
+${newChs.map(ch=>{const n=ch.username||'';const t=ch.title||ch.name||n;return`<label class="fetch-ch-row" data-username="${esc(n)}" data-display="${esc(ch.name||n)}" style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.65rem;cursor:pointer;border-bottom:1px solid var(--border-subtle);transition:background 0.15s" onmouseenter="this.style.background='rgba(255,255,255,0.025)'" onmouseleave="this.style.background=''">
+  <input type="checkbox" class="fetch-ch-cb" data-username="${esc(n)}" data-display="${esc(ch.name||n)}" onchange="updateFetchCount()" style="width:1rem;height:1rem;accent-color:var(--accent);flex-shrink:0">
+  <div style="flex:1;min-width:0">
+    <div style="font-size:0.82rem;font-weight:600;font-family:var(--font-heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t)}</div>
+    <div style="font-size:0.65rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n)}</div>
+  </div>
+  ${ch.participants?`<span class="badge badge-gr" style="flex-shrink:0">${ch.participants}</span>`:''}
+</label>`}).join('')}
+</div>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitFetchChannels()">Add Selected</button></div>`);
   }catch(e){toast('Error: '+e.message,'err')}
   finally{btn.disabled=false;btn.textContent='From Telegram'}
+};
+window.filterFetchChannels=function(q){
+  q=q.toLowerCase().trim();
+  document.querySelectorAll('.fetch-ch-row').forEach(r=>{r.style.display=!q||r.textContent.toLowerCase().includes(q)?'flex':'none'});
+};
+window.selectAllFetch=function(v){
+  document.querySelectorAll('.fetch-ch-cb').forEach(c=>c.checked=v);
+  updateFetchCount();
+};
+window.updateFetchCount=function(){
+  const e=$('#fetch-ch-count');
+  if(e)e.textContent=document.querySelectorAll('.fetch-ch-cb:checked').length+' selected';
 };
 window.submitFetchChannels=async function(){
   const cbs=document.querySelectorAll('.fetch-ch-cb:checked');
