@@ -295,7 +295,6 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
         buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: 0,
         source_channel: sourceChannel,
       }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid); }).catch(() => {});
-      notifyBuy(wallet.address, address, rule, o.order_id, sourceChannel, lamports / 1e9);
     }).catch(err => {
       console.error(`[Router] Blind buy ${address} gagal:`, err.message);
       db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
@@ -382,7 +381,6 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       });
 
       pollOrder(orderId, chain, tradeId, creds);
-      notifyBuy(wallet.address, address, rule, orderId, sourceChannel, perWallet / 1e9);
     } catch (err) {
       const errCode = err.code ? `[${err.code}] ` : '';
       let detail = err.body?.message || err.body?.error || err.message || '';
@@ -436,14 +434,4 @@ async function pollOrder(orderId, chain, tradeId, creds = null) {
   console.log(`[Router] ⏰ Buy polling timeout: ${orderId} (order still may confirm later)`);
 }
 
-function notifyBuy(wallet, address, rule, orderId, sourceChannel, amountSol) {
-  const lines = [
-    `🟢 *AUTO BUY* ${address.slice(0, 8)}...`,
-    `💰 ${amountSol} SOL | ${wallet.slice(0, 6)}...${wallet.slice(-4)}`,
-    `🔗 https://solscan.io/tx/${orderId}`,
-    `📊 gmgn.ai/chain/sol/token/${address}`,
-  ];
-  if (rule.take_profit_percent) lines.push(`📈 TP: ${rule.take_profit_percent}%`);
-  if (rule.stop_loss_percent) lines.push(`📉 SL: ${rule.stop_loss_percent}%`);
-  sendToChat(sourceChannel, lines.join('\n')).catch(() => {});
-}
+
