@@ -289,14 +289,13 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       const o = result.data || result;
       console.log(`⚡ BLIND ${address.slice(0,8)}... | ${Date.now()-t0}ms | order=${o.order_id}`);
       db.addScraperLog(sourceChannel, 'info', `Blind buy ${address}: order=${o.order_id}`).catch(() => {});
-      const tid = db.createTrade({
+      db.createTrade({
         wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
         chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
         buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: 0,
         source_channel: sourceChannel,
-      }).catch(() => {});
-      if (o.order_id) pollOrder(o.order_id, chain, tid);
-      notifyBuy(wallet.address, address, rule, o.order_id, sourceChannel, lamports / 1e9).catch(() => {});
+      }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid); }).catch(() => {});
+      notifyBuy(wallet.address, address, rule, o.order_id, sourceChannel, lamports / 1e9);
     }).catch(err => {
       console.error(`[Router] Blind buy ${address} gagal:`, err.message);
       db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
