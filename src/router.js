@@ -402,9 +402,9 @@ async function pollOrder(orderId, chain, tradeId, creds = null) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
       const result = await getOrder(chain, orderId, creds);
-      const status = result.data?.status || result.status;
+      const status = (result.data?.status || result.status || '').toLowerCase();
 
-      if (status === 'confirmed' || status === 'successful') {
+      if (status === 'confirmed' || status === 'successful' || status === 'success' || status === 'filled') {
         const report = result.data?.report || result.report;
         await db.updateTrade(tradeId, {
           buy_status: 'confirmed',
@@ -423,8 +423,14 @@ async function pollOrder(orderId, chain, tradeId, creds = null) {
         return;
       }
 
+      if (!status || status === 'pending' || status === 'processed') {
+        attempts++;
+        continue;
+      }
+
       attempts++;
-    } catch {
+    } catch (err) {
+      console.log(`[Router] pollOrder ${orderId} error (attempt ${attempts+1}): ${err.message}`);
       attempts++;
     }
   }

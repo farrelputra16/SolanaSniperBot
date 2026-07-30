@@ -770,11 +770,26 @@ window.submitChannelForm=async function(id){
 async function renderPositions(){
   const[open,all]=await Promise.all([api('/positions'),api('/positions/all')]);
   const closed=all.filter(t=>t.status==='closed');
+  // Fetch prices for open positions
+  const prices = await Promise.all(open.map(t =>
+    api('/token/info?chain='+(t.chain||'sol')+'&address='+t.token_address).then(r=>({id:t.id,price:r.info?.price?parseFloat(r.info.price):null})).catch(()=>({id:t.id,price:null}))
+  ));
+  const priceMap = Object.fromEntries(prices.map(p=>[p.id,p.price]));
   return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view closed positions, and set TP/SL exit strategies</div></div>
 <div class="shell"><div class="core">
   <div class="tabs"><div class="tab active" data-tab="pos-open">Open (${open.length})</div><div class="tab" data-tab="pos-closed">Closed (${closed.length})</div></div>
   <div id="pos-open" class="tab-content active">
-    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td><td>${t.buy_amount_sol||'-'} SOL</td><td class="text-sm">${t.take_profit_percent?'<span class="badge badge-g">TP '+t.take_profit_percent+'%</span>':''} ${t.stop_loss_percent?'<span class="badge badge-r">SL '+t.stop_loss_percent+'%</span>':''} ${!t.take_profit_percent&&!t.stop_loss_percent?'<span class="text-muted">—</span>':''}</td><td class="text-muted text-sm">${ago(t.created_at)}</td><td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📈</div><h4>No open positions</h4><p>Trades appear here after auto-buy executes. Set TP/SL in channel config.</p></div>`}
+    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>Price</th><th>P&amp;L</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>{
+      const cp = priceMap[t.id];
+      const pnl = cp && t.buy_price_usd ? ((cp-t.buy_price_usd)/t.buy_price_usd)*100 : null;
+      return`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td>
+<td>${t.buy_amount_sol||'-'} SOL</td>
+<td class="mono text-sm">${cp?'$'+cp.toFixed(8):'—'}</td>
+<td>${pnl!=null?'<span class="badge '+(pnl>=0?'badge-g':'badge-r')+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'%</span>':'<span class="text-muted">—</span>'}</td>
+<td class="text-sm">${t.take_profit_percent?'<span class="badge badge-g">TP '+t.take_profit_percent+'%</span>':''} ${t.stop_loss_percent?'<span class="badge badge-r">SL '+t.stop_loss_percent+'%</span>':''} ${!t.take_profit_percent&&!t.stop_loss_percent?'<span class="text-muted">—</span>':''}</td>
+<td class="text-muted text-sm">${ago(t.created_at)}</td>
+<td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`
+    }).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📈</div><h4>No open positions</h4><p>Trades appear here after auto-buy executes. Set TP/SL in channel config.</p></div>`}
   </div>
   <div id="pos-closed" class="tab-content">
     ${closed.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>P&amp;L</th><th>ROI</th><th>Closed</th><th></th></tr></thead><tbody>${closed.map(t=>`<tr><td><span class="mono addr" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)" title="${t.token_address}">${t.token_symbol||addrShort(t.token_address)}</span></td><td>${pnlBadge(t.pnl)}</td><td>${t.pnl_percent!=null?(t.pnl_percent>=0?'+':'')+t.pnl_percent.toFixed(2)+'%':'-'}</td><td class="text-muted text-sm">${t.closed_at?fmtShort(t.closed_at):'-'}</td><td><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📊</div><h4>No closed positions</h4><p>Sell history appears here. Use TP/SL to auto-close.</p></div>`}

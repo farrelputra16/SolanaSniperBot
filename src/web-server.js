@@ -15,6 +15,7 @@ liveEvents.setMaxListeners(100);
 const SESSIONS = new Map();
 const ADMIN_PHONE = '6285779977877';
 const ADMIN_IDS = ['1721799075'];
+function isAdminPhone(phone) { return phone?.replace(/^\+/, '').trim() === ADMIN_PHONE; }
 
 export function getTelegramId(token) {
   const s = SESSIONS.get(token);
@@ -35,7 +36,7 @@ export function createWebServer() {
         s.expires = Date.now() + 3600000;
         if (s.source === 'login') {
           req.telegramId = s.telegramId;
-          if (s.phone === ADMIN_PHONE || ADMIN_IDS.includes(s.telegramId)) req.isAdmin = true;
+          if (isAdminPhone(s.phone) || ADMIN_IDS.includes(s.telegramId)) req.isAdmin = true;
         }
       } else if (typeof s === 'number' && s > Date.now()) {
         SESSIONS.set(token, Date.now() + 3600000);
@@ -332,10 +333,9 @@ export function createWebServer() {
     if (!trade) return res.status(404).json({ error: 'not found' });
     if (trade.status === 'closed') return res.status(400).json({ error: 'already closed' });
     try {
-      const g = await gmgn.createUserClient(req.telegramId);
-      const result = await g.executeSell(trade.chain, trade.wallet_address, trade.token_address, req.body.percent || 100, { slippage: req.body.slippage || config.sniper.defaultSlippage });
-      const orderId = result.data?.order_id || result.order_id;
-      await db.closeTrade(req.params.id, { sell_amount_sol: req.body.sell_amount_sol, sell_price: req.body.sell_price, sell_price_usd: req.body.sell_price_usd, sell_tx: req.body.sell_tx || '', sell_order_id: orderId });
+      const orderId = req.body.sell_order_id || req.body.order_id || '';
+      await db.closeTrade(req.params.id, { sell_amount_sol: req.body.sell_amount_sol, sell_price: req.body.sell_price, sell_price_usd: req.body.sell_price_usd, sell_tx: req.body.sell_tx || '', sell_order_id: orderId, status: 'closed' });
+      liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: req.params.id, status: 'closed' });
       res.json({ success: true, order_id: orderId });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -675,7 +675,7 @@ export function createWebServer() {
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE || ADMIN_IDS.includes(telegramId) });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
@@ -714,7 +714,7 @@ export function createWebServer() {
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE || ADMIN_IDS.includes(telegramId) });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });
