@@ -129,6 +129,8 @@ async function request(method, path, params = {}, body = null, signed = false, o
       if (res.status === 400) {
         const reqUrl = url.slice(0, 300);
         console.error(`[GMGN] 400 error — ${json.code} ${json.error} — ${json.message}\n  body: ${bodyStr ? bodyStr.slice(0, 500) : '(no body)'}\n  url: ${reqUrl}`);
+      } else if (res.status === 401 || res.status === 403) {
+        console.error(`[GMGN] Auth error — ${json.code} ${json.error} — ${json.message} — path=${path}`);
       }
       throw err;
     }
