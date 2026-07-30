@@ -331,10 +331,13 @@ async function showChannelSetup(ctx, id) {
     .row()
     .text(`⚡ ${fmtFee(r.priority_fee)}`, `f_fee_${ch.id}`)
     .text(`💸 ${fmtFee(r.tip_fee)}`, `f_tip_${ch.id}`)
+    .text(`📏 ${r.slippage || 30}%`, `r_slip_${ch.id}`)
     .row()
+    .text(`${r.anti_mev ? '🛡️' : '🔲'} MEV`, `r_anti_${ch.id}`)
+    .text(`${r.track_only ? '👁️' : '🔲'} Track`, `r_track_${ch.id}`)
     .text(ch.active ? '🔇 Pause' : '🔊 Activate', `ch_t_${ch.id}`)
-    .text('🗑 Remove', `ch_rem_${ch.id}`)
     .row()
+    .text('🗑 Remove', `ch_rem_${ch.id}`)
     .text('🔙 Back', 'menu_channels');
 
   ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }));
@@ -424,6 +427,8 @@ async function handleRuleInput(ctx, text) {
     } else if (field === 'take_profit_percent' || field === 'stop_loss_percent') {
       rule[field] = val ? parseFloat(val) : null;
       if (isNaN(rule[field])) rule[field] = null;
+    } else if (field === 'slippage') {
+      rule[field] = Math.min(100, Math.max(0, parseInt(val) || 30));
     } else if (field === 'wallet_group_id') {
       rule[field] = parseInt(val) || 0;
     } else if (field === 'priority_fee' || field === 'tip_fee') {
@@ -916,6 +921,40 @@ function registerCommands() {
       const id = rGrpMatch[1];
       ctx.answerCallbackQuery();
       return startRuleInput(ctx, id, 'wallet_group_id', '💼 <b>Wallet Group</b>\n\nEnter wallet group ID:\n0 = active wallet\nNegative = single wallet ID');
+    }
+
+    const rSlipMatch = d.match(/^r_slip_(\d+)$/);
+    if (rSlipMatch) {
+      const id = rSlipMatch[1];
+      ctx.answerCallbackQuery();
+      return startRuleInput(ctx, id, 'slippage', '📏 <b>Slippage</b>\n\nEnter slippage percentage (0–100).\nExample: <code>50</code> for 50%');
+    }
+
+    const rAntiMatch = d.match(/^r_anti_(\d+)$/);
+    if (rAntiMatch) {
+      const id = parseInt(rAntiMatch[1]);
+      const ch = await db.getChannelWithRule(id);
+      if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
+      const rule = ch.rule || {};
+      rule.anti_mev = rule.anti_mev ? 0 : 1;
+      const clean = { ...rule }; delete clean.channel_id;
+      await db.upsertChannelRule({ channel_id: id, ...clean });
+      ctx.answerCallbackQuery({ text: rule.anti_mev ? 'MEV ON' : 'MEV OFF' });
+      return showChannelSetup(ctx, id);
+    }
+
+    const rTrackMatch = d.match(/^r_track_(\d+)$/);
+    if (rTrackMatch) {
+      const id = parseInt(rTrackMatch[1]);
+      const ch = await db.getChannelWithRule(id);
+      if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
+      const rule = ch.rule || {};
+      rule.track_only = rule.track_only ? 0 : 1;
+      if (rule.track_only) rule.auto_buy = 0;
+      const clean = { ...rule }; delete clean.channel_id;
+      await db.upsertChannelRule({ channel_id: id, ...clean });
+      ctx.answerCallbackQuery({ text: rule.track_only ? 'Track only ON' : 'Track only OFF' });
+      return showChannelSetup(ctx, id);
     }
 
     const rFiltMatch = d.match(/^r_filt_(\d+)$/);
