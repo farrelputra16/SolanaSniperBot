@@ -316,8 +316,8 @@ export async function executeMultiSwap(chain, accounts, inputToken, outputToken,
   return request('POST', '/v1/trade/multi_swap', {}, body, true);
 }
 
-export async function getOrder(chain, orderId) {
-  return request('GET', '/v1/trade/query_order', { chain, order_id: orderId });
+export async function getOrder(chain, orderId, creds = null) {
+  return request('GET', '/v1/trade/query_order', { chain, order_id: orderId }, null, true, creds);
 }
 
 // ───── Strategy Orders (Limit / TP-SL) ─────

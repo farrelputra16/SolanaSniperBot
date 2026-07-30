@@ -347,7 +347,7 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
         buy_latency_ms: buyLatency, status: 'pending', trade_id: tradeId,
       });
 
-      pollOrder(orderId, chain, tradeId);
+      pollOrder(orderId, chain, tradeId, creds);
       notifyBuy(wallet.address, address, rule, orderId, sourceChannel, perWallet / 1e9);
     } catch (err) {
       const errCode = err.code ? `[${err.code}] ` : '';
@@ -362,14 +362,14 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
   }));
 }
 
-async function pollOrder(orderId, chain, tradeId) {
+async function pollOrder(orderId, chain, tradeId, creds = null) {
   let attempts = 0;
   const maxAttempts = 15;
 
   while (attempts < maxAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
-      const result = await getOrder(chain, orderId);
+      const result = await getOrder(chain, orderId, creds);
       const status = result.data?.status || result.status;
 
       if (status === 'confirmed' || status === 'successful') {
