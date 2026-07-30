@@ -14,6 +14,7 @@ liveEvents.setMaxListeners(100);
 
 const SESSIONS = new Map();
 const ADMIN_PHONE = '6285779977877';
+const ADMIN_IDS = ['1721799075'];
 
 export function getTelegramId(token) {
   const s = SESSIONS.get(token);
@@ -34,7 +35,7 @@ export function createWebServer() {
         s.expires = Date.now() + 3600000;
         if (s.source === 'login') {
           req.telegramId = s.telegramId;
-          if (s.phone === ADMIN_PHONE) req.isAdmin = true;
+          if (s.phone === ADMIN_PHONE || ADMIN_IDS.includes(s.telegramId)) req.isAdmin = true;
         }
       } else if (typeof s === 'number' && s > Date.now()) {
         SESSIONS.set(token, Date.now() + 3600000);
@@ -674,7 +675,7 @@ export function createWebServer() {
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE || ADMIN_IDS.includes(telegramId) });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
@@ -713,7 +714,7 @@ export function createWebServer() {
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE || ADMIN_IDS.includes(telegramId) });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });

@@ -56,7 +56,10 @@ export async function getUserCredentials(telegramId) {
   if (cached && Date.now() - cached.ts < CREDS_CACHE_TTL) return cached.data;
   const userKey = await db.getUserSetting('gmgn_api_key_usr', '', telegramId);
   const userPk = await db.getUserSetting('gmgn_private_key_usr', '', telegramId);
-  const data = { apiKey: userKey || envApiKey, privateKey: userPk || envPrivateKey };
+  const data = {
+    apiKey: userKey || envApiKey,
+    privateKey: (userPk || envPrivateKey || '').replace(/\\n/g, '\n'),
+  };
   _credsCache.set(telegramId, { data, ts: Date.now() });
   return data;
 }
