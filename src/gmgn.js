@@ -86,9 +86,14 @@ async function request(method, path, params = {}, body = null, signed = false, o
 
   const bodyStr = body ? JSON.stringify(body) : '';
 
-  if (signed && creds.privateKey) {
-    const message = `${path}:${qs}:${bodyStr}:${authQuery.timestamp}`;
-    headers['X-Signature'] = signMessage(message, creds.privateKey);
+  if (signed) {
+    if (!creds.privateKey) {
+      console.error(`[GMGN] SIGNED REQUEST BUT NO PRIVATE KEY — path=${path}`);
+    } else {
+      const message = `${path}:${qs}:${bodyStr}:${authQuery.timestamp}`;
+      headers['X-Signature'] = signMessage(message, creds.privateKey);
+      console.log(`[GMGN] Signed ${path} — privKey len=${creds.privateKey.length}, sig len=${headers['X-Signature'].length}`);
+    }
   }
 
   const controller = new AbortController();
