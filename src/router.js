@@ -264,9 +264,45 @@ function resolveWallets(rule) {
     .then(w => w ? [w] : []);
 }
 
+function blindBuyWallet() {
+  const hit = _walletCache.get('active');
+  return hit && Date.now() - hit.ts < 30000 ? hit.data : null;
+}
+
 async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
   if (!rule.auto_buy && !rule.blind_buy) return;
   if (rule.track_only) return;
+
+  if (rule.blind_buy) {
+    const wallet = blindBuyWallet();
+    if (!wallet) {
+      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} failed: no cached wallet`).catch(() => {});
+      return;
+    }
+    const lamports = Math.floor(rule.buy_amount_sol * 1_000_000_000);
+    executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, lamports, {
+      slippage: rule.slippage,
+      antiMev: !!rule.anti_mev,
+      priorityFee: rule.priority_fee && rule.priority_fee >= 0 ? rule.priority_fee : undefined,
+      tipFee: rule.tip_fee && rule.tip_fee >= 0 ? rule.tip_fee : undefined,
+    }).then(result => {
+      const o = result.data || result;
+      console.log(`⚡ BLIND ${address.slice(0,8)}... | ${Date.now()-t0}ms | order=${o.order_id}`);
+      db.addScraperLog(sourceChannel, 'info', `Blind buy ${address}: order=${o.order_id}`).catch(() => {});
+      const tid = db.createTrade({
+        wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
+        chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
+        buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: 0,
+        source_channel: sourceChannel,
+      }).catch(() => {});
+      if (o.order_id) pollOrder(o.order_id, chain, tid);
+      notifyBuy(wallet.address, address, rule, o.order_id, sourceChannel, lamports / 1e9).catch(() => {});
+    }).catch(err => {
+      console.error(`[Router] Blind buy ${address} gagal:`, err.message);
+      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
+    });
+    return;
+  }
 
   const wallets = await resolveWallets(rule);
   if (wallets.length === 0) {
@@ -307,7 +343,6 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       const orderId = orderRes.order_id;
       const strategyId = orderRes.strategy_order_id;
       const buyLatency = Date.now() - tBuy;
-      const totalLatency = Date.now() - t0;
       console.log(`⚡ SIGNAL ${address.slice(0,8)}... | capture=${Date.now()-t0}ms | swap-exec=${buyLatency}ms | order=${orderId}`);
       db.addScraperLog(sourceChannel, 'info', `Auto-buy ${address}: order=${orderId}`).catch(() => {});
 
