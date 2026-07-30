@@ -86,14 +86,9 @@ async function request(method, path, params = {}, body = null, signed = false, o
 
   const bodyStr = body ? JSON.stringify(body) : '';
 
-  if (signed) {
-    if (!creds.privateKey) {
-      console.error(`[GMGN] SIGNED REQUEST BUT NO PRIVATE KEY — path=${path}`);
-    } else {
-      const message = `${path}:${qs}:${bodyStr}:${authQuery.timestamp}`;
-      headers['X-Signature'] = signMessage(message, creds.privateKey);
-      console.log(`[GMGN] Signed ${path} — privKey len=${creds.privateKey.length}, sig len=${headers['X-Signature'].length}`);
-    }
+  if (signed && creds.privateKey) {
+    const message = `${path}:${qs}:${bodyStr}:${authQuery.timestamp}`;
+    headers['X-Signature'] = signMessage(message, creds.privateKey);
   }
 
   const controller = new AbortController();
@@ -257,13 +252,15 @@ export async function executeSwap(chain, from, inputToken, outputToken, amount, 
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
   if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
 
+  body.from_address = addressFromPEM(envPrivateKey) || from;
+
   return request('POST', '/v1/trade/swap', {}, body, true);
 }
 
 export async function executeSell(chain, from, tokenAddress, percent = 100, opts = {}) {
   const body = {
     chain,
-    from_address: from,
+    from_address: addressFromPEM(envPrivateKey) || from,
     input_token: tokenAddress,
     output_token: 'So11111111111111111111111111111111111111112',
     input_amount: '0',
@@ -475,6 +472,16 @@ function isValidSolAddress(addr) {
     const decoded = bs58Decode(addr);
     return decoded.length === 32;
   } catch { return false; }
+}
+
+export function addressFromPEM(pem) {
+  try {
+    const pub = crypto.createPublicKey(pem.trim());
+    const der = pub.export({ format: 'der', type: 'spki' });
+    const pubkey = Buffer.from(der).subarray(-32);
+    if (pubkey.length !== 32) return null;
+    return bs58Encode(pubkey);
+  } catch { return null; }
 }
 
 // ───── Wallet Generate ─────
