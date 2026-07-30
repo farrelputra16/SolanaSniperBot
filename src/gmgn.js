@@ -254,15 +254,13 @@ export async function executeSwap(chain, from, inputToken, outputToken, amount, 
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
   if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
 
-  body.from_address = addressFromPEM(envPrivateKey) || from;
-
   return request('POST', '/v1/trade/swap', {}, body, true);
 }
 
 export async function executeSell(chain, from, tokenAddress, percent = 100, opts = {}) {
   const body = {
     chain,
-    from_address: addressFromPEM(envPrivateKey) || from,
+    from_address: from,
     input_token: tokenAddress,
     output_token: 'So11111111111111111111111111111111111111112',
     input_amount: '0',

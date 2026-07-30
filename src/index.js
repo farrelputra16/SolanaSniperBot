@@ -37,36 +37,6 @@ async function main() {
   await initDatabase();
   await loadTelegramId();
 
-  // Auto-import wallet from GMGN_PRIVATE_KEY if no active wallet exists
-  try {
-    const { addressFromPEM } = await import('./gmgn.js');
-    if (config.gmgn.privateKey) {
-      const envAddr = addressFromPEM(config.gmgn.privateKey);
-      if (envAddr) {
-        const existing = await db.getActiveWallet();
-        if (!existing) {
-          const allWallets = await db.getAllWallets();
-          const match = allWallets.find(w => w.address === envAddr);
-          if (match) {
-            await db.setActiveWallet(match.id);
-            console.log(`   Wallet: ✅ Activated env wallet ${envAddr}`);
-          } else {
-            await db.addWallet(envAddr, 'GMGN Wallet', '');
-            const added = await db.getActiveWallet();
-            if (added) {
-              await db.setActiveWallet(added.id);
-              console.log(`   Wallet: ✅ Imported env wallet ${envAddr}`);
-            }
-          }
-        } else if (existing.address !== envAddr) {
-          console.warn(`   Wallet: ⚠️  Active wallet (${existing.address}) != GMGN env wallet (${envAddr}) — swap may fail`);
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('   Wallet: ⚠️  Auto-import failed:', e.message);
-  }
-
   warmupConnection().then(() => console.log('   GMGN: 🔥 Connection warmed up')).catch(() => {});
   startWalletWarmer();
 
