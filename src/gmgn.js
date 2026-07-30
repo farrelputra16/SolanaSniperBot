@@ -235,7 +235,7 @@ export async function getQuote(chain, from, inputToken, outputToken, amount, sli
   });
 }
 
-export async function executeSwap(chain, from, inputToken, outputToken, amount, opts = {}) {
+export async function executeSwap(chain, from, inputToken, outputToken, amount, opts = {}, creds = null) {
   const body = {
     chain,
     from_address: from,
@@ -254,10 +254,10 @@ export async function executeSwap(chain, from, inputToken, outputToken, amount, 
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
   if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
 
-  return request('POST', '/v1/trade/swap', {}, body, true);
+  return request('POST', '/v1/trade/swap', {}, body, true, creds);
 }
 
-export async function executeSell(chain, from, tokenAddress, percent = 100, opts = {}) {
+export async function executeSell(chain, from, tokenAddress, percent = 100, opts = {}, creds = null) {
   const body = {
     chain,
     from_address: from,
@@ -273,10 +273,10 @@ export async function executeSell(chain, from, tokenAddress, percent = 100, opts
   if (opts.tipFee) body.tip_fee = String(opts.tipFee);
   if (opts.sellRatioType) body.sell_ratio_type = opts.sellRatioType;
   if (opts.conditionOrders) body.condition_orders = opts.conditionOrders;
-  return request('POST', '/v1/trade/swap', {}, body, true);
+  return request('POST', '/v1/trade/swap', {}, body, true, creds);
 }
 
-export async function executeBuyWithTP(chain, from, tokenAddress, amountLamports, opts = {}) {
+export async function executeBuyWithTP(chain, from, tokenAddress, amountLamports, opts = {}, creds = null) {
   const conditions = [];
   if (opts.takeProfitPercent) {
     conditions.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(opts.takeProfitPercent), sell_ratio: '100' });
@@ -292,7 +292,7 @@ export async function executeBuyWithTP(chain, from, tokenAddress, amountLamports
     ...opts,
     conditionOrders: conditions.length > 0 ? conditions : undefined,
     sellRatioType: 'hold_amount',
-  });
+  }, creds);
 }
 
 export async function executeMultiSwap(chain, accounts, inputToken, outputToken, inputAmounts, opts = {}) {

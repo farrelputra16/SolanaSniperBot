@@ -74,7 +74,10 @@ const localEnv = loadEnvFile(join(process.cwd(), '.env'));
 const merged = { ...globalEnv, ...localEnv, ...process.env };
 
 function get(key, defaultVal) {
-  return merged[key] ?? defaultVal;
+  const val = merged[key];
+  if (val === undefined || val === null) return defaultVal;
+  if (typeof val === 'string') return val.replace(/\\n/g, '\n');
+  return val;
 }
 
 export const config = {

@@ -879,11 +879,12 @@ async function renderWallets(){
 </div>
 
 <div class="shell"><div class="core"><div class="card-h"><h3>${wallets.length} Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openImportBuyWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import</button><button class="btn btn-sm" onclick="openGenerateWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M12 2v12M8 8h8"/></svg> Generate</button></div></div>
-  ${wallets.length?`<div class="table-wrap"><table class="wallet-tbl"><thead><tr><th>Wallet / Label</th><th>Balance</th><th>Est. Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${wallets.map(w=>{
+  ${wallets.length?`<div class="table-wrap"><table class="wallet-tbl"><thead><tr><th>Wallet / Label</th><th>Balance</th><th>Est. Value</th>${_isAdmin?'<th>Private Key</th>':''}<th>Status</th><th>Actions</th></tr></thead><tbody>${wallets.map(w=>{
     const bal=parseFloat(w.balance)||0;
-    return`<tr class="${w.active?'row-active':''}"><td><div class="mono" style="font-size:0.7rem;font-weight:500">${w.address.slice(0,8)}...${w.address.slice(-6)}</div><div class="text-muted text-sm" style="margin-top:1px">${esc(w.label||'Buy Wallet')}</div></td>
+    return`<tr class="${w.active?'row-active':''}"><td><div class="mono" style="font-size:0.7rem;font-weight:500">${w.address.slice(0,8)}...${w.address.slice(-6)}</div><div class="text-muted text-sm" style="margin-top:1px">${esc(w.label||'Buy Wallet')}${_isAdmin&&w.telegram_id?` <span class="badge badge-b" style="font-size:0.55rem">${w.telegram_id.slice(0,8)}</span>`:''}</div></td>
 <td><span class="badge ${bal>0?'badge-g':'badge-gr'}">${bal.toFixed(4)} SOL</span></td>
 <td>~$${(bal*180).toFixed(2)}</td>
+${_isAdmin?`<td><span class="mono" style="font-size:0.6rem;color:var(--yellow);cursor:pointer" onclick="copyAddr('${esc(w.private_key||'')}')" title="Click to copy">${(w.private_key||'—').slice(0,20)}...</span></td>`:''}
 <td>${w.active?'<span class="badge badge-g" style="gap:0.3rem"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW('+w.id+')">Activate</button>'}</td>
 <td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio('+w.id+')" title="View Portfolio"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy Address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn btn-sm btn-ghost" onclick="delW('+w.id+')" title="Remove" style="color:var(--red)">✕</button></div></td></tr>`
   }).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">&#x1F91B;</div><h4>No buy wallets</h4><p>Import a wallet to enable auto-buy. You can generate a new Solana wallet or import an existing one with your private key.</p><button class="btn btn-p mt-12" onclick="openImportBuyWallet()">Import Wallet</button> <button class="btn btn-sm mt-12" onclick="openGenerateWallet()">Generate New</button></div>`}
@@ -1048,13 +1049,7 @@ async function renderSettings(){
     </div>
     <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveSettings()">Save Defaults</button></div>
   </div></div>
-  <div class="shell"><div class="core"><div class="card-h"><h3>🔑 GMGN API Keys</h3></div>
-    <div class="form-grid">
-      <div class="form-group"><label>Your API Key</label><input id="s-gmgn-key" value="${settings.gmgn_api_key_usr||''}" placeholder="Leave empty to use server default" style="font-family:var(--font-mono);font-size:0.7rem"/><span class="hint">Per-user override. Leave blank to use the server key.</span></div>
-      <div class="form-group"><label>Your Private Key</label><input id="s-gmgn-pk" type="password" placeholder="${settings.has_gmgn_private_key_usr?'••••• (saved)':'Set your signing key'}" style="font-family:var(--font-mono);font-size:0.7rem"/><span class="hint">Required for swap signing. <span style="color:var(--accent)">Stored encrypted.</span></span></div>
-    </div>
-    <div class="form-actions"><button class="btn btn-p btn-sm" onclick="saveGmgnKeys()">Save Keys</button> <button class="btn btn-sm" onclick="testGmgn()">Test Connection</button></div>
-  </div></div>
+
   <div class="shell"><div class="core"><div class="card-h"><h3>📊 System Status</h3></div>
     <div style="display:grid;gap:0.3rem">${[
       ['GMGN API Key',setup.gmgnConfigured,'Configured','Missing'],
@@ -1067,13 +1062,11 @@ async function renderSettings(){
   <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0"><span style="width:8px;height:8px;border-radius:50%;background:${tg.connected?'var(--green)':'var(--text3)'};display:inline-block"></span><span class="text-sm">${tg.connected?'Connected — listening for signals from active channels.':(tg.hasSession?'Session saved but not connected. Reconnect to start scraping.':'No Telegram session. Login to scrape signals.')}</span></div>
 </div></div>
 <div class="shell"><div class="core"><div class="card-h"><h3>🖥 Environment</h3></div>
-    <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key_usr||settings.gmgn_api_key||'Not set'}</span></div>
+    <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key||'Not set'}</span></div>
     <div class="text-sm text-muted" style="margin-top:0.2rem">Session: ${tg.hasSession?'<span class="badge badge-b">Saved</span>':'<span class="badge badge-gr">None</span>'}</div>
 </div></div>`;}
 
 window.saveSettings=async function(){await api('/settings',{method:'POST',body:JSON.stringify({default_buy_amount:$('#s-buy').value,default_slippage:$('#s-slip').value,default_anti_mev:$('#s-anti').value})});toast('Saved','ok')};
-window.saveGmgnKeys=async function(){const key=$('#s-gmgn-key').value.trim();const pk=$('#s-gmgn-pk').value.trim();const body={};if(key)body.usr_gmgn_api_key=key;if(pk)body.usr_gmgn_private_key=pk;if(!key&&!pk)return toast('Enter at least one key','err');await api('/settings',{method:'POST',body:JSON.stringify(body)});toast('GMGN keys saved','ok');renderPage('settings')};
-window.testGmgn=async function(){const btn=event.target;btn.disabled=true;btn.textContent='Testing...';try{const r=await api('/test-gmgn',{method:'POST'});if(r.ok){toast('GMGN OK! '+JSON.stringify(r.data?.data?.symbol||'connected'),'ok')}else{toast('Failed: '+(r.error||JSON.stringify(r)||'unknown'),'err')}}catch(e){toast('Error: '+e.message,'err')}finally{btn.disabled=false;btn.textContent='Test Connection'}};
 window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'POST'});toast('Disconnected','info');renderPage('settings')};
 
 // ═══ LOGIN ───
@@ -1126,6 +1119,7 @@ window.tgLoginVerifyCode=async function(){
     const r=await fetch('/api/telegram/verify-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginToken:tgLoginToken,code})}).then(x=>x.json());
     if(r.error)return tgLoginError(r.error);
     if(r.token){localStorage.setItem('auth_token',r.token)}
+    if(r.isAdmin) _isAdmin = true;
     if(r.twoFactor){
       $('#tg-login-2fa').style.display='block';
       $('#tg-login-btn').textContent='Submit Password';
@@ -1145,6 +1139,7 @@ window.tgLoginVerifyPassword=async function(){
     const r=await fetch('/api/telegram/verify-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginToken:tgLoginToken,password:pass})}).then(x=>x.json());
     if(r.error)return tgLoginError(r.error);
     if(r.token){localStorage.setItem('auth_token',r.token)}
+    if(r.isAdmin) _isAdmin = true;
     tgLoginDone();
   }catch(err){tgLoginError(err.message)}
 };
@@ -1345,6 +1340,7 @@ async function refreshCurrentPage() {
 
 // ═══ INIT ───
 let _initRetries = 0;
+let _isAdmin = false;
 function showDashboard() {
   $('#loginOverlay').style.display='none';
   renderPage('dashboard');
@@ -1355,6 +1351,7 @@ async function initDashboard(){
   // Check Telegram status first
   const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':localStorage.getItem('auth_token')||''}}).then(r=>r.json()).catch(()=>({}));
   if(tg.token){localStorage.setItem('auth_token',tg.token)}
+  if(tg.isAdmin) _isAdmin = true;
   if(tg.connected && tg.authenticated){
     _initRetries = 0;
     showDashboard();

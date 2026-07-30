@@ -292,6 +292,11 @@ export async function getAllWallets() {
   if (!sqliteMode && mdb) return collections.wallets.find({ telegram_id: _tid() || 'NONE' }).sort({ created_at: -1 }).toArray();
   return sqliteDb.prepare('SELECT * FROM wallets WHERE 1=1' + _tidFilter() + ' ORDER BY created_at DESC').all(...(_tid() ? [_tid()] : []));
 }
+
+export async function getAllWalletsGlobal() {
+  if (!sqliteMode && mdb) return collections.wallets.find({}).sort({ created_at: -1 }).toArray();
+  return sqliteDb.prepare('SELECT * FROM wallets ORDER BY created_at DESC').all();
+}
 export async function getActiveWallet() {
   if (!_tid()) return null;
   if (!sqliteMode && mdb) return collections.wallets.findOne({ active: 1, telegram_id: _tid() });

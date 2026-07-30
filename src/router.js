@@ -1,4 +1,4 @@
-import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder } from './gmgn.js';
+import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder, getUserCredentials } from './gmgn.js';
 import { getDexScreenerInfo } from './dexscreener.js';
 import * as db from './database.js';
 import { config } from './config.js';
@@ -274,6 +274,8 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
     return;
   }
 
+  const creds = await getUserCredentials(rule.telegram_id);
+
   const totalLamports = Math.floor(rule.buy_amount_sol * 1_000_000_000);
   const perWallet = Math.floor(totalLamports / wallets.length);
   const tBuy = Date.now();
@@ -299,7 +301,7 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
         tipFee: rule.tip_fee && rule.tip_fee >= 0 ? rule.tip_fee : undefined,
         conditionOrders: conditionOrders.length > 0 ? conditionOrders : undefined,
         sellRatioType: conditionOrders.length > 0 ? 'hold_amount' : undefined,
-      });
+      }, creds);
 
       const orderRes = result.data || result;
       const orderId = orderRes.order_id;
