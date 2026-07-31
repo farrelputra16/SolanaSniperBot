@@ -19,7 +19,7 @@ async function ensureSqlite() {
   if (sqliteDb) return;
   const Database = (await import('better-sqlite3')).default;
   const { join } = await import('path');
-  const { existsSync, mkdirSync, accessSync } = await import('fs');
+  const { existsSync, mkdirSync, accessSync, constants } = await import('fs');
   let dataDir = process.env.DATA_DIR || '';
   if (dataDir) {
     try {
@@ -55,6 +55,7 @@ export async function initDatabase() {
         wallet_group_members: mdb.collection('wallet_group_members'),
         strategy_orders: mdb.collection('strategy_orders'),
         settings: mdb.collection('settings'),
+        web_sessions: mdb.collection('web_sessions'),
         counters: mdb.collection('counters'),
       };
       for (const [name, c] of Object.entries(collections)) {
@@ -88,6 +89,7 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS strategy_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, trade_id INTEGER, wallet_address TEXT, token_address TEXT, token_symbol TEXT, chain TEXT DEFAULT 'sol', order_type TEXT, sub_order_type TEXT, check_price REAL, amount_in_percent REAL DEFAULT 100, group_tag TEXT, remote_order_id TEXT, status TEXT DEFAULT 'active', created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS scraper_log (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_username TEXT, level TEXT, message TEXT, created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, telegram_id TEXT DEFAULT '', phone TEXT DEFAULT '', source TEXT DEFAULT 'guest', expires INTEGER DEFAULT 0);
   `);
   // Migrations
   for (const sql of [
@@ -507,11 +509,11 @@ export async function createTrade(data) {
     });
     return res.insertedId.toString();
   }
-  const info = sqliteDb.prepare(`INSERT INTO trades (signal_id,wallet_address,token_address,token_symbol,chain,buy_amount_sol,buy_price,buy_price_usd,buy_order_id,signal_latency_ms,buy_latency_ms,telegram_id,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  const info = sqliteDb.prepare(`INSERT INTO trades (signal_id,wallet_address,token_address,token_symbol,chain,buy_amount_sol,buy_price,buy_price_usd,buy_order_id,signal_latency_ms,buy_latency_ms,telegram_id,status,take_profit_percent,stop_loss_percent,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     data.signal_id, data.wallet_address, data.token_address, data.token_symbol, data.chain,
     data.buy_amount_sol, data.buy_price, data.buy_price_usd, data.buy_order_id,
     data.signal_latency_ms || 0, data.buy_latency_ms || 0, _tid() || 'NONE',
-    data.status || 'open', sqliteNow()
+    data.status || 'open', data.take_profit_percent || null, data.stop_loss_percent || null, sqliteNow()
   );
   return Number(info.lastInsertRowid);
 }
@@ -658,6 +660,31 @@ export async function getSetting(key, dv = null) {
 export async function setSetting(key, value) {
   if (!sqliteMode && mdb) { await collections.settings.updateOne({ key }, { $set: { id: key, key, value: String(value) } }, { upsert: true }); return; }
   sqliteDb.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)').run(key, String(value));
+}
+
+// ───── Web Sessions (persistent — survives server restart / idle) ─────
+export async function getAllWebSessions() {
+  if (!sqliteMode && mdb) return collections.web_sessions.find({}).toArray();
+  return sqliteDb.prepare('SELECT token, telegram_id, phone, source, expires FROM web_sessions').all();
+}
+export async function getWebSession(token) {
+  if (!sqliteMode && mdb) return collections.web_sessions.findOne({ token });
+  return sqliteDb.prepare('SELECT token, telegram_id, phone, source, expires FROM web_sessions WHERE token = ?').get(token) || null;
+}
+export async function saveWebSession(token, data) {
+  const telegramId = data?.telegramId || '';
+  const phone = data?.phone || '';
+  const source = data?.source || 'guest';
+  const expires = Number(data?.expires) || 0;
+  if (!sqliteMode && mdb) {
+    await collections.web_sessions.updateOne({ token }, { $set: { token, telegram_id: telegramId, phone, source, expires } }, { upsert: true });
+    return;
+  }
+  sqliteDb.prepare('INSERT OR REPLACE INTO web_sessions (token, telegram_id, phone, source, expires) VALUES (?,?,?,?,?)').run(token, telegramId, phone, source, expires);
+}
+export async function deleteWebSession(token) {
+  if (!sqliteMode && mdb) { await collections.web_sessions.deleteOne({ token }); return; }
+  sqliteDb.prepare('DELETE FROM web_sessions WHERE token = ?').run(token);
 }
 
 // ───── Legacy / Unused ─────

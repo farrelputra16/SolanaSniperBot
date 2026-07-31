@@ -1,0 +1,227 @@
+import { test, before, after, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// Isolated temp DB + fixed test config — MUST be set before importing modules
+const DATA_DIR = mkdtempSync(join(tmpdir(), 'sniperbot-test-'));
+process.env.DATA_DIR = DATA_DIR;
+process.env.DASHBOARD_PASSWORD = 'test-secret';
+process.env.MONGO_URI = '';
+delete process.env.GMGN_API_KEY;
+delete process.env.GMGN_PRIVATE_KEY;
+delete process.env.TELEGRAM_API_ID;
+delete process.env.TELEGRAM_API_HASH;
+
+// Mock GMGN (never touch real trades) and Telegram (skip GramJS) BEFORE importing web-server
+mock.module('../gmgn.js', {
+  namedExports: {
+    createUserClient: async () => ({
+      executeSwap: async () => ({ data: { order_id: 'mock-order' } }),
+      executeSell: async () => ({ data: { order_id: 'mock-sell' } }),
+      createLimitSell: async () => ({ data: { order_id: 'mock-limit' } }),
+      executeBuyWithTP: async () => ({ data: { order_id: 'mock-tpsl' } }),
+      cancelStrategyOrder: async () => ({}),
+    }),
+  },
+});
+mock.module('../telegram.js', {
+  namedExports: {
+    getClient: () => null,
+    initTelegramWithSession: async () => {},
+    destroyClient: async () => {},
+    startListeners: async () => {},
+    onSignal: () => {},
+    onForward: () => {},
+  },
+});
+
+let db;
+let server;
+let base;
+let createWebServer;
+
+before(async () => {
+  db = await import('../database.js');
+  await db.initDatabase();
+  // Seed a session directly in the DB — simulates a token created by a previous process (restart)
+  await db.saveWebSession('restart-token', { telegramId: '1721799075', phone: '6285779977877', source: 'login', expires: Date.now() + 86400000 });
+  ({ createWebServer } = await import('../web-server.js'));
+  server = createWebServer().listen(0);
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+
+after(() => {
+  server?.close();
+  rmSync(DATA_DIR, { recursive: true, force: true });
+});
+
+async function req(path, { method = 'GET', token, body } = {}) {
+  const headers = {};
+  if (token) headers['x-auth-token'] = token;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const r = await fetch(base + '/api' + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  let data = null;
+  try { data = await r.json(); } catch {}
+  return { status: r.status, data };
+}
+
+// ───── Session persistence ─────
+test('session survives server restart (seeded from DB)', async () => {
+  const { status, data } = await req('/channels', { token: 'restart-token' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(Array.isArray(data));
+});
+
+test('DB web_sessions round-trip', async () => {
+  await db.saveWebSession('roundtrip-token', { telegramId: '42', phone: '+1', source: 'login', expires: 9999999999999 });
+  const row = await db.getWebSession('roundtrip-token');
+  assert.ok(row);
+  assert.equal(row.telegram_id, '42');
+  assert.equal(row.source, 'login');
+  const all = await db.getAllWebSessions();
+  assert.ok(all.some((s) => s.token === 'roundtrip-token'));
+  await db.deleteWebSession('roundtrip-token');
+  assert.equal(await db.getWebSession('roundtrip-token'), null);
+});
+
+// ───── Auth / login ─────
+test('wrong password rejected', async () => {
+  const { status } = await req('/login', { method: 'POST', body: { password: 'nope' } });
+  assert.equal(status, 401);
+});
+
+test('login issues a working token', async () => {
+  const login = await req('/login', { method: 'POST', body: { password: 'test-secret' } });
+  assert.equal(login.status, 200);
+  assert.ok(login.data.token);
+  const { status } = await req('/status', { token: login.data.token });
+  assert.equal(status, 200);
+});
+
+test('no token is unauthorized on protected routes', async () => {
+  const { status } = await req('/channels');
+  assert.equal(status, 401);
+});
+
+test('status endpoint is public (Render health check)', async () => {
+  const { status, data } = await req('/status');
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(data.channelCount !== undefined);
+});
+
+// ───── Telegram status (guest vs login) ─────
+test('status issues guest token when none stored', async () => {
+  const { data } = await req('/telegram/status');
+  assert.equal(data.guest, true);
+  assert.equal(data.authenticated, false);
+  assert.ok(data.token);
+});
+
+test('status keeps a valid login token (no downgrade to guest)', async () => {
+  const login = await req('/login', { method: 'POST', body: { password: 'test-secret' } });
+  const { data } = await req('/telegram/status', { token: login.data.token });
+  assert.equal(data.token, login.data.token);
+  assert.equal(data.guest, false);
+});
+
+// ───── Trading endpoints: validation (no gmgn call) ─────
+async function authed() {
+  const login = await req('/login', { method: 'POST', body: { password: 'test-secret' } });
+  return login.data.token;
+}
+
+test('buy: rejects missing wallet/token', async () => {
+  const t = await authed();
+  const { status } = await req('/buy', { method: 'POST', token: t, body: { amount_lamports: 10000000 } });
+  assert.equal(status, 400);
+});
+
+test('buy: rejects missing/zero amount_lamports', async () => {
+  const t = await authed();
+  for (const body of [
+    { wallet_address: 'W', token_address: 'T' },
+    { wallet_address: 'W', token_address: 'T', amount_lamports: 0 },
+    { wallet_address: 'W', token_address: 'T', amount_lamports: 'abc' },
+  ]) {
+    const { status, data } = await req('/buy', { method: 'POST', token: t, body });
+    assert.equal(status, 400, JSON.stringify(body) + ' -> ' + JSON.stringify(data));
+  }
+});
+
+test('sell: rejects missing wallet/token', async () => {
+  const t = await authed();
+  const { status } = await req('/sell', { method: 'POST', token: t, body: {} });
+  assert.equal(status, 400);
+});
+
+test('limit-sell: rejects missing fields and bad percent', async () => {
+  const t = await authed();
+  const { status: s1 } = await req('/orders/limit-sell', { method: 'POST', token: t, body: {} });
+  assert.equal(s1, 400);
+  const { status: s2 } = await req('/orders/limit-sell', {
+    method: 'POST', token: t,
+    body: { wallet_address: 'W', token_address: 'T', target_price: 0.1, percent: 150 },
+  });
+  assert.equal(s2, 400);
+});
+
+test('buy-with-tp-sl: rejects missing amount', async () => {
+  const t = await authed();
+  const { status } = await req('/orders/buy-with-tp-sl', {
+    method: 'POST', token: t,
+    body: { wallet_address: 'W', token_address: 'T', take_profit_percent: 50, stop_loss_percent: 10 },
+  });
+  assert.equal(status, 400);
+});
+
+// ───── Trading endpoints: happy path (mocked GMGN) ─────
+test('buy executes swap via GMGN mock', async () => {
+  const t = await authed();
+  const { status, data } = await req('/buy', {
+    method: 'POST', token: t,
+    body: { wallet_address: 'W', token_address: 'T', amount_lamports: 10000000, slippage: 20 },
+  });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.equal(data.order_id, 'mock-order');
+});
+
+test('sell executes via GMGN mock', async () => {
+  const t = await authed();
+  const { status, data } = await req('/sell', {
+    method: 'POST', token: t,
+    body: { wallet_address: 'W', token_address: 'T', percent: 50, slippage: 30 },
+  });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.equal(data.order_id, 'mock-sell');
+});
+
+test('limit-sell creates strategy order', async () => {
+  const t = await authed();
+  const { status, data } = await req('/orders/limit-sell', {
+    method: 'POST', token: t,
+    body: { wallet_address: 'W', token_address: 'T', target_price: 0.0005, percent: 100, token_symbol: 'TEST' },
+  });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.equal(data.remote_order_id, 'mock-limit');
+  assert.ok(data.id != null);
+  const orders = await db.getStrategyOrders();
+  assert.ok(orders.some((o) => o.id == data.id && o.order_type === 'limit_order'));
+});
+
+test('buy-with-tp-sl creates a trade', async () => {
+  const t = await authed();
+  const { status, data } = await req('/orders/buy-with-tp-sl', {
+    method: 'POST', token: t,
+    body: { wallet_address: 'W', token_address: 'T', amount_lamports: 10000000, take_profit_percent: 50, stop_loss_percent: 10 },
+  });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.equal(data.order_id, 'mock-tpsl');
+  assert.ok(data.trade_id != null);
+  const trade = await db.getTrade(data.trade_id);
+  assert.equal(trade.buy_order_id, 'mock-tpsl');
+  assert.equal(trade.take_profit_percent, 50);
+  assert.equal(trade.stop_loss_percent, 10);
+});

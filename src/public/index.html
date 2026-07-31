@@ -311,14 +311,46 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   .fluid-nav{top:0.6rem;padding:0.3rem;max-width:calc(100vw - 1rem)}
   .fluid-nav-brand{font-size:0.7rem;padding-left:0.15rem}
   .fluid-nav-items .nav-item{display:none}
-  .hamburger{display:block}
+  .hamburger{display:block;width:2.4rem;height:2.4rem}
+  .nav-overlay .nav-item{padding:0.6rem 1.25rem}
   .main{padding:4rem 0.85rem 2rem}
+  .page-header{margin-bottom:1.25rem}
   .page-header h2{font-size:1.35rem}
-  .stats{grid-template-columns:repeat(2,1fr)}
+  .page-header .sub{font-size:0.72rem}
+  .stats{grid-template-columns:repeat(2,1fr);gap:0.5rem}
+  .stat .num{font-size:1.3rem}
+  .stat .core{padding:0.75rem 0.8rem}
   .core{padding:1rem}
   .form-grid{grid-template-columns:1fr}
   .pos-detail-grid{grid-template-columns:1fr}
-  .table-wrap{margin:0 -0.75rem;border-radius:0;border-left:none;border-right:none}
+  .form-actions{flex-wrap:wrap}
+  .card-h{flex-wrap:wrap;gap:0.4rem}
+  .btn-group{flex-wrap:wrap}
+  input,select,textarea{padding:0.65rem 0.7rem;min-height:44px}
+  .btn{min-height:40px;padding:0.5rem 0.95rem}
+  .tabs{width:100%;overflow-x:auto}
+  .tab{flex-shrink:0}
+  .channel-card .stats-row{flex-wrap:wrap}
+  .channel-card .actions{flex-wrap:wrap;justify-content:flex-end}
+  .table-wrap{margin:0 -0.75rem;border-radius:0;border-left:none;border-right:none;-webkit-overflow-scrolling:touch}
+  .modal{width:100%;max-width:100%;max-height:88dvh;border-radius:var(--radius-lg) var(--radius-lg) 0 0;border-left:none;border-right:none;border-bottom:none;padding:1.1rem;align-self:flex-end}
+  .modal::before{border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+  .modal-overlay{align-items:flex-end}
+  .modal-actions{flex-wrap:wrap}
+  .modal-actions .btn{flex:1;min-width:0}
+  .toast-container{right:0.6rem;left:0.6rem}
+  .toast{min-width:0;width:100%}
+}
+@media(max-width:420px){
+  .fluid-nav-brand{font-size:0.65rem}
+  .main{padding:3.75rem 0.6rem 2rem}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .stat .num{font-size:1.15rem}
+  .stat .lbl{font-size:0.58rem}
+  .page-header h2{font-size:1.2rem}
+  .core{padding:0.9rem}
+  .btn{font-size:0.75rem}
+  .nav-overlay .nav-item{font-size:1.1rem}
 }
 </style>
 </head>
@@ -1415,8 +1447,9 @@ function showDashboard() {
 }
 async function initDashboard(){
   // Check Telegram status first
-  const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':localStorage.getItem('auth_token')||''}}).then(r=>r.json()).catch(()=>({}));
-  if(tg.token){localStorage.setItem('auth_token',tg.token)}
+  const prev=localStorage.getItem('auth_token')||'';
+  const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':prev}}).then(r=>r.json()).catch(()=>({}));
+  if(tg.token && (!prev || !tg.guest)){localStorage.setItem('auth_token',tg.token)}
   if(tg.isAdmin) _isAdmin = true;
   if(tg.connected && tg.authenticated){
     _initRetries = 0;

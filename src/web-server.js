@@ -12,10 +12,55 @@ const __dirname = join(fileURLToPath(import.meta.url), '..');
 export const liveEvents = new EventEmitter();
 liveEvents.setMaxListeners(100);
 
+const SESSION_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days — survives restarts & idle
 const SESSIONS = new Map();
 const ADMIN_PHONE = '6285779977877';
 const ADMIN_IDS = ['1721799075'];
 function isAdminPhone(phone) { return phone?.replace(/^\+/, '').trim() === ADMIN_PHONE; }
+
+let _sessionsLoaded = null;
+async function loadSessions() {
+  const rows = await db.getAllWebSessions().catch(() => []);
+  const now = Date.now();
+  for (const row of rows || []) {
+    const s = { telegramId: row.telegram_id || '', phone: row.phone || '', source: row.source || 'guest', expires: Number(row.expires) || 0 };
+    if (s.expires > now) SESSIONS.set(row.token, s);
+    else db.deleteWebSession(row.token).catch(() => {});
+  }
+}
+function ensureSessionsLoaded() {
+  if (!_sessionsLoaded) _sessionsLoaded = loadSessions();
+  return _sessionsLoaded;
+}
+async function resolveSession(token) {
+  if (!token) return null;
+  await ensureSessionsLoaded();
+  const cached = SESSIONS.get(token);
+  if (cached) return cached;
+  const row = await db.getWebSession(token).catch(() => null);
+  if (row && Number(row.expires) > Date.now()) {
+    const s = { telegramId: row.telegram_id || '', phone: row.phone || '', source: row.source || 'guest', expires: Number(row.expires) };
+    SESSIONS.set(token, s);
+    return s;
+  }
+  return null;
+}
+function setSession(token, data) {
+  const s = {
+    expires: Number(data.expires) || Date.now() + SESSION_TTL,
+    telegramId: data.telegramId || '',
+    phone: data.phone || '',
+    source: data.source || 'guest',
+  };
+  SESSIONS.set(token, s);
+  db.saveWebSession(token, s).catch(() => {});
+  return s;
+}
+function invalidateSession(token, s) {
+  if (!s) return;
+  if (SESSIONS.get(token)) SESSIONS.delete(token);
+  db.deleteWebSession(token).catch(() => {});
+}
 
 export function getTelegramId(token) {
   const s = SESSIONS.get(token);
@@ -28,42 +73,50 @@ export function createWebServer() {
   app.use(express.static(join(__dirname, 'public')));
 
   // Extract telegramId from session for all routes
-  app.use('/api', (req, res, next) => {
-    const token = req.headers['x-auth-token'];
-    if (token && SESSIONS.has(token)) {
-      const s = SESSIONS.get(token);
-      if (typeof s === 'object' && s.expires > Date.now()) {
-        s.expires = Date.now() + 3600000;
-        if (s.source === 'login') {
-          req.telegramId = s.telegramId;
-          if (isAdminPhone(s.phone) || ADMIN_IDS.includes(s.telegramId)) req.isAdmin = true;
+  app.use('/api', async (req, res, next) => {
+    try {
+      const token = req.headers['x-auth-token'];
+      const s = token ? await resolveSession(token) : null;
+      if (s) {
+        if (s.expires > Date.now()) {
+          s.expires = Date.now() + SESSION_TTL;
+          db.saveWebSession(token, s).catch(() => {});
+          if (s.source === 'login') {
+            req.telegramId = s.telegramId;
+            if (isAdminPhone(s.phone) || ADMIN_IDS.includes(s.telegramId)) req.isAdmin = true;
+          }
+        } else {
+          invalidateSession(token, s);
         }
-      } else if (typeof s === 'number' && s > Date.now()) {
-        SESSIONS.set(token, Date.now() + 3600000);
       }
-    }
+    } catch {}
     next();
   });
 
-  app.use('/api', (req, res, next) => {
-    if (!config.server.password) return next();
-    if (req.path === '/login' || req.path === '/login-check') return next();
-    if (req.path === '/events') return next();
-    const token = req.headers['x-auth-token'];
-    if (token && SESSIONS.has(token)) {
-      const s = SESSIONS.get(token);
-      if (typeof s === 'object' && s.expires > Date.now()) {
-        s.expires = Date.now() + 3600000;
-        if (s.source === 'login') req.telegramId = s.telegramId;
-        return next();
+  app.use('/api', async (req, res, next) => {
+    const allow = (p) => p === '/login' || p === '/login-check' || p === '/guest-login' || p === '/events' || p === '/status' || p.startsWith('/telegram/');
+    try {
+      if (!config.server.password) return next();
+      if (allow(req.path)) return next();
+      const token = req.headers['x-auth-token'];
+      let valid = false;
+      if (token) {
+        const s = await resolveSession(token);
+        if (s && s.expires > Date.now()) {
+          s.expires = Date.now() + SESSION_TTL;
+          db.saveWebSession(token, s).catch(() => {});
+          if (s.source === 'login') req.telegramId = s.telegramId;
+          valid = true;
+        } else if (s) {
+          invalidateSession(token, s);
+        }
       }
-      if (typeof s === 'number' && s > Date.now()) {
-        SESSIONS.set(token, Date.now() + 3600000);
-        return next();
-      }
+      if (valid) return next();
+      res.status(401).json({ error: 'unauthorized' });
+    } catch {
+      if (allow(req.path)) return next();
+      res.status(401).json({ error: 'unauthorized' });
     }
-    if (req.path.startsWith('/telegram/') || req.path === '/login' || req.path === '/login-check' || req.path === '/guest-login') return next();
-    res.status(401).json({ error: 'unauthorized' });
   });
 
   // Isolate data per-request: set _currentTgId from the session, not global state
@@ -75,7 +128,7 @@ export function createWebServer() {
   app.post('/api/login', (req, res) => {
     if (req.body.password === config.server.password) {
       const token = crypto.randomUUID();
-      SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '', source: 'login' });
+      setSession(token, { expires: Date.now() + SESSION_TTL, telegramId: '', source: 'login' });
       return res.json({ ok: true, token });
     }
     res.status(401).json({ error: 'wrong password' });
@@ -87,7 +140,7 @@ export function createWebServer() {
 
   app.post('/api/guest-login', (req, res) => {
     const token = crypto.randomUUID();
-    SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '', source: 'guest' });
+    setSession(token, { expires: Date.now() + SESSION_TTL, telegramId: '', source: 'guest' });
     res.json({ ok: true, token });
   });
 
@@ -358,11 +411,13 @@ export function createWebServer() {
   app.post('/api/orders/limit-sell', async (req, res) => {
     const { chain, wallet_address, token_address, target_price, percent, token_symbol } = req.body;
     if (!wallet_address || !token_address || !target_price) return res.status(400).json({ error: 'required: wallet_address, token_address, target_price' });
+    const pct = Number(percent) || 100;
+    if (pct < 1 || pct > 100) return res.status(400).json({ error: 'percent must be between 1 and 100' });
     try {
       const g = await gmgn.createUserClient(req.telegramId);
-      const result = await g.createLimitSell(chain || 'sol', wallet_address, token_address, target_price, percent || 100);
+      const result = await g.createLimitSell(chain || 'sol', wallet_address, token_address, target_price, pct);
       const oid = result.data?.order_id || result.order_id;
-      const localId = await db.saveStrategyOrder({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', order_type: 'limit_order', sub_order_type: 'take_profit', check_price: target_price, amount_in_percent: percent || 100, group_tag: 'LimitOrder', remote_order_id: oid });
+      const localId = await db.saveStrategyOrder({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', order_type: 'limit_order', sub_order_type: 'take_profit', check_price: target_price, amount_in_percent: pct, group_tag: 'LimitOrder', remote_order_id: oid });
       res.json({ success: true, id: localId, remote_order_id: oid });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -370,12 +425,17 @@ export function createWebServer() {
   app.post('/api/orders/buy-with-tp-sl', async (req, res) => {
     const { chain, wallet_address, token_address, amount_lamports, take_profit_percent, stop_loss_percent, slippage, token_symbol } = req.body;
     if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
+    if (!Number.isFinite(Number(amount_lamports)) || Number(amount_lamports) <= 0) return res.status(400).json({ error: 'amount_lamports must be a positive number' });
     try {
       const g = await gmgn.createUserClient(req.telegramId);
       const result = await g.executeBuyWithTP(chain || 'sol', wallet_address, token_address, amount_lamports, { takeProfitPercent: take_profit_percent, stopLossPercent: stop_loss_percent, slippage });
       const oid = result.data?.order_id || result.order_id;
+      const strategyId = result.data?.strategy_order_id || result.strategy_order_id;
       const tradeId = await db.createTrade({ wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', buy_amount_sol: amount_lamports / 1e9, buy_order_id: oid, take_profit_percent, stop_loss_percent, status: 'open' });
-      res.json({ success: true, trade_id: tradeId, order_id: oid });
+      if (strategyId) {
+        await db.saveStrategyOrder({ trade_id: tradeId, wallet_address, token_address, token_symbol: token_symbol || '', chain: chain || 'sol', order_type: 'condition_order', sub_order_type: 'mix_trade', group_tag: 'STMix', remote_order_id: strategyId });
+      }
+      res.json({ success: true, trade_id: tradeId, order_id: oid, strategy_order_id: strategyId || null });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -405,6 +465,7 @@ export function createWebServer() {
   app.post('/api/buy', async (req, res) => {
     const { chain, wallet_address, token_address, amount_lamports, slippage } = req.body;
     if (!wallet_address || !token_address) return res.status(400).json({ error: 'wallet_address and token_address required' });
+    if (!Number.isFinite(Number(amount_lamports)) || Number(amount_lamports) <= 0) return res.status(400).json({ error: 'amount_lamports must be a positive number' });
     try {
       const g = await gmgn.createUserClient(req.telegramId);
       const result = await g.executeSwap(chain || 'sol', wallet_address, 'So11111111111111111111111111111111111111112', token_address, amount_lamports, { slippage });
@@ -681,7 +742,7 @@ export function createWebServer() {
       const me = c ? await c.getMe() : null;
       const telegramId = String(me?.id || '');
       const sessionToken = crypto.randomUUID();
-      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId, phone: state.phone, source: 'login' });
+      setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
@@ -720,7 +781,7 @@ export function createWebServer() {
       const me2 = gC() ? await gC().getMe() : null;
       const telegramId = String(me2?.id || '');
       const sessionToken = crypto.randomUUID();
-      SESSIONS.set(sessionToken, { expires: Date.now() + 86400000, telegramId, phone: state.phone, source: 'login' });
+      setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
@@ -762,17 +823,22 @@ export function createWebServer() {
         }
       }
       let token = null;
+      let guest = false;
       const h = req.headers['x-auth-token'];
-      if (h && SESSIONS.has(h)) {
-        const s = SESSIONS.get(h);
-        if (typeof s === 'object' && s.source === 'login') {
+      if (h) {
+        const s = await resolveSession(h);
+        if (s && s.expires > Date.now() && s.source === 'login') {
           token = h;
-        } else {
-          SESSIONS.delete(h);
+        } else if (s) {
+          invalidateSession(h, s);
         }
       }
-      if (!token) { token = crypto.randomUUID(); SESSIONS.set(token, { expires: Date.now() + 86400000, telegramId: '', source: 'guest' }); }
-      res.json({ connected, hasSession: !!sessionStr, token, telegramId: tgId, authenticated: !!req.telegramId, isAdmin: !!req.isAdmin });
+      if (!token) {
+        token = crypto.randomUUID();
+        setSession(token, { expires: Date.now() + SESSION_TTL, telegramId: '', source: 'guest' });
+        guest = true;
+      }
+      res.json({ connected, hasSession: !!sessionStr, token, guest, telegramId: tgId, authenticated: !!req.telegramId, isAdmin: !!req.isAdmin });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
 
@@ -816,7 +882,10 @@ export function startWebServer(app) {
   const cleanup = setInterval(() => {
     const now = Date.now();
     for (const [k, v] of SESSIONS) {
-      if (typeof v === 'object' ? v.expires < now : v < now) SESSIONS.delete(k);
+      if (v && v.expires < now) {
+        SESSIONS.delete(k);
+        db.deleteWebSession(k).catch(() => {});
+      }
     }
   }, 60000);
   // Telegram 24/7 reconnect loop — keeps alive even with no browser open

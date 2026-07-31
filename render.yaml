@@ -18,7 +18,7 @@ services:
       # - GMGN_API_KEY + GMGN_PRIVATE_KEY → Settings > GMGN API
       # - TELEGRAM_API_ID + TELEGRAM_API_HASH → form login
       - key: DATA_DIR
-        value: ""
+        value: "/data"
     disk:
       name: data
       mountPath: /data
