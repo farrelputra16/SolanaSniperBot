@@ -8,6 +8,11 @@ import { liveEvents } from './web-server.js';
 const CURRENCY_ADDRESSES = {
   sol: 'So11111111111111111111111111111111111111112',
 };
+const STABLECOIN_ADDRESSES = new Set([
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+  'mSoLzYCxHdYgWUCh4PkK7Z4dUsk5zEZmz8m6Z6w1jJ',   // mSOL
+]);
 
 const _seenCAs = new Map();  // key: channel:address, value: timestamp
 const SEEN_CA_TTL = 300000; // 5 min
@@ -489,6 +494,40 @@ export async function backfillPendingTrades() {
   }
 }
 
+export async function backfillTradeMetadata() {
+  try {
+    const trades = await db.getAllTrades(500);
+    const needSym = trades.filter(t => !t.token_symbol || t.token_symbol === 'PENDING' || !t.buy_market_cap);
+    if (!needSym.length) return { updated: 0 };
+    let updated = 0;
+    for (const t of needSym) {
+      if (!t.token_address) continue;
+      let raw;
+      try {
+        const info = await getTokenInfo(t.chain || 'sol', t.token_address);
+        raw = info?.data || info?.info || info || {};
+      } catch { continue; }
+      const symbol = raw.symbol || raw.base_token?.symbol;
+      const priceRaw = raw.price_usd != null ? raw.price_usd : (raw.price && typeof raw.price === 'object' ? raw.price.price : raw.price);
+      const price = parseFloat(priceRaw);
+      const supply = parseFloat(raw.circulating_supply) || parseFloat(raw.total_supply);
+      const mcap = parseFloat(raw.market_cap) || (price && supply ? price * supply : NaN);
+      const upd = {};
+      if (symbol && (!t.token_symbol || t.token_symbol === 'PENDING')) upd.token_symbol = symbol;
+      if (t.buy_price_usd && price && mcap && !t.buy_market_cap) upd.buy_market_cap = (t.buy_price_usd / price) * mcap;
+      if (!Object.keys(upd).length) continue;
+      db.setTelegramId(t.telegram_id);
+      await db.updateTrade(t.id, upd);
+      updated++;
+      console.log(`[Router] Enriched trade ${t.id}: ${symbol} buy_mcap=${upd.buy_market_cap ? upd.buy_market_cap.toFixed(0) : 'n/a'}`);
+    }
+    return { updated };
+  } catch (e) {
+    console.log(`[Router] backfillTradeMetadata error: ${e.message}`);
+    return { updated: 0 };
+  }
+}
+
 export async function reconcileOpenPositions() {
   try {
     const now = Date.now();
@@ -518,20 +557,23 @@ export async function reconcileOpenPositions() {
     }
 
     // Reopen trades that were auto-closed (no sell order/tx) but still hold the token
-    const reconcileClosed = all.filter(t => t.status === 'closed' && !t.sell_order_id && !t.sell_tx);
+    const verifyCutoff = now - 24 * 3600 * 1000;
+    const reconcileClosed = all.filter(t => t.status === 'closed' && !t.sell_order_id && !t.sell_tx && (!t.reconcile_verified_at || t.reconcile_verified_at < verifyCutoff));
     for (const t of reconcileClosed) {
       if (!t.wallet_address || !t.token_address) continue;
       let held;
       try { held = await walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol'); } catch { continue; }
-      if (held === true) {
-        try {
-          db.setTelegramId(t.telegram_id);
+      if (held === null) continue;
+      try {
+        db.setTelegramId(t.telegram_id);
+        await db.updateTrade(t.id, { reconcile_verified_at: Date.now() });
+        if (held === true) {
           await db.updateTrade(t.id, { status: 'open', closed_at: null });
           console.log(`[Router] Position ${t.id} still held — reopened`);
           liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'open', reason: 'reopened' });
           reopened++;
-        } catch {}
-      }
+        }
+      } catch {}
     }
     return { closed, reopened };
   } catch (e) {
@@ -572,8 +614,9 @@ export async function getExternalPositions(openTrades = null) {
       } catch { continue; }
       for (const h of holdings) {
         const tok = h.token || {};
-        const addr = tok.address || h.address || h.token_address;
-        if (!addr || addr === CURRENCY_ADDRESSES.sol || tracked.has(addr)) continue;
+        const addr = tok.token_address || tok.address || h.address || h.token_address;
+        if (!addr || addr === CURRENCY_ADDRESSES.sol || STABLECOIN_ADDRESSES.has(addr) || tracked.has(addr)) continue;
+        if (parseFloat(h.balance) <= 0) continue;
         tracked.add(addr);
         result.push({
           id: `ext_${addr.slice(0, 12)}`,

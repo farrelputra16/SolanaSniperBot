@@ -776,7 +776,9 @@ async function renderPositions(){
       const inf=r.info||{};
       const priceRaw=inf.price_usd!=null?inf.price_usd:(inf.price&&typeof inf.price==='object'?inf.price.price:inf.price);
       const price=parseFloat(priceRaw);
-      const mcap=parseFloat(inf.market_cap)||parseFloat(inf.info&&inf.info.market_cap);
+      const supply=parseFloat(inf.circulating_supply)||parseFloat(inf.total_supply);
+      const mcapRaw=inf.market_cap!=null?inf.market_cap:(price&&supply?price*supply:NaN);
+      const mcap=parseFloat(mcapRaw);
       return {id:t.id,price:isNaN(price)?null:price,mcap:isNaN(mcap)?null:mcap};
     }).catch(()=>({id:t.id,price:null,mcap:null}))
   ));
@@ -821,7 +823,9 @@ window.viewPosition=async function(id){
   const inf=info.info||{};
   const priceRaw=inf.price_usd!=null?inf.price_usd:(inf.price&&typeof inf.price==='object'?inf.price.price:inf.price);
   const cp=parseFloat(priceRaw);
-  const mc=parseFloat(inf.market_cap)||parseFloat(info.info&&info.info.market_cap);
+  const supply=parseFloat(inf.circulating_supply)||parseFloat(inf.total_supply);
+  const mcRaw=inf.market_cap!=null?inf.market_cap:(cp&&supply?cp*supply:NaN);
+  const mc=parseFloat(mcRaw);
   const buyMc=t.buy_market_cap||(cp&&mc&&t.buy_price_usd?(t.buy_price_usd/cp)*mc:null);
   const unrealizedPnl=cp&&t.buy_price_usd?((cp-t.buy_price_usd)/t.buy_price_usd)*100:null;
   openModal(`<h2>Position Detail</h2>

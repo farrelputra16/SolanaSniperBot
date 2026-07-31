@@ -111,6 +111,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN track_mode TEXT DEFAULT 'admin'"); } catch {}
   try { sqliteDb.exec("ALTER TABLE signals ADD COLUMN catched_mc REAL DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN buy_market_cap REAL DEFAULT 0"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN reconcile_verified_at INTEGER DEFAULT 0"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -545,6 +546,10 @@ export async function getStuckTrades() {
     return collections.trades.find({ buy_status: { $in: ['pending', 'timeout'] }, buy_order_id: { $nin: ['', null] } }).toArray();
   }
   return sqliteDb.prepare("SELECT * FROM trades WHERE buy_status IN ('pending','timeout') AND buy_order_id IS NOT NULL AND buy_order_id != ''").all();
+}
+export async function getAllTrades(limit) {
+  if (!sqliteMode && mdb) return collections.trades.find({}).sort({ created_at: -1 }).limit(limit || 500).toArray();
+  return sqliteDb.prepare('SELECT * FROM trades ORDER BY created_at DESC LIMIT ?').all(limit || 500);
 }
 
 // ───── Strategy Orders ─────

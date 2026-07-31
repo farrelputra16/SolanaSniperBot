@@ -29,6 +29,8 @@ export function isBotActive() { return !!bot; }
 // ───── State ─────
 const _awaitingLink = new Set();
 const _awaitingPosTPSL = new Map(); // uid -> { tradeId, type: 'tp' | 'sl' }
+const _extPos = new Map(); // idx -> { wallet, token, symbol, balance, usd }
+let _extPosIdx = 0;
 
 // ───── Helpers ─────
 function esc(s) { return s ? String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]) : ''; }
@@ -41,7 +43,9 @@ function unpackTokenInfo(i) {
   const raw = i?.data || i?.info || i || {};
   const priceRaw = raw.price_usd != null ? raw.price_usd : (raw.price && typeof raw.price === 'object' ? raw.price.price : raw.price);
   const price = parseFloat(priceRaw);
-  const mcap = parseFloat(raw.market_cap);
+  const supply = parseFloat(raw.circulating_supply) || parseFloat(raw.total_supply);
+  const mcapRaw = raw.market_cap != null ? raw.market_cap : (price && supply ? price * supply : NaN);
+  const mcap = parseFloat(mcapRaw);
   return { price: isNaN(price) ? null : price, mcap: isNaN(mcap) ? null : mcap, symbol: raw.symbol || '' };
 }
 
@@ -721,20 +725,23 @@ Tap 🔄 to refresh`,
 // ───── Positions ─────
 async function showPositions(ctx, edit = true) {
   await db.setTelegramId(adminId);
-  const { reconcileOpenPositions } = await import('./router.js');
+  const { reconcileOpenPositions, getExternalPositions } = await import('./router.js');
   await reconcileOpenPositions().catch(() => {});
   const trades = await db.getOpenTrades();
-  if (!trades.length) {
+  const externals = await getExternalPositions(trades).catch(() => []);
+  const total = trades.length + externals.length;
+  if (!total) {
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
-    const text = '📈 <b>Positions</b>\n━━━━━━━━━━━━━━━━\nNo open positions.\n\nTrades appear here after auto-buy executes.';
+    const text = '📈 <b>Positions</b>\n━━━━━━━━━━━━━━━━\nNo open positions.\n\nTrades appear here after auto-buy executes. Wallet holdings show up automatically as external positions.';
     const opts = { parse_mode: 'HTML', reply_markup: kb };
     if (edit) { try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); } }
     else { await ctx.reply(text, opts); }
     return;
   }
 
+  _extPos.clear();
   const { getTokenInfo } = await import('./gmgn.js');
-  const lines = [`📈 <b>Positions</b>  ${trades.length} open`, `━━━━━━━━━━━━━━━━`];
+  const lines = [`📈 <b>Positions</b>  ${total} open`, `━━━━━━━━━━━━━━━━`];
   const infoData = (await Promise.allSettled(trades.map(t =>
     getTokenInfo(t.chain || 'sol', t.token_address).then(i => unpackTokenInfo(i)).catch(() => ({ price: null, mcap: null, symbol: '' }))
   ))).map(r => r.status === 'fulfilled' ? r.value : { price: null, mcap: null, symbol: '' });
@@ -750,10 +757,27 @@ async function showPositions(ctx, edit = true) {
     lines.push(`<b>${esc(sym)}</b> | 💰 ${t.buy_amount_sol || '?'} SOL\n📈 MC: ${mcStr}${buyStr} · <b>P&amp;L:</b> ${pnlStr}${tpSl ? `\n<b>${esc(tpSl)}</b>` : ''}`);
   });
 
+  const extInfoData = (await Promise.allSettled(externals.map(t =>
+    getTokenInfo(t.chain || 'sol', t.token_address).then(i => unpackTokenInfo(i)).catch(() => ({ price: null, mcap: null, symbol: '' }))
+  ))).map(r => r.status === 'fulfilled' ? r.value : { price: null, mcap: null, symbol: '' });
+  externals.forEach((t, idx) => {
+    const info = extInfoData[idx];
+    const sym = info.symbol || t.token_symbol || addrShort(t.token_address);
+    const idxNum = _extPosIdx++;
+    _extPos.set(idxNum, { wallet: t.wallet_address, token: t.token_address, symbol: sym, balance: t.token_balance, usd: t.usd_value });
+    const balStr = t.token_balance != null ? Number(t.token_balance).toFixed(2) + ' ' + sym : (t.usd_value != null ? '$' + Number(t.usd_value).toFixed(2) : '?');
+    const mcStr = info.mcap ? fmtCur(info.mcap) : '?';
+    const usdStr = t.usd_value != null ? ' · 💵 $' + Number(t.usd_value).toFixed(2) : '';
+    lines.push(`<b>${esc(sym)}</b> | 🧰 ${balStr}\n📈 MC: ${mcStr}${usdStr} · <b>External</b>`);
+  });
+
   const kb = new InlineKeyboard();
   for (let i = 0; i < trades.length; i++) {
     const sym = btnText(trades[i].token_symbol || addrShort(trades[i].token_address));
     kb.text(`${i+1}. ${sym}`, `pos_v_${trades[i].id}`).row();
+  }
+  for (const [idx, e] of _extPos) {
+    kb.text(`🧰 ${btnText(e.symbol)}`, `pose_v_${idx}`).row();
   }
   kb.text('🔄 Refresh', 'menu_positions').text('🔙 Menu', 'menu_main');
 
@@ -885,6 +909,71 @@ async function executePositionSell(ctx, tradeId, percent, confirm = false) {
     ).catch(() => {});
   } catch (err) {
     ctx.answerCallbackQuery({ text: `Sell failed: ${err.message.slice(0,60)}` });
+  }
+}
+
+async function showExternalPositionDetail(ctx, idx) {
+  const e = _extPos.get(parseInt(idx));
+  if (!e) return ctx.answerCallbackQuery({ text: 'Expired, refresh positions' });
+  await db.setTelegramId(adminId);
+  const { getTokenInfo } = await import('./gmgn.js');
+  let price = null, mcap = null;
+  try {
+    const unpacked = unpackTokenInfo(await getTokenInfo('sol', e.token));
+    price = unpacked.price;
+    mcap = unpacked.mcap;
+  } catch {}
+  const balStr = e.balance != null ? Number(e.balance).toFixed(2) : '?';
+  const usdStr = e.usd != null ? ' · 💵 $' + Number(e.usd).toFixed(2) : '';
+  const lines = [
+    `🧰 <b>${esc(e.symbol)}</b> <span class="tg-spoiler">external</span>`,
+    `━━━━━━━━━━━━━━━━`,
+    `💳 Wallet: <code>${esc(e.wallet.slice(0,8))}...</code>`,
+    `<code>${esc(e.token)}</code>`,
+    `━━━━━━━━━━━━━━━━`,
+    `🪙 Balance: <b>${balStr}</b>${usdStr}`,
+    `📈 MC Now: ${mcap ? fmtCur(mcap) : '?'}${price ? ` · Price ${price < 0.01 ? price.toFixed(8) : price.toFixed(5)}` : ''}`,
+    `📡 Held in your wallet (not a bot buy)`,
+  ].join('\n');
+
+  const kb = new InlineKeyboard()
+    .text('🔴 Sell 25%', `pose_s_${idx}_25`)
+    .text('🔴 Sell 50%', `pose_s_${idx}_50`)
+    .text('🔴 Sell 100%', `pose_s_${idx}_100`)
+    .row()
+    .text('🔄 Refresh', `pose_v_${idx}`)
+    .text('🔙 Positions', 'menu_positions');
+
+  ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines, { parse_mode: 'HTML', reply_markup: kb }));
+}
+
+async function executeExternalSell(ctx, idx, percent, confirm = false) {
+  const e = _extPos.get(parseInt(idx));
+  if (!e) return ctx.answerCallbackQuery({ text: 'Expired, refresh positions' });
+
+  if (!confirm) {
+    const kb = new InlineKeyboard()
+      .text(`✅ Confirm Sell ${percent}%`, `pose_c_${idx}_${percent}`)
+      .text('❌ Cancel', `pose_v_${idx}`);
+    ctx.editMessageText(
+      `⚠️ <b>Confirm Sell</b>\n\nSell <b>${percent}%</b> of <b>${esc(e.symbol)}</b>?\nWallet: <code>${esc(e.wallet.slice(0,8))}...</code>\nBalance: ${Number(e.balance != null ? e.balance : 0).toFixed(2)} ${esc(e.symbol)}`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    ).catch(() => {});
+    return;
+  }
+
+  ctx.answerCallbackQuery({ text: 'Selling...' }).catch(() => {});
+  try {
+    const { executeSell, getUserCredentials } = await import('./gmgn.js');
+    const creds = await getUserCredentials(adminId);
+    const result = await executeSell('sol', e.wallet, e.token, percent, { slippage: 30 }, creds);
+    const orderId = result?.data?.order_id || result?.order_id;
+    ctx.editMessageText(
+      `✅ <b>Sell order submitted</b>\n\n🧰 ${esc(e.symbol)} · ${percent}%\n💳 <code>${esc(e.wallet.slice(0,8))}...</code>\n${orderId ? `🆔 <code>${esc(orderId)}</code>` : ''}\n\nIt may take a few seconds to confirm.`,
+      { parse_mode: 'HTML', reply_markup: new InlineKeyboard().text('📈 Positions', 'menu_positions') }
+    ).catch(() => {});
+  } catch (err) {
+    ctx.editMessageText(`❌ <b>Sell failed</b>\n\n${esc(err.message.slice(0,200))}`, { parse_mode: 'HTML' }).catch(() => {});
   }
 }
 
@@ -1219,6 +1308,15 @@ function registerCommands() {
 
     const posConfirmSellMatch = d.match(/^pos_confirm_sell_(\d+)_(\d+)$/);
     if (posConfirmSellMatch) { ctx.answerCallbackQuery({ text: 'Selling...' }); return executePositionSell(ctx, parseInt(posConfirmSellMatch[1]), parseInt(posConfirmSellMatch[2]), true); }
+
+    const extViewMatch = d.match(/^pose_v_(\d+)$/);
+    if (extViewMatch) { ctx.answerCallbackQuery(); return showExternalPositionDetail(ctx, parseInt(extViewMatch[1])); }
+
+    const extSellMatch = d.match(/^pose_s_(\d+)_(\d+)$/);
+    if (extSellMatch) { ctx.answerCallbackQuery(); return executeExternalSell(ctx, parseInt(extSellMatch[1]), parseInt(extSellMatch[2]), false); }
+
+    const extConfirmSellMatch = d.match(/^pose_c_(\d+)_(\d+)$/);
+    if (extConfirmSellMatch) { ctx.answerCallbackQuery({ text: 'Selling...' }); return executeExternalSell(ctx, parseInt(extConfirmSellMatch[1]), parseInt(extConfirmSellMatch[2]), true); }
 
     const posTPMatch = d.match(/^pos_tp_(\d+)$/);
     if (posTPMatch) {
