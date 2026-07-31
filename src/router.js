@@ -1,4 +1,4 @@
-import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder, getUserCredentials } from './gmgn.js';
+import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder, getUserCredentials, getWalletHoldings } from './gmgn.js';
 import { getDexScreenerInfo } from './dexscreener.js';
 import * as db from './database.js';
 import { config } from './config.js';
@@ -480,6 +480,42 @@ export async function backfillPendingTrades() {
     }
   } catch (e) {
     console.log(`[Router] backfillPendingTrades error: ${e.message}`);
+  }
+}
+
+export async function reconcileOpenPositions() {
+  try {
+    const trades = await db.getOpenTrades();
+    if (!trades.length) return { closed: 0 };
+    const byWallet = {};
+    for (const t of trades) {
+      if (!t.wallet_address || !t.token_address || t.buy_status !== 'confirmed') continue;
+      (byWallet[t.wallet_address] = byWallet[t.wallet_address] || []).push(t);
+    }
+    let closed = 0;
+    for (const [wallet, list] of Object.entries(byWallet)) {
+      let holdings = [];
+      try {
+        const r = await getWalletHoldings('sol', wallet, { limit: 300 });
+        holdings = r?.data?.list || r?.data?.holdings || r?.data || [];
+      } catch { continue; }
+      const held = new Set(holdings.map(h => h?.token?.address || h?.address || h?.token_address).filter(Boolean));
+      for (const t of list) {
+        if (!held.has(t.token_address)) {
+          try {
+            db.setTelegramId(t.telegram_id);
+            await db.closeTrade(t.id, { status: 'closed' });
+            console.log(`[Router] Position ${t.id} (${t.token_symbol || t.token_address.slice(0,8)}) not in wallet holdings — marked closed`);
+            liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'closed', reason: 'no_holdings' });
+            closed++;
+          } catch {}
+        }
+      }
+    }
+    return { closed };
+  } catch (e) {
+    console.log(`[Router] reconcileOpenPositions error: ${e.message}`);
+    return { closed: 0 };
   }
 }
 

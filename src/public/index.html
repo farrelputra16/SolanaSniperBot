@@ -770,21 +770,25 @@ window.submitChannelForm=async function(id){
 async function renderPositions(){
   const[open,all]=await Promise.all([api('/positions'),api('/positions/all')]);
   const closed=all.filter(t=>t.status==='closed');
-  // Fetch prices for open positions
-  const prices = await Promise.all(open.map(t =>
-    api('/token/info?chain='+(t.chain||'sol')+'&address='+t.token_address).then(r=>({id:t.id,price:r.info?.price?parseFloat(r.info.price):null})).catch(()=>({id:t.id,price:null}))
+  // Fetch price + market cap for open positions
+  const infos = await Promise.all(open.map(t =>
+    api('/token/info?chain='+(t.chain||'sol')+'&address='+t.token_address).then(r=>({id:t.id,price:r.info?.price?parseFloat(r.info.price):null,mcap:r.info?.market_cap?parseFloat(r.info.market_cap):null})).catch(()=>({id:t.id,price:null,mcap:null}))
   ));
-  const priceMap = Object.fromEntries(prices.map(p=>[p.id,p.price]));
+  const infoMap = new Map(infos.map(i=>[i.id,i]));
   return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view closed positions, and set TP/SL exit strategies</div></div>
 <div class="shell"><div class="core">
   <div class="tabs"><div class="tab active" data-tab="pos-open">Open (${open.length})</div><div class="tab" data-tab="pos-closed">Closed (${closed.length})</div></div>
   <div id="pos-open" class="tab-content active">
-    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>Price</th><th>P&amp;L</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>{
-      const cp = priceMap[t.id];
+    ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>Buy MC</th><th>MC Now</th><th>P&amp;L</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>{
+      const info = infoMap.get(t.id)||{};
+      const cp = info.price;
+      const mc = info.mcap;
+      const buyMc = cp && mc && t.buy_price_usd ? (t.buy_price_usd/cp)*mc : null;
       const pnl = cp && t.buy_price_usd ? ((cp-t.buy_price_usd)/t.buy_price_usd)*100 : null;
       return`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td>
 <td>${t.buy_amount_sol||'-'} SOL</td>
-<td class="mono text-sm">${cp?'$'+cp.toFixed(8):'—'}</td>
+<td class="mono text-sm">${buyMc?fmtCur(buyMc):'—'}</td>
+<td class="mono text-sm">${mc?fmtCur(mc):'—'}</td>
 <td>${pnl!=null?'<span class="badge '+(pnl>=0?'badge-g':'badge-r')+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'%</span>':'<span class="text-muted">—</span>'}</td>
 <td class="text-sm">${t.take_profit_percent?'<span class="badge badge-g">TP '+t.take_profit_percent+'%</span>':''} ${t.stop_loss_percent?'<span class="badge badge-r">SL '+t.stop_loss_percent+'%</span>':''} ${!t.take_profit_percent&&!t.stop_loss_percent?'<span class="text-muted">—</span>':''}</td>
 <td class="text-muted text-sm">${ago(t.created_at)}</td>
@@ -799,16 +803,17 @@ async function renderPositions(){
 window.viewPosition=async function(id){
   const t=await api('/positions/'+id);
   const info=await api('/token/info?chain='+t.chain+'&address='+t.token_address).catch(()=>({}));
-  const price=info.info?.price;
-  const currentPrice=price?parseFloat(price):null;
-  const unrealizedPnl=currentPrice&&t.buy_price_usd?((currentPrice-t.buy_price_usd)/t.buy_price_usd)*100:null;
+  const cp=info.info?.price?parseFloat(info.info.price):null;
+  const mc=info.info?.market_cap?parseFloat(info.info.market_cap):null;
+  const buyMc=cp&&mc&&t.buy_price_usd?(t.buy_price_usd/cp)*mc:null;
+  const unrealizedPnl=cp&&t.buy_price_usd?((cp-t.buy_price_usd)/t.buy_price_usd)*100:null;
   openModal(`<h2>Position Detail</h2>
 <p class="text-sm text-muted mb-8"><span class="mono">${t.token_symbol||addrShort(t.token_address)}</span></p>
 <div class="pos-detail-grid">
   <div class="item"><div class="lbl">Token Address</div><div class="val mono text-sm">${t.token_address}</div></div>
   <div class="item"><div class="lbl">Buy Amount</div><div class="val">${t.buy_amount_sol||'-'} SOL</div></div>
-  <div class="item"><div class="lbl">Buy Price</div><div class="val mono">$${t.buy_price_usd?Number(t.buy_price_usd).toFixed(8):'?'}</div></div>
-  <div class="item"><div class="lbl">Current Price</div><div class="val mono">${currentPrice?'$'+currentPrice.toFixed(8):'<span class="text-muted">-</span>'}</div></div>
+  <div class="item"><div class="lbl">Buy MC</div><div class="val mono">${buyMc?fmtCur(buyMc):'—'}</div></div>
+  <div class="item"><div class="lbl">MC Now</div><div class="val mono">${mc?fmtCur(mc):'<span class="text-muted">—</span>'}</div></div>
   <div class="item"><div class="lbl">Unrealized P&L</div><div class="val">${unrealizedPnl!=null?'<span class="badge '+(unrealizedPnl>=0?'badge-g':'badge-r')+'">'+(unrealizedPnl>=0?'+':'')+unrealizedPnl.toFixed(2)+'%</span>':'<span class="text-muted">-</span>'}</div></div>
   <div class="item"><div class="lbl">Order ID</div><div class="val mono text-sm">${t.buy_order_id||'-'}</div></div>
   <div class="item"><div class="lbl">TP Target</div><div class="val">${t.take_profit_percent?t.take_profit_percent+'%':'None'}</div></div>

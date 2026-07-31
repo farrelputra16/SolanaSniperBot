@@ -733,6 +733,8 @@ Tap 🔄 to refresh`,
 // ───── Positions ─────
 async function showPositions(ctx, edit = true) {
   await db.setTelegramId(adminId);
+  const { reconcileOpenPositions } = await import('./router.js');
+  await reconcileOpenPositions().catch(() => {});
   const trades = await db.getOpenTrades();
   if (!trades.length) {
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
@@ -745,16 +747,19 @@ async function showPositions(ctx, edit = true) {
 
   const { getTokenInfo } = await import('./gmgn.js');
   const lines = [`📈 <b>Positions</b>  ${trades.length} open`, `━━━━━━━━━━━━━━━━`];
-  const priceData = (await Promise.allSettled(trades.map(t =>
-    getTokenInfo(t.chain || 'sol', t.token_address).then(i => i?.info?.price ? parseFloat(i.info.price) : null).catch(() => null)
-  ))).map(r => r.status === 'fulfilled' ? r.value : null);
+  const infoData = (await Promise.allSettled(trades.map(t =>
+    getTokenInfo(t.chain || 'sol', t.token_address).then(i => ({ price: i?.info?.price ? parseFloat(i.info.price) : null, mcap: i?.info?.market_cap ? parseFloat(i.info.market_cap) : null })).catch(() => ({ price: null, mcap: null }))
+  ))).map(r => r.status === 'fulfilled' ? r.value : { price: null, mcap: null });
   trades.forEach((t, idx) => {
-    const price = priceData[idx];
+    const { price, mcap } = infoData[idx];
     const sym = t.token_symbol || addrShort(t.token_address);
+    const buyMc = price && mcap && t.buy_price_usd ? (t.buy_price_usd / price) * mcap : null;
     const pnl = price && t.buy_price_usd ? ((price - t.buy_price_usd) / t.buy_price_usd * 100) : null;
     const pnlStr = pnl != null ? (pnl >= 0 ? '🟢 +' : '🔴 ') + pnl.toFixed(1) + '%' : '—';
+    const mcStr = mcap ? fmtCur(mcap) : '?';
+    const buyStr = buyMc ? ` · Buy ${fmtCur(buyMc)}` : '';
     const tpSl = [t.take_profit_percent ? `TP ${t.take_profit_percent}%` : '', t.stop_loss_percent ? `SL ${t.stop_loss_percent}%` : ''].filter(Boolean).join(' / ');
-    lines.push(`<b>${esc(sym)}</b> | 💰 ${t.buy_amount_sol || '?'} SOL\n<b>P&amp;L:</b> ${pnlStr}${tpSl ? `\n<b>${esc(tpSl)}</b>` : ''}`);
+    lines.push(`<b>${esc(sym)}</b> | 💰 ${t.buy_amount_sol || '?'} SOL\n📈 MC: ${mcStr}${buyStr} · <b>P&amp;L:</b> ${pnlStr}${tpSl ? `\n<b>${esc(tpSl)}</b>` : ''}`);
   });
 
   const kb = new InlineKeyboard();
@@ -777,10 +782,13 @@ async function showPositionDetail(ctx, id) {
 
   const { getTokenInfo } = await import('./gmgn.js');
   let price = null;
+  let mcap = null;
   try {
     const info = await getTokenInfo(t.chain || 'sol', t.token_address);
     price = info?.info?.price ? parseFloat(info.info.price) : null;
+    mcap = info?.info?.market_cap ? parseFloat(info.info.market_cap) : null;
   } catch {}
+  const buyMc = price && mcap && t.buy_price_usd ? (t.buy_price_usd / price) * mcap : null;
   const pnl = price && t.buy_price_usd ? ((price - t.buy_price_usd) / t.buy_price_usd * 100) : null;
   const pnlStr = pnl != null ? (pnl >= 0 ? '🟢 +' : '🔴 ') + pnl.toFixed(2) + '%' : '—';
 
@@ -791,8 +799,8 @@ async function showPositionDetail(ctx, id) {
     `<code>${esc(t.token_address)}</code>`,
     `━━━━━━━━━━━━━━━━`,
     `💰 <b>${t.buy_amount_sol || '?'} SOL</b>`,
-    `💵 Buy: $${t.buy_price_usd ? Number(t.buy_price_usd).toFixed(8) : '?'}`,
-    `💵 Now: ${price ? '$' + price.toFixed(8) : '?'}`,
+    `💵 Buy MC: ${buyMc ? fmtCur(buyMc) : '?'}`,
+    `📈 MC Now: ${mcap ? fmtCur(mcap) : '?'}`,
     `📊 P&amp;L: ${pnlStr}`,
     `🎯 TP: ${t.take_profit_percent ? t.take_profit_percent + '%' : '—'}`,
     `🛑 SL: ${t.stop_loss_percent ? t.stop_loss_percent + '%' : '—'}`,

@@ -315,7 +315,13 @@ export function createWebServer() {
   });
 
   // ───── Positions ─────
-  app.get('/api/positions', async (req, res) => res.json(await db.getOpenTrades()));
+  app.get('/api/positions', async (req, res) => {
+    try {
+      const { reconcileOpenPositions } = await import('./router.js');
+      await reconcileOpenPositions();
+    } catch {}
+    res.json(await db.getOpenTrades());
+  });
   app.get('/api/positions/all', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const all = await db.getTradeHistory(limit);
