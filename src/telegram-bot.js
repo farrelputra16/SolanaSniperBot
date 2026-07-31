@@ -37,6 +37,14 @@ function fmtCur(v) { if (!v) return '$0'; if (v >= 1e6) return '$' + (v / 1e6).t
 
 function addrShort(a) { return a ? a.slice(0, 4) + '..' + a.slice(-4) : '?'; }
 
+function unpackTokenInfo(i) {
+  const raw = i?.data || i?.info || i || {};
+  const priceRaw = raw.price_usd != null ? raw.price_usd : (raw.price && typeof raw.price === 'object' ? raw.price.price : raw.price);
+  const price = parseFloat(priceRaw);
+  const mcap = parseFloat(raw.market_cap);
+  return { price: isNaN(price) ? null : price, mcap: isNaN(mcap) ? null : mcap, symbol: raw.symbol || '' };
+}
+
 function ago(ts) { if (!ts) return 'never'; const s = Math.floor((Date.now() / 1000 - ts)); if (s < 60) return s + 's'; if (s < 3600) return Math.floor(s / 60) + 'm'; return Math.floor(s / 3600) + 'h'; }
 
 function btnText(s) {
@@ -61,9 +69,9 @@ async function showMainMenu(ctx, edit) {
   const kb = new InlineKeyboard()
     .text('📡 Channels', 'menu_channels').text('💰 Wallets', 'menu_wallets')
     .row()
-    .text('📈 Positions', 'menu_positions').text('📈 Stats', 'menu_stats')
+    .text('📈 Positions', 'menu_positions').text('📜 History', 'menu_history')
     .row()
-    .text('❓ Help', 'menu_help');
+    .text('📈 Stats', 'menu_stats').text('❓ Help', 'menu_help');
   if (isTgConnected()) kb.row().text('🔌 Disconnect', 'menu_disconnect');
 
   const conn = isTgConnected() ? '🟢 Connected' : '🔴 Disconnected';
@@ -104,6 +112,7 @@ async function showHelp(ctx, edit) {
 /channels — Manage signal channels
 /wallets — View & manage wallets
 /balance — Show wallet balances
+/history — Recent trade history
 /stats — Bot statistics
 /disconnect — Disconnect Telegram
 /cancel — Cancel current action
@@ -727,8 +736,8 @@ async function showPositions(ctx, edit = true) {
   const { getTokenInfo } = await import('./gmgn.js');
   const lines = [`📈 <b>Positions</b>  ${trades.length} open`, `━━━━━━━━━━━━━━━━`];
   const infoData = (await Promise.allSettled(trades.map(t =>
-    getTokenInfo(t.chain || 'sol', t.token_address).then(i => ({ price: i?.info?.price ? parseFloat(i.info.price) : null, mcap: i?.info?.market_cap ? parseFloat(i.info.market_cap) : null })).catch(() => ({ price: null, mcap: null }))
-  ))).map(r => r.status === 'fulfilled' ? r.value : { price: null, mcap: null });
+    getTokenInfo(t.chain || 'sol', t.token_address).then(i => unpackTokenInfo(i)).catch(() => ({ price: null, mcap: null, symbol: '' }))
+  ))).map(r => r.status === 'fulfilled' ? r.value : { price: null, mcap: null, symbol: '' });
   trades.forEach((t, idx) => {
     const { price, mcap } = infoData[idx];
     const sym = t.token_symbol || addrShort(t.token_address);
@@ -754,6 +763,44 @@ async function showPositions(ctx, edit = true) {
   else { await ctx.reply(text, opts); }
 }
 
+// ───── History ─────
+async function showHistory(ctx, edit = true) {
+  await db.setTelegramId(adminId);
+  const trades = await db.getTradeHistory(12);
+  if (!trades.length) {
+    const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
+    const text = '📜 <b>History</b>\n━━━━━━━━━━━━━━━━\nNo trades yet.';
+    const opts = { parse_mode: 'HTML', reply_markup: kb };
+    if (edit) { try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); } }
+    else { await ctx.reply(text, opts); }
+    return;
+  }
+  const { getTokenInfo } = await import('./gmgn.js');
+  const infoData = (await Promise.allSettled(trades.map(t =>
+    getTokenInfo(t.chain || 'sol', t.token_address).then(i => unpackTokenInfo(i)).catch(() => ({ price: null, mcap: null, symbol: '' }))
+  ))).map(r => r.status === 'fulfilled' ? r.value : { price: null, mcap: null, symbol: '' });
+  const lines = [`📜 <b>Trade History</b>  (last ${trades.length})`, `━━━━━━━━━━━━━━━━`];
+  trades.forEach((t, idx) => {
+    const info = infoData[idx];
+    const sym = info.symbol || t.token_symbol || addrShort(t.token_address);
+    const price = info.price;
+    const mcNow = info.mcap;
+    const buyMc = price && mcNow && t.buy_price_usd ? (t.buy_price_usd / price) * mcNow : null;
+    const pnl = price && t.buy_price_usd ? ((price - t.buy_price_usd) / t.buy_price_usd * 100) : null;
+    const state = t.status === 'closed' ? '🔒 Closed' : '🟢 Open';
+    const pnlStr = t.status === 'closed'
+      ? (t.pnl_percent != null ? (t.pnl_percent >= 0 ? '🟢 +' : '🔴 ') + t.pnl_percent.toFixed(1) + '%' : (t.buy_status === 'failed' ? '❌ failed' : '—'))
+      : (pnl != null ? (pnl >= 0 ? '🟢 +' : '🔴 ') + pnl.toFixed(1) + '%' : '—');
+    const when = ago(t.created_at);
+    lines.push(`<b>${esc(sym)}</b> | 💰 ${t.buy_amount_sol || '?'} SOL · ${state}\n${buyMc ? `💵 Buy ${fmtCur(buyMc)}` : ''}${mcNow ? ` · 📈 ${fmtCur(mcNow)}` : ''} · <b>P&amp;L:</b> ${pnlStr} · ⏱ ${when}`);
+  });
+  const kb = new InlineKeyboard().text('📈 Positions', 'menu_positions').text('🔄 Refresh', 'menu_history').row().text('🔙 Menu', 'menu_main');
+  const opts = { parse_mode: 'HTML', reply_markup: kb };
+  const text = lines.join('\n\n');
+  if (edit) { try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); } }
+  else { await ctx.reply(text, opts); }
+}
+
 async function showPositionDetail(ctx, id) {
   await db.setTelegramId(adminId);
   const t = await db.getTrade(id);
@@ -764,8 +811,9 @@ async function showPositionDetail(ctx, id) {
   let mcap = null;
   try {
     const info = await getTokenInfo(t.chain || 'sol', t.token_address);
-    price = info?.info?.price ? parseFloat(info.info.price) : null;
-    mcap = info?.info?.market_cap ? parseFloat(info.info.market_cap) : null;
+    const unpacked = unpackTokenInfo(info);
+    price = unpacked.price;
+    mcap = unpacked.mcap;
   } catch {}
   const buyMc = price && mcap && t.buy_price_usd ? (t.buy_price_usd / price) * mcap : null;
   const pnl = price && t.buy_price_usd ? ((price - t.buy_price_usd) / t.buy_price_usd * 100) : null;
@@ -899,6 +947,7 @@ function registerCommands() {
 
   bot.command('channels', async ctx => { if (!auth(ctx)) return; showChannels(ctx, 0, false); });
   bot.command('positions', async ctx => { if (!auth(ctx)) return; showPositions(ctx, false); });
+  bot.command('history', async ctx => { if (!auth(ctx)) return; showHistory(ctx, false); });
   bot.command('wallets', async ctx => { if (!auth(ctx)) return; showWallets(ctx, false); });
   bot.command('balance', async ctx => { if (!auth(ctx)) return; showWallets(ctx, false); });
   bot.command('stats', async ctx => { if (!auth(ctx)) return; showStats(ctx); });
@@ -931,6 +980,7 @@ function registerCommands() {
     if (d === 'menu_channels') return showChannels(ctx, 0, true);
     if (d === 'menu_wallets') return showWallets(ctx, true);
     if (d === 'menu_positions') { ctx.answerCallbackQuery(); return showPositions(ctx, true); }
+    if (d === 'menu_history') { ctx.answerCallbackQuery(); return showHistory(ctx, true); }
     if (d === 'menu_groups') { ctx.answerCallbackQuery(); return showGroups(ctx, true); }
     if (d === 'menu_stats') { ctx.answerCallbackQuery(); return showStats(ctx); }
     if (d === 'menu_disconnect') { ctx.answerCallbackQuery({ text: 'Disconnecting...' }); return cmdDisconnect(ctx); }

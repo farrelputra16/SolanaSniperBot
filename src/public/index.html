@@ -772,7 +772,13 @@ async function renderPositions(){
   const closed=all.filter(t=>t.status==='closed');
   // Fetch price + market cap for open positions
   const infos = await Promise.all(open.map(t =>
-    api('/token/info?chain='+(t.chain||'sol')+'&address='+t.token_address).then(r=>({id:t.id,price:r.info?.price?parseFloat(r.info.price):null,mcap:r.info?.market_cap?parseFloat(r.info.market_cap):null})).catch(()=>({id:t.id,price:null,mcap:null}))
+    api('/token/info?chain='+(t.chain||'sol')+'&address='+t.token_address).then(r=>{
+      const inf=r.info||{};
+      const priceRaw=inf.price_usd!=null?inf.price_usd:(inf.price&&typeof inf.price==='object'?inf.price.price:inf.price);
+      const price=parseFloat(priceRaw);
+      const mcap=parseFloat(inf.market_cap)||parseFloat(inf.info&&inf.info.market_cap);
+      return {id:t.id,price:isNaN(price)?null:price,mcap:isNaN(mcap)?null:mcap};
+    }).catch(()=>({id:t.id,price:null,mcap:null}))
   ));
   const infoMap = new Map(infos.map(i=>[i.id,i]));
   return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view closed positions, and set TP/SL exit strategies</div></div>
@@ -784,7 +790,7 @@ async function renderPositions(){
       const cp = info.price;
       const mc = info.mcap;
       const ext = !!t.external;
-      const buyMc = cp && mc && t.buy_price_usd ? (t.buy_price_usd/cp)*mc : null;
+      const buyMc = t.buy_market_cap || (cp && mc && t.buy_price_usd ? (t.buy_price_usd/cp)*mc : null);
       const pnl = cp && t.buy_price_usd ? ((cp-t.buy_price_usd)/t.buy_price_usd)*100 : null;
       const amountCell = ext
         ? (t.usd_value?'$'+Number(t.usd_value).toFixed(2):(t.token_balance?Number(t.token_balance).toFixed(4)+(t.token_symbol?' '+t.token_symbol:''):'-'))
@@ -812,9 +818,11 @@ async function renderPositions(){
 window.viewPosition=async function(id){
   const t=await api('/positions/'+id);
   const info=await api('/token/info?chain='+t.chain+'&address='+t.token_address).catch(()=>({}));
-  const cp=info.info?.price?parseFloat(info.info.price):null;
-  const mc=info.info?.market_cap?parseFloat(info.info.market_cap):null;
-  const buyMc=cp&&mc&&t.buy_price_usd?(t.buy_price_usd/cp)*mc:null;
+  const inf=info.info||{};
+  const priceRaw=inf.price_usd!=null?inf.price_usd:(inf.price&&typeof inf.price==='object'?inf.price.price:inf.price);
+  const cp=parseFloat(priceRaw);
+  const mc=parseFloat(inf.market_cap)||parseFloat(info.info&&info.info.market_cap);
+  const buyMc=t.buy_market_cap||(cp&&mc&&t.buy_price_usd?(t.buy_price_usd/cp)*mc:null);
   const unrealizedPnl=cp&&t.buy_price_usd?((cp-t.buy_price_usd)/t.buy_price_usd)*100:null;
   openModal(`<h2>Position Detail</h2>
 <p class="text-sm text-muted mb-8"><span class="mono">${t.token_symbol||addrShort(t.token_address)}</span></p>

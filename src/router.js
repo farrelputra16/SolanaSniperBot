@@ -1,4 +1,4 @@
-import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder, getUserCredentials, getWalletHoldings } from './gmgn.js';
+import { extractAddresses, getTokenInfo, getTokenSecurity, executeSwap, getOrder, getUserCredentials, getWalletHoldings, getWalletTokenBalance } from './gmgn.js';
 import { getDexScreenerInfo } from './dexscreener.js';
 import * as db from './database.js';
 import { config } from './config.js';
@@ -414,14 +414,19 @@ async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = nul
         if (telegramId) db.setTelegramId(telegramId);
         let priceUsd = report?.price_usd ? parseFloat(report.price_usd) : undefined;
         let symbol;
+        let infoPrice;
+        let infoMcap;
         try {
           const t = await db.getTrade(tradeId);
           if (t) {
             symbol = t.token_symbol && t.token_symbol !== 'PENDING' ? t.token_symbol : undefined;
             if (t.token_address) {
               const info = await getTokenInfo(t.chain || chain, t.token_address);
-              if (!symbol) symbol = info?.info?.symbol || info?.base_token?.symbol || info?.symbol;
-              if (priceUsd == null) priceUsd = info?.info?.price ? parseFloat(info.info.price) : undefined;
+              const raw = info?.data || info?.info || info || {};
+              if (!symbol) symbol = raw.symbol || raw.base_token?.symbol;
+              infoPrice = parseFloat(raw.price_usd ?? raw.price?.price ?? raw.price);
+              infoMcap = parseFloat(raw.market_cap);
+              if (priceUsd == null && !isNaN(infoPrice)) priceUsd = infoPrice;
             }
           }
         } catch {}
@@ -429,6 +434,7 @@ async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = nul
         const upd = { buy_status: 'confirmed', buy_tx: buyTx };
         if (priceUsd != null) upd.buy_price_usd = priceUsd;
         if (symbol) upd.token_symbol = symbol;
+        if (priceUsd != null && infoMcap && infoPrice) upd.buy_market_cap = (priceUsd / infoPrice) * infoMcap;
         await db.updateTrade(tradeId, upd);
         liveEvents.emit('trade_update', { _tid: telegramId || db.getTelegramId(), trade_id: tradeId, status: 'confirmed', buy_tx: buyTx, token_symbol: symbol });
         console.log(`[Router] ✅ Buy confirmed: ${orderId}`);
@@ -485,42 +491,74 @@ export async function backfillPendingTrades() {
 
 export async function reconcileOpenPositions() {
   try {
-    const trades = await db.getOpenTrades();
-    if (!trades.length) return { closed: 0 };
-    const byWallet = {};
-    for (const t of trades) {
-      if (!t.wallet_address || !t.token_address || t.buy_status !== 'confirmed') continue;
-      (byWallet[t.wallet_address] = byWallet[t.wallet_address] || []).push(t);
-    }
+    const now = Date.now();
+    if (now - _lastReconcile < RECONCILE_COOLDOWN) return { closed: 0, reopened: 0 };
+    _lastReconcile = now;
+
+    const [open, all] = await Promise.all([db.getOpenTrades(), db.getTradeHistory(500)]);
     let closed = 0;
-    for (const [wallet, list] of Object.entries(byWallet)) {
-      let holdings = [];
-      try {
-        const r = await getWalletHoldings('sol', wallet, { limit: 300 });
-        holdings = r?.data?.list || r?.data?.holdings || r?.data || [];
-      } catch { continue; }
-      const held = new Set(holdings.map(h => h?.token?.address || h?.address || h?.token_address).filter(Boolean));
-      for (const t of list) {
-        if (!held.has(t.token_address)) {
-          try {
-            db.setTelegramId(t.telegram_id);
-            await db.closeTrade(t.id, { status: 'closed' });
-            console.log(`[Router] Position ${t.id} (${t.token_symbol || t.token_address.slice(0,8)}) not in wallet holdings — marked closed`);
-            liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'closed', reason: 'no_holdings' });
-            closed++;
-          } catch {}
-        }
+    let reopened = 0;
+
+    // Close confirmed trades whose token balance is confirmed 0 (sold on-chain)
+    for (const t of open) {
+      if (!t.wallet_address || !t.token_address || t.buy_status !== 'confirmed') continue;
+      const ageMs = now - (t.created_at ? t.created_at * 1000 : 0);
+      if (ageMs < 5 * 60000) continue;
+      let held;
+      try { held = await walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol'); } catch { continue; }
+      if (held === false) {
+        try {
+          db.setTelegramId(t.telegram_id);
+          await db.closeTrade(t.id, { status: 'closed' });
+          console.log(`[Router] Position ${t.id} confirmed sold (balance 0) — marked closed`);
+          liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'closed', reason: 'no_balance' });
+          closed++;
+        } catch {}
       }
     }
-    return { closed };
+
+    // Reopen trades that were auto-closed (no sell order/tx) but still hold the token
+    const reconcileClosed = all.filter(t => t.status === 'closed' && !t.sell_order_id && !t.sell_tx);
+    for (const t of reconcileClosed) {
+      if (!t.wallet_address || !t.token_address) continue;
+      let held;
+      try { held = await walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol'); } catch { continue; }
+      if (held === true) {
+        try {
+          db.setTelegramId(t.telegram_id);
+          await db.updateTrade(t.id, { status: 'open', closed_at: null });
+          console.log(`[Router] Position ${t.id} still held — reopened`);
+          liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'open', reason: 'reopened' });
+          reopened++;
+        } catch {}
+      }
+    }
+    return { closed, reopened };
   } catch (e) {
     console.log(`[Router] reconcileOpenPositions error: ${e.message}`);
-    return { closed: 0 };
+    return { closed: 0, reopened: 0 };
   }
 }
 
+async function walletHoldsToken(wallet, token, chain = 'sol') {
+  const r = await getWalletTokenBalance(chain, wallet, token);
+  const d = r?.data || r || {};
+  const entry = (d.balances || [])[0] || {};
+  const raw = parseFloat(entry.balance);
+  if (isNaN(raw)) return null;
+  return raw > 0;
+}
+
+let _lastReconcile = 0;
+const RECONCILE_COOLDOWN = 60000;
+
+let _extCache = null;
+let _extTs = 0;
+const EXT_CACHE_TTL = 20000;
+
 export async function getExternalPositions(openTrades = null) {
   try {
+    if (_extCache && Date.now() - _extTs < EXT_CACHE_TTL) return _extCache;
     const open = openTrades || await db.getOpenTrades();
     const tracked = new Set(open.map(t => t.token_address).filter(Boolean));
     const wallets = await db.getAllWallets();
@@ -553,6 +591,8 @@ export async function getExternalPositions(openTrades = null) {
         });
       }
     }
+    _extCache = result;
+    _extTs = Date.now();
     return result;
   } catch (e) {
     console.log(`[Router] getExternalPositions error: ${e.message}`);

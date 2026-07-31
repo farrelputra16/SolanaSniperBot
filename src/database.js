@@ -110,6 +110,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN ignore_duplicate INTEGER DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN track_mode TEXT DEFAULT 'admin'"); } catch {}
   try { sqliteDb.exec("ALTER TABLE signals ADD COLUMN catched_mc REAL DEFAULT 0"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN buy_market_cap REAL DEFAULT 0"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
