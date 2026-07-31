@@ -61,16 +61,15 @@ async function showMainMenu(ctx, edit) {
   const kb = new InlineKeyboard()
     .text('📡 Channels', 'menu_channels').text('💰 Wallets', 'menu_wallets')
     .row()
-    .text('📈 Positions', 'menu_positions').text('📊 Signals', 'menu_signals')
+    .text('📈 Positions', 'menu_positions').text('📈 Stats', 'menu_stats')
     .row()
-    .text('📈 Stats', 'menu_stats').text('❓ Help', 'menu_help');
+    .text('❓ Help', 'menu_help');
   if (isTgConnected()) kb.row().text('🔌 Disconnect', 'menu_disconnect');
 
   const conn = isTgConnected() ? '🟢 Connected' : '🔴 Disconnected';
-  const [channels, wallets, signals] = await Promise.all([
+  const [channels, wallets] = await Promise.all([
     db.getAllChannels().catch(() => []),
     db.getAllWallets().catch(() => []),
-    db.getRecentSignals(1).catch(() => []),
   ]);
   const activeChs = channels.filter(c => c.active).length;
 
@@ -85,7 +84,6 @@ async function showMainMenu(ctx, edit) {
 ${conn}
 📡 ${activeChs}/${channels.length} channels active
 💰 ${wallets.length} wallets · ${totalSol > 0 ? totalSol.toFixed(2) + ' SOL' : '—'}
-${signals.length ? '📊 ' + signals.length + ' signal' : ''}
 ━━━━━━━━━━━━━━━━
 
 <b>Menu</b> — tap to open:`;
@@ -106,7 +104,6 @@ async function showHelp(ctx, edit) {
 /channels — Manage signal channels
 /wallets — View & manage wallets
 /balance — Show wallet balances
-/signals — Recent signals
 /stats — Bot statistics
 /disconnect — Disconnect Telegram
 /cancel — Cancel current action
@@ -676,24 +673,6 @@ async function removeGroup(ctx, id) {
 }
 
 // ───── Signals ─────
-async function showSignals(ctx) {
-  await db.setTelegramId(adminId);
-  const signals = await db.getRecentSignals(10);
-  if (!signals.length) {
-    const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
-    return ctx.reply('📊 <b>Signals</b>\n\nNo signals yet.\nSignals appear here when a CA is detected from your channels.', { parse_mode: 'HTML', reply_markup: kb });
-  }
-  const lines = signals.map((s, i) => {
-    const sym = s.token_symbol || addrShort(s.token_address);
-    const latency = s.latency_ms != null ? (s.latency_ms < 1000 ? `${s.latency_ms}ms` : `${(s.latency_ms / 1000).toFixed(1)}s`) : '?';
-    return `<b>#${i + 1}</b> <code>${esc(s.token_address)}</code>\n${esc(sym)} | 💰 ${fmtCur(s.market_cap)} MC | 💧 ${fmtCur(s.liquidity)} Liq\n📡 ${esc(s.source_channel || '-')} · ⏱ ${latency}`;
-  });
-  const chunks = [];
-  for (let i = 0; i < lines.length; i += 4) chunks.push(lines.slice(i, i + 4).join('\n\n'));
-  for (const chunk of chunks) await ctx.reply(chunk, { parse_mode: 'HTML' });
-  const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
-  await ctx.reply('━━━━━━━━━━━━━━━━\n🔙 Tap Menu to go back', { parse_mode: 'HTML', reply_markup: kb });
-}
 
 // ───── Stats ─────
 async function showStats(ctx) {
@@ -920,7 +899,6 @@ function registerCommands() {
 
   bot.command('channels', async ctx => { if (!auth(ctx)) return; showChannels(ctx, 0, false); });
   bot.command('positions', async ctx => { if (!auth(ctx)) return; showPositions(ctx, false); });
-  bot.command('signals', async ctx => { if (!auth(ctx)) return; showSignals(ctx); });
   bot.command('wallets', async ctx => { if (!auth(ctx)) return; showWallets(ctx, false); });
   bot.command('balance', async ctx => { if (!auth(ctx)) return; showWallets(ctx, false); });
   bot.command('stats', async ctx => { if (!auth(ctx)) return; showStats(ctx); });
@@ -954,7 +932,6 @@ function registerCommands() {
     if (d === 'menu_wallets') return showWallets(ctx, true);
     if (d === 'menu_positions') { ctx.answerCallbackQuery(); return showPositions(ctx, true); }
     if (d === 'menu_groups') { ctx.answerCallbackQuery(); return showGroups(ctx, true); }
-    if (d === 'menu_signals') { ctx.answerCallbackQuery(); return showSignals(ctx); }
     if (d === 'menu_stats') { ctx.answerCallbackQuery(); return showStats(ctx); }
     if (d === 'menu_disconnect') { ctx.answerCallbackQuery({ text: 'Disconnecting...' }); return cmdDisconnect(ctx); }
     if (d === 'menu_help') { ctx.answerCallbackQuery(); return showHelp(ctx, true); }

@@ -519,4 +519,45 @@ export async function reconcileOpenPositions() {
   }
 }
 
+export async function getExternalPositions(openTrades = null) {
+  try {
+    const open = openTrades || await db.getOpenTrades();
+    const tracked = new Set(open.map(t => t.token_address).filter(Boolean));
+    const wallets = await db.getAllWallets();
+    const result = [];
+    for (const w of wallets) {
+      if (!w.address) continue;
+      let holdings = [];
+      try {
+        const r = await getWalletHoldings('sol', w.address, { limit: 300 });
+        holdings = r?.data?.list || r?.data?.holdings || r?.data || [];
+      } catch { continue; }
+      for (const h of holdings) {
+        const tok = h.token || {};
+        const addr = tok.address || h.address || h.token_address;
+        if (!addr || addr === CURRENCY_ADDRESSES.sol || tracked.has(addr)) continue;
+        tracked.add(addr);
+        result.push({
+          id: `ext_${addr.slice(0, 12)}`,
+          external: true,
+          wallet_address: w.address,
+          token_address: addr,
+          token_symbol: tok.symbol || '',
+          chain: 'sol',
+          token_balance: parseFloat(h.balance) || null,
+          usd_value: parseFloat(h.usd_value) || null,
+          status: 'open',
+          buy_status: 'external',
+          source_channel: 'External',
+          created_at: Date.now(),
+        });
+      }
+    }
+    return result;
+  } catch (e) {
+    console.log(`[Router] getExternalPositions error: ${e.message}`);
+    return [];
+  }
+}
+
 

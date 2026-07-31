@@ -317,10 +317,14 @@ export function createWebServer() {
   // ───── Positions ─────
   app.get('/api/positions', async (req, res) => {
     try {
-      const { reconcileOpenPositions } = await import('./router.js');
+      const { reconcileOpenPositions, getExternalPositions } = await import('./router.js');
       await reconcileOpenPositions();
-    } catch {}
-    res.json(await db.getOpenTrades());
+      const open = await db.getOpenTrades();
+      const extern = await getExternalPositions(open);
+      res.json([...open, ...extern]);
+    } catch {
+      res.json(await db.getOpenTrades());
+    }
   });
   app.get('/api/positions/all', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);

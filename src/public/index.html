@@ -777,22 +777,31 @@ async function renderPositions(){
   const infoMap = new Map(infos.map(i=>[i.id,i]));
   return`<div class="page-header"><span class="eyebrow">Trading</span><h2>Positions</h2><div class="sub">Manage open trades, view closed positions, and set TP/SL exit strategies</div></div>
 <div class="shell"><div class="core">
-  <div class="tabs"><div class="tab active" data-tab="pos-open">Open (${open.length})</div><div class="tab" data-tab="pos-closed">Closed (${closed.length})</div></div>
+  <div class="tabs"><div class="tab active" data-tab="pos-open" onclick="switchTab(this)">Open (${open.length})</div><div class="tab" data-tab="pos-closed" onclick="switchTab(this)">Closed (${closed.length})</div></div>
   <div id="pos-open" class="tab-content active">
     ${open.length?`<div class="table-wrap"><table><thead><tr><th>Token</th><th>Amount</th><th>Buy MC</th><th>MC Now</th><th>P&amp;L</th><th>TP / SL</th><th>Age</th><th></th></tr></thead><tbody>${open.map(t=>{
       const info = infoMap.get(t.id)||{};
       const cp = info.price;
       const mc = info.mcap;
+      const ext = !!t.external;
       const buyMc = cp && mc && t.buy_price_usd ? (t.buy_price_usd/cp)*mc : null;
       const pnl = cp && t.buy_price_usd ? ((cp-t.buy_price_usd)/t.buy_price_usd)*100 : null;
+      const amountCell = ext
+        ? (t.usd_value?'$'+Number(t.usd_value).toFixed(2):(t.token_balance?Number(t.token_balance).toFixed(4)+(t.token_symbol?' '+t.token_symbol:''):'-'))
+        : (t.buy_amount_sol||'-')+' SOL';
+      const buyCell = ext ? '<span class="text-muted text-sm">external</span>' : (buyMc?fmtCur(buyMc):'—');
+      const sellBtn = ext
+        ? `<button class="btn btn-sm btn-g" onclick="openExternalSell('${t.wallet_address}','${t.token_address}','${t.token_symbol||''}')">Sell</button>`
+        : `<button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button>`;
+      const detailBtn = ext ? '' : `<button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button>`;
       return`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td>
-<td>${t.buy_amount_sol||'-'} SOL</td>
-<td class="mono text-sm">${buyMc?fmtCur(buyMc):'—'}</td>
+<td>${amountCell}</td>
+<td class="mono text-sm">${buyCell}</td>
 <td class="mono text-sm">${mc?fmtCur(mc):'—'}</td>
 <td>${pnl!=null?'<span class="badge '+(pnl>=0?'badge-g':'badge-r')+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'%</span>':'<span class="text-muted">—</span>'}</td>
 <td class="text-sm">${t.take_profit_percent?'<span class="badge badge-g">TP '+t.take_profit_percent+'%</span>':''} ${t.stop_loss_percent?'<span class="badge badge-r">SL '+t.stop_loss_percent+'%</span>':''} ${!t.take_profit_percent&&!t.stop_loss_percent?'<span class="text-muted">—</span>':''}</td>
-<td class="text-muted text-sm">${ago(t.created_at)}</td>
-<td><div class="btn-group"><button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button><button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button></div></td></tr>`
+<td class="text-muted text-sm">${ext?'—':ago(t.created_at)}</td>
+<td><div class="btn-group">${sellBtn}${detailBtn}</div></td></tr>`
     }).join('')}</tbody></table></div>`:`<div class="empty-state" style="padding:2rem"><div class="ico">📈</div><h4>No open positions</h4><p>Trades appear here after auto-buy executes. Set TP/SL in channel config.</p></div>`}
   </div>
   <div id="pos-closed" class="tab-content">
@@ -854,6 +863,26 @@ window.execSell=async function(tradeId){
       closeModal();toast('Sell executed','ok');renderPage('positions');
     }catch(err){toast(err.message,'err')}
   }
+};
+
+window.openExternalSell=function(wallet,address,symbol){
+  openModal(`<h2>Sell ${symbol||addrShort(address)}</h2>
+<p class="text-sm text-muted mb-8">External position from wallet holdings. Selling does not need a bot trade.</p>
+<div class="form-grid">
+  <div class="form-group"><label>Sell Percentage</label><select id="f-s-pct"><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option></select><span class="hint">Portion of your holdings to sell</span></div>
+  <div class="form-group"><label>Slippage (%)</label><input id="f-s-slip" type="number" value="30"/><span class="hint">Max acceptable price change</span></div>
+</div>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-r" onclick="execExternalSell()">Sell</button></div>`);
+  window._extSell={wallet_address:wallet,token_address:address,token_symbol:symbol||''};
+};
+window.execExternalSell=async function(){
+  const t=window._extSell;
+  const pct=parseInt($('#f-s-pct').value);
+  const slip=parseInt($('#f-s-slip').value)||30;
+  try{
+    await api('/sell',{method:'POST',body:JSON.stringify({chain:'sol',wallet_address:t.wallet_address,token_address:t.token_address,percent:pct,slippage:slip})});
+    closeModal();toast('Sell executed','ok');renderPage('positions');
+  }catch(err){toast(err.message,'err')}
 };
 
 // ═══ SCRAPER ───
@@ -1023,6 +1052,11 @@ ${activities.length?`<div style="max-height:320px;overflow-y:auto">${activities.
 window.switchPfTab=function(t){
   $$('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab==='pf-'+t));
   ['holdings','activity'].forEach(x=>document.getElementById('pf-'+x).classList.toggle('active',x===t));
+};
+window.switchTab=function(el){
+  const t=el.dataset.tab;
+  el.parentElement.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===el));
+  $$('.tab-content').forEach(x=>x.classList.toggle('active',x.id===t));
 };
 
 window.openGroupForm=async function(){
