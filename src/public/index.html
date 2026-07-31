@@ -793,16 +793,16 @@ async function renderPositions(){
       const mc = info.mcap;
       const ext = !!t.external;
       const buyMc = t.buy_market_cap || (cp && mc && t.buy_price_usd ? (t.buy_price_usd/cp)*mc : null);
-      const pnl = cp && t.buy_price_usd ? ((cp-t.buy_price_usd)/t.buy_price_usd)*100 : null;
+      const pnl = (ext && t.pnl_percent!=null) ? t.pnl_percent : (cp && t.buy_price_usd ? ((cp-t.buy_price_usd)/t.buy_price_usd)*100 : null);
       const amountCell = ext
-        ? (t.usd_value?'$'+Number(t.usd_value).toFixed(2):(t.token_balance?Number(t.token_balance).toFixed(4)+(t.token_symbol?' '+t.token_symbol:''):'-'))
+        ? ((t.token_balance?Number(t.token_balance).toFixed(2)+' '+t.token_symbol:'')+(t.usd_value?' ($'+Number(t.usd_value).toFixed(2)+')':''))
         : (t.buy_amount_sol||'-')+' SOL';
-      const buyCell = ext ? '<span class="text-muted text-sm">external</span>' : (buyMc?fmtCur(buyMc):'—');
+      const buyCell = buyMc?fmtCur(buyMc):'—';
       const sellBtn = ext
         ? `<button class="btn btn-sm btn-g" onclick="openExternalSell('${t.wallet_address}','${t.token_address}','${t.token_symbol||''}')">Sell</button>`
         : `<button class="btn btn-sm btn-g" onclick="openSell(${t.id})">Sell</button>`;
       const detailBtn = ext ? '' : `<button class="btn btn-sm btn-ghost" onclick="viewPosition(${t.id})">Detail</button>`;
-      return`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span><br><span class="text-muted text-sm">${t.source_channel||''}</span></td>
+      return`<tr><td><span class="mono addr" title="${t.token_address}" style="cursor:pointer" onclick="openTokenDetail('${t.token_address}',0)">${t.token_symbol||addrShort(t.token_address)}</span>${ext?' <span class="badge badge-g">EXT</span>':''}<br><span class="text-muted text-sm">${ext?'Wallet holdings':'<span class="mono">'+t.source_channel+'</span>'}</span></td>
 <td>${amountCell}</td>
 <td class="mono text-sm">${buyCell}</td>
 <td class="mono text-sm">${mc?fmtCur(mc):'—'}</td>

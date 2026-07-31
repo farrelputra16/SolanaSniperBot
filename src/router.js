@@ -430,7 +430,8 @@ async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = nul
               const raw = info?.data || info?.info || info || {};
               if (!symbol) symbol = raw.symbol || raw.base_token?.symbol;
               infoPrice = parseFloat(raw.price_usd ?? raw.price?.price ?? raw.price);
-              infoMcap = parseFloat(raw.market_cap);
+              const infoSupply = parseFloat(raw.circulating_supply) || parseFloat(raw.total_supply);
+              infoMcap = parseFloat(raw.market_cap) || (infoPrice && infoSupply ? infoPrice * infoSupply : NaN);
               if (priceUsd == null && !isNaN(infoPrice)) priceUsd = infoPrice;
             }
           }
@@ -618,7 +619,12 @@ export async function getExternalPositions(openTrades = null) {
         if (!addr || addr === CURRENCY_ADDRESSES.sol || STABLECOIN_ADDRESSES.has(addr) || tracked.has(addr)) continue;
         if (parseFloat(h.balance) <= 0) continue;
         tracked.add(addr);
-        result.push({
+        const supply = parseFloat(tok.total_supply) || parseFloat(tok.max_supply);
+        const accuAmt = parseFloat(h.accu_amount);
+        const accuCost = parseFloat(h.accu_cost);
+        const avgCost = accuAmt > 0 && accuCost > 0 ? accuCost / accuAmt : NaN;
+        const upnl = parseFloat(h.unrealized_profit_pnl);
+        const entry = {
           id: `ext_${addr.slice(0, 12)}`,
           external: true,
           wallet_address: w.address,
@@ -627,11 +633,15 @@ export async function getExternalPositions(openTrades = null) {
           chain: 'sol',
           token_balance: parseFloat(h.balance) || null,
           usd_value: parseFloat(h.usd_value) || null,
+          buy_price_usd: !isNaN(avgCost) ? avgCost : null,
+          buy_market_cap: !isNaN(avgCost) && supply ? avgCost * supply : null,
+          pnl_percent: !isNaN(upnl) ? upnl * 100 : null,
           status: 'open',
           buy_status: 'external',
           source_channel: 'External',
           created_at: Date.now(),
-        });
+        };
+        result.push(entry);
       }
     }
     _extCache = result;

@@ -764,11 +764,13 @@ async function showPositions(ctx, edit = true) {
     const info = extInfoData[idx];
     const sym = info.symbol || t.token_symbol || addrShort(t.token_address);
     const idxNum = _extPosIdx++;
-    _extPos.set(idxNum, { wallet: t.wallet_address, token: t.token_address, symbol: sym, balance: t.token_balance, usd: t.usd_value });
+    _extPos.set(idxNum, { wallet: t.wallet_address, token: t.token_address, symbol: sym, balance: t.token_balance, usd: t.usd_value, pnl: t.pnl_percent });
     const balStr = t.token_balance != null ? Number(t.token_balance).toFixed(2) + ' ' + sym : (t.usd_value != null ? '$' + Number(t.usd_value).toFixed(2) : '?');
     const mcStr = info.mcap ? fmtCur(info.mcap) : '?';
+    const buyStr = t.buy_market_cap ? ` · Buy ${fmtCur(t.buy_market_cap)}` : '';
+    const pnlStr = t.pnl_percent != null ? (t.pnl_percent >= 0 ? '🟢 +' : '🔴 ') + t.pnl_percent.toFixed(1) + '%' : '—';
     const usdStr = t.usd_value != null ? ' · 💵 $' + Number(t.usd_value).toFixed(2) : '';
-    lines.push(`<b>${esc(sym)}</b> | 🧰 ${balStr}\n📈 MC: ${mcStr}${usdStr} · <b>External</b>`);
+    lines.push(`<b>${esc(sym)}</b> <span class="tg-spoiler">🧰 external</span> | ${balStr}\n📈 MC: ${mcStr}${buyStr} · <b>P&amp;L:</b> ${pnlStr}${usdStr}`);
   });
 
   const kb = new InlineKeyboard();
@@ -925,6 +927,7 @@ async function showExternalPositionDetail(ctx, idx) {
   } catch {}
   const balStr = e.balance != null ? Number(e.balance).toFixed(2) : '?';
   const usdStr = e.usd != null ? ' · 💵 $' + Number(e.usd).toFixed(2) : '';
+  const pnlStr = e.pnl != null ? (e.pnl >= 0 ? '🟢 +' : '🔴 ') + e.pnl.toFixed(2) + '%' : '—';
   const lines = [
     `🧰 <b>${esc(e.symbol)}</b> <span class="tg-spoiler">external</span>`,
     `━━━━━━━━━━━━━━━━`,
@@ -933,6 +936,7 @@ async function showExternalPositionDetail(ctx, idx) {
     `━━━━━━━━━━━━━━━━`,
     `🪙 Balance: <b>${balStr}</b>${usdStr}`,
     `📈 MC Now: ${mcap ? fmtCur(mcap) : '?'}${price ? ` · Price ${price < 0.01 ? price.toFixed(8) : price.toFixed(5)}` : ''}`,
+    `📊 P&amp;L: ${pnlStr}`,
     `📡 Held in your wallet (not a bot buy)`,
   ].join('\n');
 
