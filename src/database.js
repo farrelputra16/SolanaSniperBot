@@ -539,6 +539,12 @@ export async function updateTrade(id, data) {
   const keys = Object.keys(data);
   sqliteDb.prepare(`UPDATE trades SET ${keys.map(k => `${k}=?`).join(',')} WHERE id=?` + _tidFilter()).run(...keys.map(k => data[k]), Number(id), ...(_tid() ? [_tid()] : []));
 }
+export async function getStuckTrades() {
+  if (!sqliteMode && mdb) {
+    return collections.trades.find({ buy_status: { $in: ['pending', 'timeout'] }, buy_order_id: { $nin: ['', null] } }).toArray();
+  }
+  return sqliteDb.prepare("SELECT * FROM trades WHERE buy_status IN ('pending','timeout') AND buy_order_id IS NOT NULL AND buy_order_id != ''").all();
+}
 
 // ───── Strategy Orders ─────
 export async function saveStrategyOrder(data) {

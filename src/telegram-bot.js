@@ -28,7 +28,6 @@ export function isBotActive() { return !!bot; }
 
 // ───── State ─────
 const _awaitingLink = new Set();
-const _pendingSignals = new Map();
 const _awaitingPosTPSL = new Map(); // uid -> { tradeId, type: 'tp' | 'sl' }
 
 // ───── Helpers ─────
@@ -880,29 +879,6 @@ async function handlePositionTPSLInput(ctx, text) {
 }
 
 function attachLiveForwarding() {
-  liveEvents.on('signal', async data => {
-    if (!adminId || (data._tid && data._tid !== adminId)) return;
-    if (data.id != null) _pendingSignals.set(String(data.id), { ts: Date.now() });
-  });
-
-  liveEvents.on('signal_update', async data => {
-    if (!adminId || (data._tid && data._tid !== adminId)) return;
-    const sid = String(data.id);
-    if (!_pendingSignals.has(sid)) return;
-    const sym = data.token_symbol || addrShort(data.token_address);
-    const latency = data.latency_ms != null ? (data.latency_ms < 1000 ? `${data.latency_ms}ms` : `${(data.latency_ms / 1000).toFixed(1)}s`) : '?';
-    const catchedMc = data.catched_mc || data.market_cap || 0;
-    const hasVol = data.volume_24h > 0;
-    const volStr = data.volume_24h > 1000000 ? `${(data.volume_24h / 1000000).toFixed(1)}M` : data.volume_24h > 1000 ? `${(data.volume_24h / 1000).toFixed(1)}K` : data.volume_24h.toFixed(0);
-    const lvl = data.volume_24h > 500000 ? '🔥' : data.volume_24h > 100000 ? '⚡' : '';
-    try {
-      await bot.api.sendMessage(adminId,
-        `📡 <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n📡 ${esc(data.source_channel || '')} · ⏱ ${latency}\n💰 ${fmtCur(catchedMc)} MC catched at · 💧 ${fmtCur(data.liquidity)} Liq${hasVol ? ` · 📊 ${volStr} ${lvl}` : ''}`,
-        { parse_mode: 'HTML' });
-    } catch {}
-    _pendingSignals.delete(sid);
-  });
-
   liveEvents.on('trade', async data => {
     if (!adminId || (data._tid && data._tid !== adminId)) return;
     const sym = data.token_symbol || addrShort(data.token_address);

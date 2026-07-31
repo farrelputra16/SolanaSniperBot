@@ -272,6 +272,7 @@ function blindBuyWallet() {
 async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
   if (!rule.auto_buy && !rule.blind_buy) return;
   if (rule.track_only) return;
+  if (rule.telegram_id) db.setTelegramId(rule.telegram_id);
 
   if (rule.blind_buy) {
     const wallet = blindBuyWallet();
@@ -289,12 +290,13 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       const o = result.data || result;
       console.log(`⚡ BLIND ${address.slice(0,8)}... | ${Date.now()-t0}ms | order=${o.order_id}`);
       db.addScraperLog(sourceChannel, 'info', `Blind buy ${address}: order=${o.order_id}`).catch(() => {});
+      db.setTelegramId(rule.telegram_id);
       db.createTrade({
         wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
         chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
         buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: 0,
         source_channel: sourceChannel,
-      }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid); }).catch(() => {});
+      }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid, null, rule.telegram_id); }).catch(() => {});
     }).catch(err => {
       console.error(`[Router] Blind buy ${address} gagal:`, err.message);
       db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
@@ -380,7 +382,7 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
         buy_latency_ms: buyLatency, status: 'pending', trade_id: tradeId,
       });
 
-      pollOrder(orderId, chain, tradeId, creds);
+      pollOrder(orderId, chain, tradeId, creds, rule.telegram_id);
     } catch (err) {
       const errCode = err.code ? `[${err.code}] ` : '';
       let detail = err.body?.message || err.body?.error || err.message || '';
@@ -394,9 +396,10 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
   }));
 }
 
-async function pollOrder(orderId, chain, tradeId, creds = null) {
+async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = null) {
   let attempts = 0;
   const maxAttempts = 15;
+  if (telegramId) db.setTelegramId(telegramId);
 
   while (attempts < maxAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -406,19 +409,36 @@ async function pollOrder(orderId, chain, tradeId, creds = null) {
 
       if (status === 'confirmed' || status === 'successful' || status === 'success' || status === 'filled') {
         const report = result.data?.report || result.report;
-        await db.updateTrade(tradeId, {
-          buy_status: 'confirmed',
-          buy_tx: report?.hash || result.data?.hash || result.hash,
-          buy_price_usd: report?.price_usd ? parseFloat(report.price_usd) : undefined,
-        });
-        liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: tradeId, status: 'confirmed', buy_tx: report?.hash || result.data?.hash || result.hash });
+        const buyTx = report?.hash || result.data?.hash || result.hash;
+
+        if (telegramId) db.setTelegramId(telegramId);
+        let priceUsd = report?.price_usd ? parseFloat(report.price_usd) : undefined;
+        let symbol;
+        try {
+          const t = await db.getTrade(tradeId);
+          if (t) {
+            symbol = t.token_symbol && t.token_symbol !== 'PENDING' ? t.token_symbol : undefined;
+            if (t.token_address) {
+              const info = await getTokenInfo(t.chain || chain, t.token_address);
+              if (!symbol) symbol = info?.info?.symbol || info?.base_token?.symbol || info?.symbol;
+              if (priceUsd == null) priceUsd = info?.info?.price ? parseFloat(info.info.price) : undefined;
+            }
+          }
+        } catch {}
+
+        const upd = { buy_status: 'confirmed', buy_tx: buyTx };
+        if (priceUsd != null) upd.buy_price_usd = priceUsd;
+        if (symbol) upd.token_symbol = symbol;
+        await db.updateTrade(tradeId, upd);
+        liveEvents.emit('trade_update', { _tid: telegramId || db.getTelegramId(), trade_id: tradeId, status: 'confirmed', buy_tx: buyTx, token_symbol: symbol });
         console.log(`[Router] ✅ Buy confirmed: ${orderId}`);
         return;
       }
 
       if (status === 'failed' || status === 'expired') {
+        if (telegramId) db.setTelegramId(telegramId);
         await db.updateTrade(tradeId, { buy_status: 'failed', status: 'failed' });
-        liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: tradeId, status: 'failed' });
+        liveEvents.emit('trade_update', { _tid: telegramId || db.getTelegramId(), trade_id: tradeId, status: 'failed' });
         console.log(`[Router] ❌ Buy failed: ${orderId}`);
         return;
       }
@@ -435,9 +455,32 @@ async function pollOrder(orderId, chain, tradeId, creds = null) {
     }
   }
 
+  if (telegramId) db.setTelegramId(telegramId);
   await db.updateTrade(tradeId, { buy_status: 'timeout' });
-  liveEvents.emit('trade_update', { _tid: db.getTelegramId(), trade_id: tradeId, status: 'timeout' });
+  liveEvents.emit('trade_update', { _tid: telegramId || db.getTelegramId(), trade_id: tradeId, status: 'timeout' });
   console.log(`[Router] ⏰ Buy polling timeout: ${orderId} (order still may confirm later)`);
+}
+
+export async function backfillPendingTrades() {
+  try {
+    const stuck = await db.getStuckTrades();
+    if (!stuck.length) return;
+    const byUser = {};
+    for (const t of stuck) {
+      const tid = t.telegram_id || '';
+      (byUser[tid] = byUser[tid] || []).push(t);
+    }
+    for (const [tid, trades] of Object.entries(byUser)) {
+      db.setTelegramId(tid);
+      const creds = await getUserCredentials(tid || null);
+      console.log(`[Router] Backfilling ${trades.length} stale pending trades (user ${tid || 'env'})...`);
+      for (const t of trades) {
+        pollOrder(t.buy_order_id, t.chain || 'sol', t.id, creds, tid || null).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.log(`[Router] backfillPendingTrades error: ${e.message}`);
+  }
 }
 
 
