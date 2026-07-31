@@ -60,6 +60,15 @@ Login flow is done via the web dashboard, not CLI:
 7. Flood wait errors caught → returns `waitSeconds` in response
 8. DC selection: dropdown in login form (Auto / US / Europe / Singapore), saved to `tg_dc` localStorage + `telegram_dc` DB setting
 
+## Telegram Bot (grammy)
+- `TELEGRAM_BOT_TOKEN` env enables bot. Single admin via `BOT_ADMIN_IDS` or first user.
+- Commands: `/start`, `/help`, `/channels`, `/positions`, `/signals`, `/wallets`, `/balance`, `/stats`, `/disconnect`, `/cancel`
+- **Positions** (`showPositions`/`showPositionDetail`/`executePositionSell`): list open trades with live P&L (parallel `getTokenInfo`), per-position detail with Sell 25/50/100% (inline confirm), Set TP/SL via `_awaitingPosTPSL` text input.
+  - Sell ≥100% → `closeTrade`; partial sell → `updateTrade` reduces `buy_amount_sol`, keeps position open.
+  - Partial/100% sell uses `executeSell(..., creds)` from `getUserCredentials(t.telegram_id || adminId)`.
+- **Wallet selection**: in `/wallets` each row has ☆ button → `db.setActiveWallet(w.id)` (used when rule `wallet_group_id` is 0/absent). ⭐ marks the active wallet.
+- TP/SL set on positions is stored locally via `updateTrade` (take_profit_percent/stop_loss_percent); GMGN condition orders are still set at buy time via channel rule.
+
 ## Auth System
 - Optional password via `DASHBOARD_PASSWORD` env
 - Primary auth: Telegram login → `authToken` returned after verify-code/password

@@ -29,6 +29,7 @@ export function isBotActive() { return !!bot; }
 // ───── State ─────
 const _awaitingLink = new Set();
 const _pendingSignals = new Map();
+const _awaitingPosTPSL = new Map(); // uid -> { tradeId, type: 'tp' | 'sl' }
 
 // ───── Helpers ─────
 function esc(s) { return s ? String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]) : ''; }
@@ -61,9 +62,9 @@ async function showMainMenu(ctx, edit) {
   const kb = new InlineKeyboard()
     .text('📡 Channels', 'menu_channels').text('💰 Wallets', 'menu_wallets')
     .row()
-    .text('📊 Signals', 'menu_signals').text('📈 Stats', 'menu_stats')
+    .text('📈 Positions', 'menu_positions').text('📊 Signals', 'menu_signals')
     .row()
-    .text('❓ Help', 'menu_help');
+    .text('📈 Stats', 'menu_stats').text('❓ Help', 'menu_help');
   if (isTgConnected()) kb.row().text('🔌 Disconnect', 'menu_disconnect');
 
   const conn = isTgConnected() ? '🟢 Connected' : '🔴 Disconnected';
@@ -477,11 +478,7 @@ async function showWallets(ctx, edit = true) {
   const wallets = await db.getAllWallets();
   if (!wallets.length) {
     const kb = new InlineKeyboard().text('➕ Add Wallet', 'wallet_add').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
-    const text = `💰 <b>Wallets</b>
-━━━━━━━━━━━━━━━━
-No wallets yet.
-
-Add your first wallet to start trading.`;
+    const text = `💰 <b>Wallets</b>\n━━━━━━━━━━━━━━━━\nNo wallets yet.\n\nAdd your first wallet to start trading.`;
     const opts = { parse_mode: 'HTML', reply_markup: kb };
     if (edit) {
       try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); }
@@ -495,13 +492,17 @@ Add your first wallet to start trading.`;
   for (const w of wallets) {
     const label = w.label || addrShort(w.address);
     let sol = await fetchSolBalance(w.address);
-    lines.push(`<b>${esc(label)}</b>\n<code>${esc(w.address)}</code>\n💳 ${sol != null ? sol.toFixed(4) + ' SOL' : '?'}`);
+    const star = w.active ? '⭐ ' : '';
+    lines.push(`${star}<b>${esc(label)}</b>\n<code>${esc(w.address)}</code>\n💳 ${sol != null ? sol.toFixed(4) + ' SOL' : '?'}`);
   }
+  lines.push(`━━━━━━━━━━━━━━━━`, `⭐ = active buy wallet. Tap ⭐ on a wallet to select it as the buy wallet.`);
 
   const kb = new InlineKeyboard();
   for (const w of wallets) {
     const label = btnText(w.label || addrShort(w.address));
-    kb.text(`${label}`, `wallet_v_${w.id}`).text('🗑', `wallet_d_${w.id}`).row();
+    kb.text(`${label}`, `wallet_v_${w.id}`)
+      .text(w.active ? '⭐' : '☆', `wallet_act_${w.id}`)
+      .text('🗑', `wallet_d_${w.id}`).row();
   }
   kb.text('➕ Add Wallet', 'wallet_add').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
 
@@ -729,6 +730,155 @@ Tap 🔄 to refresh`,
 }
 
 // ───── Signal Forwarding ─────
+
+// ───── Positions ─────
+async function showPositions(ctx, edit = true) {
+  await db.setTelegramId(adminId);
+  const trades = await db.getOpenTrades();
+  if (!trades.length) {
+    const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
+    const text = '📈 <b>Positions</b>\n━━━━━━━━━━━━━━━━\nNo open positions.\n\nTrades appear here after auto-buy executes.';
+    const opts = { parse_mode: 'HTML', reply_markup: kb };
+    if (edit) { try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); } }
+    else { await ctx.reply(text, opts); }
+    return;
+  }
+
+  const { getTokenInfo } = await import('./gmgn.js');
+  const lines = [`📈 <b>Positions</b>  ${trades.length} open`, `━━━━━━━━━━━━━━━━`];
+  const priceData = (await Promise.allSettled(trades.map(t =>
+    getTokenInfo(t.chain || 'sol', t.token_address).then(i => i?.info?.price ? parseFloat(i.info.price) : null).catch(() => null)
+  ))).map(r => r.status === 'fulfilled' ? r.value : null);
+  trades.forEach((t, idx) => {
+    const price = priceData[idx];
+    const sym = t.token_symbol || addrShort(t.token_address);
+    const pnl = price && t.buy_price_usd ? ((price - t.buy_price_usd) / t.buy_price_usd * 100) : null;
+    const pnlStr = pnl != null ? (pnl >= 0 ? '🟢 +' : '🔴 ') + pnl.toFixed(1) + '%' : '—';
+    const tpSl = [t.take_profit_percent ? `TP ${t.take_profit_percent}%` : '', t.stop_loss_percent ? `SL ${t.stop_loss_percent}%` : ''].filter(Boolean).join(' / ');
+    lines.push(`<b>${esc(sym)}</b> | 💰 ${t.buy_amount_sol || '?'} SOL\n<b>P&amp;L:</b> ${pnlStr}${tpSl ? `\n<b>${esc(tpSl)}</b>` : ''}`);
+  });
+
+  const kb = new InlineKeyboard();
+  for (let i = 0; i < trades.length; i++) {
+    const sym = btnText(trades[i].token_symbol || addrShort(trades[i].token_address));
+    kb.text(`${i+1}. ${sym}`, `pos_v_${trades[i].id}`).row();
+  }
+  kb.text('🔄 Refresh', 'menu_positions').text('🔙 Menu', 'menu_main');
+
+  const opts = { parse_mode: 'HTML', reply_markup: kb };
+  const text = lines.join('\n\n');
+  if (edit) { try { await ctx.editMessageText(text, opts); } catch { await ctx.reply(text, opts); } }
+  else { await ctx.reply(text, opts); }
+}
+
+async function showPositionDetail(ctx, id) {
+  await db.setTelegramId(adminId);
+  const t = await db.getTrade(id);
+  if (!t) return ctx.answerCallbackQuery({ text: 'Not found' });
+
+  const { getTokenInfo } = await import('./gmgn.js');
+  let price = null;
+  try {
+    const info = await getTokenInfo(t.chain || 'sol', t.token_address);
+    price = info?.info?.price ? parseFloat(info.info.price) : null;
+  } catch {}
+  const pnl = price && t.buy_price_usd ? ((price - t.buy_price_usd) / t.buy_price_usd * 100) : null;
+  const pnlStr = pnl != null ? (pnl >= 0 ? '🟢 +' : '🔴 ') + pnl.toFixed(2) + '%' : '—';
+
+  const lines = [
+    `📈 <b>${esc(t.token_symbol || addrShort(t.token_address))}</b>`,
+    `━━━━━━━━━━━━━━━━`,
+    `💳 Wallet: <code>${esc(t.wallet_address?.slice(0,8))}...</code>`,
+    `<code>${esc(t.token_address)}</code>`,
+    `━━━━━━━━━━━━━━━━`,
+    `💰 <b>${t.buy_amount_sol || '?'} SOL</b>`,
+    `💵 Buy: $${t.buy_price_usd ? Number(t.buy_price_usd).toFixed(8) : '?'}`,
+    `💵 Now: ${price ? '$' + price.toFixed(8) : '?'}`,
+    `📊 P&amp;L: ${pnlStr}`,
+    `🎯 TP: ${t.take_profit_percent ? t.take_profit_percent + '%' : '—'}`,
+    `🛑 SL: ${t.stop_loss_percent ? t.stop_loss_percent + '%' : '—'}`,
+    `📡 ${esc(t.source_channel || '')}`,
+    `⏱ ${ago(t.created_at)}`,
+  ].join('\n');
+
+  const kb = new InlineKeyboard()
+    .text('🔴 Sell 25%', `pos_s_${t.id}_25`)
+    .text('🔴 Sell 50%', `pos_s_${t.id}_50`)
+    .text('🔴 Sell 100%', `pos_s_${t.id}_100`)
+    .row()
+    .text(`🎯 Set TP`, `pos_tp_${t.id}`)
+    .text(`🛑 Set SL`, `pos_sl_${t.id}`)
+    .row()
+    .text('🔄 Refresh', `pos_v_${t.id}`)
+    .text('🔙 Positions', 'menu_positions');
+
+  ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines, { parse_mode: 'HTML', reply_markup: kb }));
+}
+
+async function executePositionSell(ctx, tradeId, percent, confirm = false) {
+  await db.setTelegramId(adminId);
+  const t = await db.getTrade(tradeId);
+  if (!t) return ctx.answerCallbackQuery({ text: 'Not found' });
+  if (t.status === 'closed') return ctx.answerCallbackQuery({ text: 'Already closed' });
+
+  if (!confirm) {
+    const kb = new InlineKeyboard()
+      .text(`✅ Confirm Sell ${percent}%`, `pos_confirm_sell_${tradeId}_${percent}`)
+      .text('❌ Cancel', `pos_v_${tradeId}`);
+    ctx.editMessageText(
+      `⚠️ <b>Confirm Sell</b>\n\nSell <b>${percent}%</b> of <b>${esc(t.token_symbol || addrShort(t.token_address))}</b>?\nWallet: <code>${esc(t.wallet_address?.slice(0,8))}...</code>\nAmount: ${(t.buy_amount_sol * percent / 100).toFixed(4)} SOL`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    ).catch(() => {});
+    return;
+  }
+
+  try {
+    const { executeSell, getUserCredentials } = await import('./gmgn.js');
+    const creds = await getUserCredentials(t.telegram_id || adminId);
+    const result = await executeSell(t.chain || 'sol', t.wallet_address, t.token_address, percent, { slippage: 30 }, creds);
+    const orderId = result.data?.order_id || result.order_id;
+
+    if (percent >= 100) {
+      await db.closeTrade(t.id, { sell_order_id: orderId, sell_amount_sol: t.buy_amount_sol, status: 'closed' });
+    } else {
+      const remaining = Math.max(0, t.buy_amount_sol * (100 - percent) / 100);
+      await db.updateTrade(t.id, { buy_amount_sol: remaining, sell_order_id: orderId, sell_amount_sol: t.buy_amount_sol * percent / 100 });
+    }
+
+    ctx.editMessageText(
+      `✅ <b>Sell Executed</b>\n\n${percent}% of <b>${esc(t.token_symbol || addrShort(t.token_address))}</b>\nOrder: <code>${esc(orderId)}</code>${percent < 100 ? `\nRemaining: ${(t.buy_amount_sol * (100 - percent) / 100).toFixed(4)} SOL` : ''}`,
+      { parse_mode: 'HTML', reply_markup: new InlineKeyboard().text('📈 Positions', 'menu_positions').text('🔙 Menu', 'menu_main') }
+    ).catch(() => {});
+  } catch (err) {
+    ctx.answerCallbackQuery({ text: `Sell failed: ${err.message.slice(0,60)}` });
+  }
+}
+
+async function handlePositionTPSLInput(ctx, text) {
+  const uid = String(ctx.from.id);
+  const state = _awaitingPosTPSL.get(uid);
+  if (!state) return;
+  _awaitingPosTPSL.delete(uid);
+
+  await db.setTelegramId(adminId);
+  const t = await db.getTrade(state.tradeId);
+  if (!t) return ctx.reply('❌ Position not found.', { parse_mode: 'HTML' });
+
+  const pct = parseFloat(text.trim());
+  if (isNaN(pct) || pct <= 0 || pct > 1000) {
+    return ctx.reply('❌ Invalid percentage. Enter a number (1-1000).', { parse_mode: 'HTML' });
+  }
+
+  const field = state.type === 'tp' ? 'take_profit_percent' : 'stop_loss_percent';
+  await db.updateTrade(t.id, { [field]: pct });
+
+  const label = state.type === 'tp' ? 'Take Profit' : 'Stop Loss';
+  ctx.reply(`✅ <b>${label}</b> set to <b>${pct}%</b> for <b>${esc(t.token_symbol || addrShort(t.token_address))}</b>`, {
+    parse_mode: 'HTML',
+    reply_markup: new InlineKeyboard().text('📈 View Position', `pos_v_${t.id}`).text('🔙 Positions', 'menu_positions'),
+  });
+}
+
 function attachLiveForwarding() {
   liveEvents.on('signal', async data => {
     if (!adminId || (data._tid && data._tid !== adminId)) return;
@@ -777,6 +927,7 @@ function registerCommands() {
     _awaitingRuleInput.delete(uid);
     _awaitingGroupName.delete(uid);
     _awaitingGroupWallets.delete(uid);
+    _awaitingPosTPSL.delete(uid);
     _pendingGroupId = null;
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
     ctx.reply('Cancelled.', { parse_mode: 'HTML', reply_markup: kb });
@@ -784,6 +935,7 @@ function registerCommands() {
   });
 
   bot.command('channels', async ctx => { if (!auth(ctx)) return; showChannels(ctx, 0, false); });
+  bot.command('positions', async ctx => { if (!auth(ctx)) return; showPositions(ctx, false); });
   bot.command('signals', async ctx => { if (!auth(ctx)) return; showSignals(ctx); });
   bot.command('wallets', async ctx => { if (!auth(ctx)) return; showWallets(ctx, false); });
   bot.command('balance', async ctx => { if (!auth(ctx)) return; showWallets(ctx, false); });
@@ -800,6 +952,7 @@ function registerCommands() {
     if (_awaitingRuleInput.has(uid)) return handleRuleInput(ctx, ctx.message.text);
     if (_awaitingGroupName.has(uid)) return handleGroupNameInput(ctx, ctx.message.text);
     if (_awaitingGroupWallets.has(uid)) return handleGroupWalletInput(ctx, ctx.message.text);
+    if (_awaitingPosTPSL.has(uid)) return handlePositionTPSLInput(ctx, ctx.message.text);
 
     if (!auth(ctx)) return;
     showMainMenu(ctx, false);
@@ -815,6 +968,7 @@ function registerCommands() {
     if (d === 'menu_main') return showMainMenu(ctx, true);
     if (d === 'menu_channels') return showChannels(ctx, 0, true);
     if (d === 'menu_wallets') return showWallets(ctx, true);
+    if (d === 'menu_positions') { ctx.answerCallbackQuery(); return showPositions(ctx, true); }
     if (d === 'menu_groups') { ctx.answerCallbackQuery(); return showGroups(ctx, true); }
     if (d === 'menu_signals') { ctx.answerCallbackQuery(); return showSignals(ctx); }
     if (d === 'menu_stats') { ctx.answerCallbackQuery(); return showStats(ctx); }
@@ -1045,6 +1199,32 @@ function registerCommands() {
       return startRuleInput(ctx, id, 'stop_loss_percent', '🛑 <b>Stop Loss</b>\n\nEnter percentage.\nExample: <code>20</code> for 20%');
     }
 
+    // ───── Positions ─────
+    const posViewMatch = d.match(/^pos_v_(\d+)$/);
+    if (posViewMatch) { ctx.answerCallbackQuery(); return showPositionDetail(ctx, parseInt(posViewMatch[1])); }
+
+    const posSellMatch = d.match(/^pos_s_(\d+)_(\d+)$/);
+    if (posSellMatch) { ctx.answerCallbackQuery(); return executePositionSell(ctx, parseInt(posSellMatch[1]), parseInt(posSellMatch[2]), false); }
+
+    const posConfirmSellMatch = d.match(/^pos_confirm_sell_(\d+)_(\d+)$/);
+    if (posConfirmSellMatch) { ctx.answerCallbackQuery({ text: 'Selling...' }); return executePositionSell(ctx, parseInt(posConfirmSellMatch[1]), parseInt(posConfirmSellMatch[2]), true); }
+
+    const posTPMatch = d.match(/^pos_tp_(\d+)$/);
+    if (posTPMatch) {
+      const tid = parseInt(posTPMatch[1]);
+      _awaitingPosTPSL.set(String(ctx.from.id), { tradeId: tid, type: 'tp' });
+      ctx.answerCallbackQuery();
+      return ctx.reply('🎯 <b>Set Take Profit</b>\n\nEnter TP percentage.\nExample: <code>50</code> for 50%', { parse_mode: 'HTML' });
+    }
+
+    const posSLMatch = d.match(/^pos_sl_(\d+)$/);
+    if (posSLMatch) {
+      const tid = parseInt(posSLMatch[1]);
+      _awaitingPosTPSL.set(String(ctx.from.id), { tradeId: tid, type: 'sl' });
+      ctx.answerCallbackQuery();
+      return ctx.reply('🛑 <b>Set Stop Loss</b>\n\nEnter SL percentage.\nExample: <code>20</code> for 20%', { parse_mode: 'HTML' });
+    }
+
     // ───── Confirmations ─────
     if (d.startsWith('confirm_')) {
       ctx.answerCallbackQuery({ text: 'Cancelled' });
@@ -1056,6 +1236,15 @@ function registerCommands() {
 
     const walletViewMatch = d.match(/^wallet_v_(\d+)$/);
     if (walletViewMatch) { ctx.answerCallbackQuery(); return showWalletDetail(ctx, parseInt(walletViewMatch[1])); }
+
+    const walletActMatch = d.match(/^wallet_act_(\d+)$/);
+    if (walletActMatch) {
+      const w = await db.getWallet(parseInt(walletActMatch[1]));
+      if (!w) return ctx.answerCallbackQuery({ text: 'Not found' });
+      await db.setActiveWallet(w.id);
+      ctx.answerCallbackQuery({ text: `⭐ ${w.label || addrShort(w.address)} active` });
+      return showWallets(ctx, true);
+    }
 
     const walletDelMatch = d.match(/^wallet_d_(\d+)$/);
     if (walletDelMatch) {
