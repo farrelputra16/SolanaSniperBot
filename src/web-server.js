@@ -158,7 +158,10 @@ export function createWebServer() {
     res.write(':ok\n\n');
 
     const sendIfMatch = (event, data) => {
-      if (data._tid && data._tid !== clientId) return;
+      // Only filter when BOTH sides are known owners. EventSource can't send the auth
+      // header, so browser clients always come through as '' — they must see everything,
+      // otherwise live signals/trades get silently dropped for the dashboard.
+      if (data._tid && clientId && data._tid !== clientId) return;
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 

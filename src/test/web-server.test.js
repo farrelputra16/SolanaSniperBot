@@ -225,3 +225,49 @@ test('buy-with-tp-sl creates a trade', async () => {
   assert.equal(trade.take_profit_percent, 50);
   assert.equal(trade.stop_loss_percent, 10);
 });
+
+// ───── SSE live events ─────
+test('SSE delivers signals to anonymous dashboard even when _tid is set', async () => {
+  const { liveEvents } = await import('../web-server.js');
+  const res = await fetch(base + '/api/events');
+  assert.equal(res.status, 200);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const readOnce = () => Promise.race([
+    reader.read().then(({ value, done }) => (done ? null : decoder.decode(value, { stream: true }))),
+    sleep(3000).then(() => '__TIMEOUT__'),
+  ]);
+
+  assert.ok((await readOnce()).includes(':ok'));
+  liveEvents.emit('signal', { _tid: '1721799075', id: 'anon-sse-1', token_address: 'ANON', source_channel: 'ch', market_cap: 0, liquidity: 0, created_at: 0 });
+  const got = await readOnce();
+  assert.ok(got.includes('event: signal'), JSON.stringify(got));
+  assert.ok(got.includes('anon-sse-1'));
+  await reader.cancel().catch(() => {});
+});
+
+test('SSE owner routing still filters mismatched _tid for authenticated clients', async () => {
+  const { liveEvents } = await import('../web-server.js');
+  const res = await fetch(base + '/api/events', { headers: { 'x-auth-token': 'restart-token' } });
+  assert.equal(res.status, 200);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const readOnce = () => Promise.race([
+    reader.read().then(({ value, done }) => (done ? null : decoder.decode(value, { stream: true }))),
+    sleep(3000).then(() => '__TIMEOUT__'),
+  ]);
+
+  assert.ok((await readOnce()).includes(':ok'));
+  liveEvents.emit('signal', { _tid: 'OTHER-OWNER', id: 'other-sse-1', token_address: 'X', source_channel: 'ch', created_at: 0 });
+  await sleep(200);
+  liveEvents.emit('signal', { _tid: '1721799075', id: 'mine-sse-1', token_address: 'Y', source_channel: 'ch', created_at: 0 });
+  const got = await readOnce();
+  assert.ok(got.includes('event: signal'), JSON.stringify(got));
+  assert.ok(got.includes('mine-sse-1'));
+  assert.ok(!got.includes('other-sse-1'), 'signal for another owner must be dropped');
+  await reader.cancel().catch(() => {});
+});

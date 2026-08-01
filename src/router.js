@@ -179,7 +179,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     };
     db.updateSignal(signalId, update).catch(() => {});
     liveEvents.emit('signal_update', {
-      _tid: db.getTelegramId(), id: signalId, token_symbol: update.token_symbol, token_address: address, source_channel: sourceChannel,
+      _tid: db.getTelegramId(), id: signalId, src: 'dex', token_symbol: update.token_symbol, token_name: update.token_name, token_address: address, source_channel: sourceChannel,
       market_cap: update.market_cap, price: update.price, liquidity: update.liquidity, volume_24h: update.volume_24h,
       rug_ratio: -1, smart_degen_count: 0, catched_mc: catchedMc,
       latency_ms: Date.now() - t0, sender_username: senderUsername, created_at: now,
@@ -196,9 +196,10 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
       const gmgnLatency = Date.now() - t0;
       if (signalId) db.updateSignal(signalId, gmgnData).catch(() => {});
       liveEvents.emit('signal_update', {
-        _tid: db.getTelegramId(), id: signalId, token_symbol: gmgnData.token_symbol, token_address: address, source_channel: sourceChannel,
+        _tid: db.getTelegramId(), id: signalId, src: 'gmgn', token_symbol: gmgnData.token_symbol, token_name: gmgnData.token_name, token_address: address, source_channel: sourceChannel,
         market_cap: gmgnData.market_cap, price: gmgnData.price, liquidity: gmgnData.liquidity, volume_24h: gmgnData.volume_24h,
         rug_ratio: gmgnData.rug_ratio, smart_degen_count: gmgnData.smart_degen_count,
+        is_honeypot: gmgnData.is_honeypot, creator_status: gmgnData.creator_status, bundler_rate: gmgnData.bundler_rate, top10_rate: gmgnData.top10_rate,
         latency_ms: gmgnLatency, sender_username: senderUsername, created_at: now,
       });
 

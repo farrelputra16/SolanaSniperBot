@@ -1006,16 +1006,86 @@ async function handlePositionTPSLInput(ctx, text) {
   });
 }
 
+const _sigMsg = new Map(); // signalId -> { chatId, msgId } — signal cards get edited to full detail
+
+function _fmtLat(ms) {
+  if (ms == null) return '';
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function _sigHeader(d) {
+  return `📡 <b>${esc(d.source_channel || '')}</b>\n<code>${esc(d.token_address)}</code>`;
+}
+
+function _sigDetail(d) {
+  const sym = d.token_symbol ? `<b>${esc(d.token_symbol)}</b>` : '<b>?</b>';
+  const name = d.token_name ? ` · <i>${esc(d.token_name)}</i>` : '';
+  const price = d.price ? `$${Number(d.price).toLocaleString(undefined, { maximumFractionDigits: 10 })}` : '?';
+  const mc = d.market_cap ? fmtCur(d.market_cap) : '?';
+  const liq = d.liquidity ? fmtCur(d.liquidity) : '?';
+  const vol = d.volume_24h ? fmtCur(d.volume_24h) : null;
+  const rug = d.rug_ratio != null && d.rug_ratio >= 0 ? `🛡 Rug ${d.rug_ratio.toFixed(1)}%` : null;
+  const smart = d.smart_degen_count != null && d.smart_degen_count > 0 ? `👥 ${d.smart_degen_count} smart` : null;
+  const hp = d.is_honeypot && d.is_honeypot !== 'false' && d.is_honeypot !== '0' && d.is_honeypot !== '' ? '🍯 Honeypot' : null;
+  const rows = [`💵 ${price} · 🎯 ${mc} MC`];
+  if (liq || vol) rows.push([liq ? `💧 ${liq}` : null, vol ? `📊 ${vol}` : null].filter(Boolean).join(' · '));
+  const sec = [rug, smart, hp].filter(Boolean);
+  if (sec.length) rows.push(sec.join(' · '));
+  rows.push(`⏱ ${_fmtLat(d.latency_ms) || '...'}`);
+  return `${_sigHeader(d)}\n${sym}${name}\n${rows.join('\n')}`;
+}
+
 function attachLiveForwarding() {
   liveEvents.on('trade', async data => {
     if (!adminId || (data._tid && data._tid !== adminId)) return;
     const sym = data.token_symbol || addrShort(data.token_address);
-    const icon = data.status === 'pending' ? '⏳' : data.status === 'success' ? '✅' : '❌';
-    const latency = data.buy_latency_ms != null ? (data.buy_latency_ms < 1000 ? `${data.buy_latency_ms}ms` : `${(data.buy_latency_ms / 1000).toFixed(1)}s`) : '?';
+    const latency = data.buy_latency_ms != null ? _fmtLat(data.buy_latency_ms) : '?';
     try {
       await bot.api.sendMessage(adminId,
-        `${icon} <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n💰 ${data.amount || '?'} SOL · ⏱ ${latency}\n📡 ${esc(data.source_channel || '')}`,
+        `⏳ <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n💰 ${data.amount || '?'} SOL · ⏱ ${latency}\n📡 ${esc(data.source_channel || '')}`,
         { parse_mode: 'HTML' });
+    } catch {}
+  });
+
+  // CA caught → instant line, then edited into a full detail card as DexScreener/GMGN land
+  liveEvents.on('signal', async data => {
+    if (!adminId) return;
+    const key = `${data.id || ''}${data.token_address}`;
+    if (_sigMsg.has(key)) return;
+    try {
+      const sent = await bot.api.sendMessage(adminId, `${_sigHeader(data)}\n⏳ fetching details...`, { parse_mode: 'HTML' });
+      _sigMsg.set(key, { chatId: adminId, msgId: sent.message_id });
+      if (_sigMsg.size > 200) {
+        const first = _sigMsg.keys().next().value;
+        if (first != null) _sigMsg.delete(first);
+      }
+    } catch {}
+  });
+
+  liveEvents.on('signal_update', async data => {
+    if (!adminId) return;
+    const key = `${data.id || ''}${data.token_address}`;
+    const rec = _sigMsg.get(key);
+    if (!rec) return;
+    try {
+      await bot.api.editMessageText(rec.chatId, rec.msgId, _sigDetail(data), { parse_mode: 'HTML' });
+      if (data.src === 'gmgn') _sigMsg.delete(key);
+    } catch {}
+  });
+
+  liveEvents.on('trade_update', async data => {
+    if (!adminId || (data._tid && data._tid !== adminId)) return;
+    let t = null;
+    try { t = await db.getTrade(data.trade_id); } catch {}
+    const sym = (t && t.token_symbol && t.token_symbol !== 'PENDING') ? t.token_symbol : (t ? addrShort(t.token_address) : '?');
+    const addr = t ? t.token_address : '';
+    const icon = data.status === 'confirmed' ? '✅' : data.status === 'failed' ? '❌' : '⏳';
+    const line = data.status === 'confirmed' ? 'Buy confirmed' : data.status === 'failed' ? 'Buy failed' : 'Buy status';
+    try {
+      let msg = `${icon} <b>${esc(line)}</b>\n<b>${esc(sym)}</b>`;
+      if (addr) msg += `\n<code>${esc(addr)}</code>`;
+      if (data.status === 'confirmed' && data.buy_tx) msg += `\n🔗 <a href="https://solscan.io/tx/${esc(data.buy_tx)}">View transaction</a>`;
+      await bot.api.sendMessage(adminId, msg, { parse_mode: 'HTML' });
     } catch {}
   });
 }
