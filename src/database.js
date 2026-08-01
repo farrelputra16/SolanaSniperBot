@@ -116,6 +116,8 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE signals ADD COLUMN catched_mc REAL DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN buy_market_cap REAL DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN reconcile_verified_at INTEGER DEFAULT 0"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE telegram_sessions ADD COLUMN username TEXT DEFAULT ''"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE telegram_sessions ADD COLUMN first_name TEXT DEFAULT ''"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -696,24 +698,30 @@ export function saveTelegramSession(tgId, data = {}) {
   const apiHash = String(data.apiHash || '');
   const session = String(data.session || '');
   const dc = String(data.dc || '0');
+  const username = String(data.username || '');
+  const first_name = String(data.firstName || '');
   if (!sqliteMode && mdb) {
     return collections.telegram_sessions.updateOne(
       { telegram_id: String(tgId) },
-      { $set: { telegram_id: String(tgId), api_id: apiId, api_hash: apiHash, session, dc, updated_at: Date.now() } },
+      { $set: { telegram_id: String(tgId), api_id: apiId, api_hash: apiHash, session, dc, username, first_name, updated_at: Date.now() } },
       { upsert: true }
     );
   }
-  sqliteDb.prepare('INSERT OR REPLACE INTO telegram_sessions (telegram_id, api_id, api_hash, session, dc, updated_at) VALUES (?,?,?,?,?,?)')
-    .run(String(tgId), apiId, apiHash, session, dc, Date.now());
+  sqliteDb.prepare('INSERT OR REPLACE INTO telegram_sessions (telegram_id, api_id, api_hash, session, dc, username, first_name, updated_at) VALUES (?,?,?,?,?,?,?,?)')
+    .run(String(tgId), apiId, apiHash, session, dc, username, first_name, Date.now());
 }
 export async function getTelegramSession(tgId) {
   if (!tgId) return null;
   if (!sqliteMode && mdb) {
     const r = await collections.telegram_sessions.findOne({ telegram_id: String(tgId) }).catch(() => null);
-    return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc } : null;
+    return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc, username: r.username, firstName: r.first_name } : null;
   }
   const r = sqliteDb.prepare('SELECT * FROM telegram_sessions WHERE telegram_id = ?').get(String(tgId));
-  return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc } : null;
+  return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc, username: r.username, firstName: r.first_name } : null;
+}
+export async function getAllTelegramSessions() {
+  if (!sqliteMode && mdb) return collections.telegram_sessions.find({}).toArray();
+  return sqliteDb.prepare('SELECT telegram_id, username, first_name, updated_at FROM telegram_sessions ORDER BY updated_at DESC').all();
 }
 export function deleteTelegramSession(tgId) {
   if (!tgId) return;

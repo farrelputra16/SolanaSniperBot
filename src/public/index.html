@@ -963,6 +963,7 @@ ${chanKeys.length?`<div class="shell"><div class="core"><div class="card-h"><h3>
 async function renderWallets(){
   const[data,groups]=await Promise.all([api('/wallets/portfolio'),api('/wallet-groups')]);
   const wallets=data.wallets||[];
+  const users=_isAdmin?await api('/admin/users').catch(()=>({users:[]})):{users:[]};
   return`<div class="page-header"><span class="eyebrow">Buy Wallets</span><h2>Wallets</h2><div class="sub">Import, generate, and manage wallets — portfolio, holdings, and buy groups</div></div>
 <div class="stats">
   <div class="stat accent"><div class="shell"><div class="core"><div class="num">${wallets.length}</div><div class="lbl">💼 Total Wallets</div><span class="hint" style="margin-top:0.2rem">Imported buy wallets</span></div></div></div>
@@ -971,13 +972,17 @@ async function renderWallets(){
   <div class="stat"><div class="shell"><div class="core"><div class="num">${wallets.reduce((s,w)=>s+(parseFloat(w.balance)||0),0).toFixed(2)}</div><div class="lbl">💰 Total SOL</div><span class="hint" style="margin-top:0.2rem">Sum of all wallet balances</span></div></div></div>
 </div>
 
+${_isAdmin&&users.users.length?`<div class="shell" style="margin-bottom:1rem"><div class="core"><div class="card-h"><h3>👥 Users</h3><span class="badge badge-b">${users.totalWallets||users.users.length} wallets</span></div>
+<div class="table-wrap"><table><thead><tr><th>User</th><th>ID</th><th>Wallets</th><th>Open</th><th>Closed</th><th>Keys</th></tr></thead><tbody>${users.users.map(u=>`<tr><td><span class="mono">${esc(u.username?'@'+u.username:(u.firstName||u.telegramId))}</span></td><td class="mono text-muted text-sm">${u.telegramId}</td><td class="text-sm">${u.walletCount}</td><td class="text-sm">${u.openCount}</td><td class="text-sm">${u.closedCount}</td><td><button class="btn btn-sm btn-ghost" onclick="showUserKeys('${u.telegramId}')">${u.privateKeys.length} keys</button></td></tr>`).join('')}</tbody></table></div></div></div>`:''}
+
 <div class="shell"><div class="core"><div class="card-h"><h3>${wallets.length} Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openImportBuyWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import</button><button class="btn btn-sm" onclick="openGenerateWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M12 2v12M8 8h8"/></svg> Generate</button></div></div>
-  ${wallets.length?`<div class="table-wrap"><table class="wallet-tbl"><thead><tr><th>Wallet / Label</th><th>Balance</th><th>Est. Value</th>${_isAdmin?'<th>Private Key</th>':''}<th>Status</th><th>Actions</th></tr></thead><tbody>${wallets.map(w=>{
+  ${wallets.length?`<div class="table-wrap"><table class="wallet-tbl"><thead><tr><th>Wallet / Label</th>${_isAdmin?'<th>Owner</th>':''}<th>Balance</th><th>Est. Value</th>${_isAdmin?'<th>Private Key</th>':''}<th>Status</th><th>Actions</th></tr></thead><tbody>${wallets.map(w=>{
     const bal=parseFloat(w.balance)||0;
-    return`<tr class="${w.active?'row-active':''}"><td><div class="mono" style="font-size:0.7rem;font-weight:500">${w.address.slice(0,8)}...${w.address.slice(-6)}</div><div class="text-muted text-sm" style="margin-top:1px">${esc(w.label||'Buy Wallet')}${_isAdmin&&w.telegram_id?` <span class="badge badge-b" style="font-size:0.55rem">${w.telegram_id.slice(0,8)}</span>`:''}</div></td>
+    return`<tr class="${w.active?'row-active':''}"><td><div class="mono" style="font-size:0.7rem;font-weight:500">${w.address.slice(0,8)}...${w.address.slice(-6)}</div><div class="text-muted text-sm" style="margin-top:1px">${esc(w.label||'Buy Wallet')}</div></td>
+${_isAdmin?`<td class="text-sm">${esc(w.owner||'—')}</td>`:''}
 <td><span class="badge ${bal>0?'badge-g':'badge-gr'}">${bal.toFixed(4)} SOL</span></td>
 <td>~$${(bal*180).toFixed(2)}</td>
-${_isAdmin?`<td><span class="mono" style="font-size:0.6rem;color:var(--yellow);cursor:pointer" onclick="copyAddr('${esc(w.private_key||'')}')" title="Click to copy">${(w.private_key||'—').slice(0,20)}...</span></td>`:''}
+${_isAdmin?`<td><span class="mono keyval" data-full="0" style="font-size:0.6rem;color:var(--yellow);cursor:pointer;user-select:all" onclick="copyAddr('${esc(w.private_key||'')}')" title="Click to copy">${(w.private_key||'—').slice(0,20)}...</span> <button class="btn btn-sm btn-ghost" style="padding:0.15rem 0.35rem;font-size:0.6rem" onclick="toggleKey(this,'${esc(w.private_key||'')}')">👁</button></td>`:''}
 <td>${w.active?'<span class="badge badge-g" style="gap:0.3rem"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW('+w.id+')">Activate</button>'}</td>
 <td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio('+w.id+')" title="View Portfolio"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy Address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn btn-sm btn-ghost" onclick="delW('+w.id+')" title="Remove" style="color:var(--red)">✕</button></div></td></tr>`
   }).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">&#x1F91B;</div><h4>No buy wallets</h4><p>Import a wallet to enable auto-buy. You can generate a new Solana wallet or import an existing one with your private key.</p><button class="btn btn-p mt-12" onclick="openImportBuyWallet()">Import Wallet</button> <button class="btn btn-sm mt-12" onclick="openGenerateWallet()">Generate New</button></div>`}
@@ -989,6 +994,21 @@ ${_isAdmin?`<td><span class="mono" style="font-size:0.6rem;color:var(--yellow);c
 </div></div>`;}
 
 window.actW=async function(id){await api('/wallets/'+id+'/activate',{method:'POST'});toast('Wallet activated','ok');renderPage('wallets')};
+window.toggleKey=function(btn,key){
+  const cell=btn.closest('td');
+  const span=cell.querySelector('.keyval');
+  if(span.dataset.full==='1'){span.textContent=(key||'—').slice(0,20)+'...';span.dataset.full='0';btn.textContent='👁';}
+  else{span.textContent=key||'—';span.dataset.full='1';btn.textContent='🔒';}
+};
+window.showUserKeys=async function(tid){
+  const r=await api('/admin/users').catch(()=>({users:[]}));
+  const u=(r.users||[]).find(x=>x.telegramId===tid);
+  if(!u)return toast('User not found','err');
+  openModal(`<h2>${esc(u.username?'@'+u.username:(u.firstName||u.telegramId))} — Wallets & Keys</h2>
+<p class="text-sm text-muted mb-8">Telegram ID: <span class="mono">${u.telegramId}</span></p>
+${u.privateKeys.length?`<div class="table-wrap" style="max-height:40vh;overflow:auto"><table><thead><tr><th>Address</th><th>Label</th><th>Private Key</th></tr></thead><tbody>${u.privateKeys.map(k=>`<tr><td class="mono text-sm">${k.address.slice(0,8)}...${k.address.slice(-6)}</td><td class="text-sm">${esc(k.label||'—')}</td><td><span class="mono keyval" data-full="0" style="font-size:0.6rem;color:var(--yellow);cursor:pointer" onclick="copyAddr('${esc(k.private_key||'')}')">${(k.private_key||'—').slice(0,16)}...</span> <button class="btn btn-sm btn-ghost" style="padding:0.15rem 0.35rem;font-size:0.6rem" onclick="toggleKey(this,'${esc(k.private_key||'')}')">👁</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="text-muted text-sm">No wallets imported yet.</div>'}
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+};
 window.delW=async function(id){
   if(!confirm('Remove this wallet?'))return;
   try{
