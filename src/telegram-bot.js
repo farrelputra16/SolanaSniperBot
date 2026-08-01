@@ -1008,11 +1008,6 @@ async function handlePositionTPSLInput(ctx, text) {
 
 const _sigMsg = new Map(); // signalId -> { chatId, msgId } — signal cards get edited to full detail
 
-function _fmtLat(ms) {
-  if (ms == null) return '';
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
-
 function _sigHeader(d) {
   return `📡 <b>${esc(d.source_channel || '')}</b>\n<code>${esc(d.token_address)}</code>`;
 }
@@ -1031,7 +1026,6 @@ function _sigDetail(d) {
   if (liq || vol) rows.push([liq ? `💧 ${liq}` : null, vol ? `📊 ${vol}` : null].filter(Boolean).join(' · '));
   const sec = [rug, smart, hp].filter(Boolean);
   if (sec.length) rows.push(sec.join(' · '));
-  rows.push(`⏱ ${_fmtLat(d.latency_ms) || '...'}`);
   return `${_sigHeader(d)}\n${sym}${name}\n${rows.join('\n')}`;
 }
 
@@ -1039,21 +1033,20 @@ function attachLiveForwarding() {
   liveEvents.on('trade', async data => {
     if (!adminId || (data._tid && data._tid !== adminId)) return;
     const sym = data.token_symbol || addrShort(data.token_address);
-    const latency = data.buy_latency_ms != null ? _fmtLat(data.buy_latency_ms) : '?';
     try {
       await bot.api.sendMessage(adminId,
-        `⏳ <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n💰 ${data.amount || '?'} SOL · ⏱ ${latency}\n📡 ${esc(data.source_channel || '')}`,
+        `⏳ <b>${esc(sym)}</b>\n<code>${esc(data.token_address)}</code>\n💰 ${data.amount || '?'} SOL\n📡 ${esc(data.source_channel || '')}`,
         { parse_mode: 'HTML' });
     } catch {}
   });
 
-  // CA caught → instant line, then edited into a full detail card as DexScreener/GMGN land
+  // CA caught → instant line, then edited into a full detail card as DexScreener (fast) / GMGN land
   liveEvents.on('signal', async data => {
     if (!adminId) return;
     const key = `${data.id || ''}${data.token_address}`;
     if (_sigMsg.has(key)) return;
     try {
-      const sent = await bot.api.sendMessage(adminId, `${_sigHeader(data)}\n⏳ fetching details...`, { parse_mode: 'HTML' });
+      const sent = await bot.api.sendMessage(adminId, _sigHeader(data), { parse_mode: 'HTML' });
       _sigMsg.set(key, { chatId: adminId, msgId: sent.message_id });
       if (_sigMsg.size > 200) {
         const first = _sigMsg.keys().next().value;
