@@ -53,12 +53,21 @@ async function main() {
   try {
     let apiId = config.telegram.apiId;
     let apiHash = config.telegram.apiHash;
+    let savedSession = await db.getSetting('telegram_session', '');
+    let savedDc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
+    const activeTgId = await db.getSetting('active_telegram_id', '');
+    if (activeTgId) {
+      const us = await db.getTelegramSession(activeTgId);
+      if (us && us.session) {
+        savedSession = us.session;
+        if (!apiId || !apiHash) { apiId = parseInt(us.apiId) || 0; apiHash = us.apiHash; }
+        if (us.dc) savedDc = parseInt(us.dc) || 0;
+      }
+    }
     if (!apiId || !apiHash) {
       apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
       apiHash = await db.getSetting('telegram_api_hash', '');
     }
-    const savedSession = await db.getSetting('telegram_session', '');
-    const savedDc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
     if (savedDc > 0) config.telegram.dcId = savedDc;
 
     if (savedSession && apiId && apiHash) {

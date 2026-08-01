@@ -56,6 +56,7 @@ export async function initDatabase() {
         strategy_orders: mdb.collection('strategy_orders'),
         settings: mdb.collection('settings'),
         web_sessions: mdb.collection('web_sessions'),
+        telegram_sessions: mdb.collection('telegram_sessions'),
         counters: mdb.collection('counters'),
       };
       for (const [name, c] of Object.entries(collections)) {
@@ -90,6 +91,7 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS scraper_log (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_username TEXT, level TEXT, message TEXT, created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, telegram_id TEXT DEFAULT '', phone TEXT DEFAULT '', source TEXT DEFAULT 'guest', expires INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS telegram_sessions (telegram_id TEXT PRIMARY KEY, api_id TEXT DEFAULT '', api_hash TEXT DEFAULT '', session TEXT DEFAULT '', dc TEXT DEFAULT '0', updated_at INTEGER DEFAULT 0);
   `);
   // Migrations
   for (const sql of [
@@ -687,11 +689,36 @@ export async function deleteWebSession(token) {
   sqliteDb.prepare('DELETE FROM web_sessions WHERE token = ?').run(token);
 }
 
-// ───── Legacy / Unused ─────
-export async function getTelegramSessions() { return []; }
-export async function getTelegramSession(id) { return null; }
-export async function createTelegramSession(data) { return 0; }
-export async function updateTelegramSession(id, data) {}
-export async function deleteTelegramSession(id) {}
+// ───── Telegram Sessions (per-user MTProto credentials — each account keeps its own) ─────
+export function saveTelegramSession(tgId, data = {}) {
+  if (!tgId) return;
+  const apiId = String(data.apiId || '');
+  const apiHash = String(data.apiHash || '');
+  const session = String(data.session || '');
+  const dc = String(data.dc || '0');
+  if (!sqliteMode && mdb) {
+    return collections.telegram_sessions.updateOne(
+      { telegram_id: String(tgId) },
+      { $set: { telegram_id: String(tgId), api_id: apiId, api_hash: apiHash, session, dc, updated_at: Date.now() } },
+      { upsert: true }
+    );
+  }
+  sqliteDb.prepare('INSERT OR REPLACE INTO telegram_sessions (telegram_id, api_id, api_hash, session, dc, updated_at) VALUES (?,?,?,?,?,?)')
+    .run(String(tgId), apiId, apiHash, session, dc, Date.now());
+}
+export async function getTelegramSession(tgId) {
+  if (!tgId) return null;
+  if (!sqliteMode && mdb) {
+    const r = await collections.telegram_sessions.findOne({ telegram_id: String(tgId) }).catch(() => null);
+    return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc } : null;
+  }
+  const r = sqliteDb.prepare('SELECT * FROM telegram_sessions WHERE telegram_id = ?').get(String(tgId));
+  return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc } : null;
+}
+export function deleteTelegramSession(tgId) {
+  if (!tgId) return;
+  if (!sqliteMode && mdb) { return collections.telegram_sessions.deleteOne({ telegram_id: String(tgId) }); }
+  sqliteDb.prepare('DELETE FROM telegram_sessions WHERE telegram_id = ?').run(String(tgId));
+}
 export async function getActiveTelegramSession() { return null; }
 export async function setActiveTelegramSession(id) {}

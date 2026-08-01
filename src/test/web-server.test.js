@@ -87,6 +87,26 @@ test('DB web_sessions round-trip', async () => {
   assert.equal(await db.getWebSession('roundtrip-token'), null);
 });
 
+test('telegram sessions are stored per user and do not clobber each other', async () => {
+  db.saveTelegramSession('user-a', { apiId: 111, apiHash: 'hash-a', session: 'session-a', dc: 4 });
+  db.saveTelegramSession('user-b', { apiId: 222, apiHash: 'hash-b', session: 'session-b', dc: 0 });
+  const a = await db.getTelegramSession('user-a');
+  const b = await db.getTelegramSession('user-b');
+  assert.equal(a.session, 'session-a');
+  assert.equal(a.apiId, '111');
+  assert.equal(a.apiHash, 'hash-a');
+  assert.equal(a.dc, '4');
+  assert.equal(b.session, 'session-b');
+  assert.equal(b.apiId, '222');
+  db.saveTelegramSession('user-a', { apiId: 111, apiHash: 'hash-a', session: 'session-a2', dc: 4 });
+  assert.equal((await db.getTelegramSession('user-a')).session, 'session-a2');
+  assert.equal((await db.getTelegramSession('user-b')).session, 'session-b', 'overwriting user-a must not touch user-b');
+  db.deleteTelegramSession('user-a');
+  assert.equal(await db.getTelegramSession('user-a'), null);
+  assert.equal((await db.getTelegramSession('user-b')).session, 'session-b');
+  db.deleteTelegramSession('user-b');
+});
+
 // ───── Auth / login ─────
 test('wrong password rejected', async () => {
   const { status } = await req('/login', { method: 'POST', body: { password: 'nope' } });

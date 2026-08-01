@@ -750,6 +750,8 @@ export function createWebServer() {
       setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
+      await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0 });
+      await db.setSetting('active_telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
       res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
     } catch (err) {
@@ -791,6 +793,8 @@ export function createWebServer() {
       setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
+      await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0 });
+      await db.setSetting('active_telegram_id', telegramId);
       PENDING_LOGIN.delete(loginToken);
       res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
     } catch (err) {
@@ -804,7 +808,23 @@ export function createWebServer() {
 
   app.get('/api/telegram/status', async (req, res) => {
     try {
-      const sessionStr = await db.getSetting('telegram_session', '');
+      let sessionStr = await db.getSetting('telegram_session', '');
+      let apiId = config.telegram.apiId;
+      let apiHash = config.telegram.apiHash;
+      let dc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
+      const activeTgId = await db.getSetting('active_telegram_id', '');
+      if (activeTgId) {
+        const us = await db.getTelegramSession(activeTgId);
+        if (us && us.session) {
+          sessionStr = us.session;
+          if (!apiId || !apiHash) { apiId = parseInt(us.apiId) || 0; apiHash = us.apiHash; }
+          if (us.dc) dc = parseInt(us.dc) || 0;
+        }
+      }
+      if (!apiId || !apiHash) {
+        apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
+        apiHash = await db.getSetting('telegram_api_hash', '');
+      }
       let tgId = await db.getSetting('telegram_id', '');
       let connected = false;
       try {
@@ -819,14 +839,7 @@ export function createWebServer() {
       // Auto-reconnect if session exists but not connected
       if (!connected && sessionStr) {
         try {
-          let apiId = config.telegram.apiId;
-          let apiHash = config.telegram.apiHash;
-          if (!apiId || !apiHash) {
-            apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
-            apiHash = await db.getSetting('telegram_api_hash', '');
-          }
           if (apiId && apiHash) {
-            const dc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
             if (dc > 0) config.telegram.dcId = dc;
             await initTelegramWithSession(apiId, apiHash, sessionStr);
             connected = true;
@@ -859,6 +872,9 @@ export function createWebServer() {
     try {
       const { destroyClient } = await import('./telegram.js');
       await destroyClient();
+      const activeId = await db.getSetting('active_telegram_id', '');
+      if (activeId) await db.deleteTelegramSession(activeId);
+      await db.setSetting('active_telegram_id', '');
       await db.setSetting('telegram_session', '');
       await db.setSetting('telegram_id', '');
       db.setTelegramId('');
