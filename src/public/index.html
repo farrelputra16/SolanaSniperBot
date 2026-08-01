@@ -181,8 +181,9 @@ a{color:var(--accent);text-decoration:none;transition:color .3s var(--ease-sprin
 /* Tables */
 .table-wrap{overflow-x:auto;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,0.01)}
 table{width:100%;border-collapse:collapse;font-size:0.78rem}
-.table-wrap table{min-width:max-content}
+.table-wrap table{width:100%;min-width:620px;min-width:max-content}
 .table-wrap table td{white-space:nowrap}
+.table-wrap table td .addr{white-space:nowrap}
 thead{position:sticky;top:0;z-index:3}
 thead th{text-align:left;padding:0.6rem 0.8rem;font-weight:700;color:var(--text3);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0.015));white-space:nowrap}
 tbody td{padding:0.5rem 0.8rem;border-bottom:1px solid var(--border-subtle);vertical-align:middle;transition:background .2s var(--ease-spring)}
