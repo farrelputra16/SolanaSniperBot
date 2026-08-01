@@ -738,6 +738,8 @@ export function createWebServer() {
       state.sessionStr = state.client.session.save();
       state.state = 'done';
       await db.setSetting('telegram_session', state.sessionStr);
+      await db.setSetting('telegram_api_id', String(state.apiId));
+      await db.setSetting('telegram_api_hash', state.apiHash);
       if (state.dcId) await db.setSetting('telegram_dc', String(state.dcId));
       await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
       const { getClient } = await import('./telegram.js');
@@ -779,6 +781,8 @@ export function createWebServer() {
       state.sessionStr = state.client.session.save();
       state.state = 'done';
       await db.setSetting('telegram_session', state.sessionStr);
+      await db.setSetting('telegram_api_id', String(state.apiId));
+      await db.setSetting('telegram_api_hash', state.apiHash);
       await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
       const { getClient: gC } = await import('./telegram.js');
       const me2 = gC() ? await gC().getMe() : null;
@@ -815,9 +819,15 @@ export function createWebServer() {
       // Auto-reconnect if session exists but not connected
       if (!connected && sessionStr) {
         try {
-          const apiId = config.telegram.apiId;
-          const apiHash = config.telegram.apiHash;
+          let apiId = config.telegram.apiId;
+          let apiHash = config.telegram.apiHash;
+          if (!apiId || !apiHash) {
+            apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
+            apiHash = await db.getSetting('telegram_api_hash', '');
+          }
           if (apiId && apiHash) {
+            const dc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
+            if (dc > 0) config.telegram.dcId = dc;
             await initTelegramWithSession(apiId, apiHash, sessionStr);
             connected = true;
           }

@@ -51,22 +51,26 @@ async function main() {
 
   // Auto-connect Telegram from saved session or .env
   try {
+    let apiId = config.telegram.apiId;
+    let apiHash = config.telegram.apiHash;
+    if (!apiId || !apiHash) {
+      apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
+      apiHash = await db.getSetting('telegram_api_hash', '');
+    }
     const savedSession = await db.getSetting('telegram_session', '');
-    if (savedSession && config.telegram.apiId && config.telegram.apiHash) {
+    const savedDc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
+    if (savedDc > 0) config.telegram.dcId = savedDc;
+
+    if (savedSession && apiId && apiHash) {
       const { initTelegramWithSession, startListeners, getClient } = await import('./telegram.js');
-      const savedDc = await db.getSetting('telegram_dc', '0');
-      if (savedDc && savedDc !== '0') {
-        const { default: telegram } = await import('telegram');
-        config.telegram.dcId = parseInt(savedDc);
-      }
-      await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, savedSession);
+      await initTelegramWithSession(apiId, apiHash, savedSession);
       const c = getClient();
       const me = c ? await c.getMe() : null;
       if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); setAdminId(String(me.id)); }
       console.log('   Telegram: ✅ Connected via saved session');
       await startListeners();
       startBot().catch(e => console.warn('[Bot]', e.message));
-    } else if (config.telegram.apiId && config.telegram.apiHash) {
+    } else if (apiId && apiHash) {
       const { initTelegram, startListeners, getClient } = await import('./telegram.js');
       await initTelegram();
       const c = getClient();
