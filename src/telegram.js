@@ -194,30 +194,83 @@
   }
 
   async function globalMessageHandler(event) {
-    const msg = event.message;
-    if (!msg || !msg.text) return;
-    const rawId = msg.chatId || msg.peerId?.channelId || msg.peerId?.chatId || msg.peerId?.userId;
-    let chatId = String(rawId ?? '');
-    if (chatId.startsWith('-100')) chatId = chatId.slice(4);
-    if (!chatId || !_listeners.has(chatId)) return;
+    try {
+      const msg = event.message;
+      if (!msg || !msg.text) return;
+      const rawId = msg.chatId || msg.peerId?.channelId || msg.peerId?.chatId || msg.peerId?.userId;
+      let chatId = String(rawId ?? '');
+      if (chatId.startsWith('-100')) chatId = chatId.slice(4);
+      if (!chatId || !_listeners.has(chatId)) return;
 
-    const meta = _channelMeta.get(chatId);
-    if (!meta) return;
-    const identifier = meta.identifier;
+      const meta = _channelMeta.get(chatId);
+      if (!meta) return;
+      const identifier = meta.identifier;
 
-    if (!meta.isBroadcast && meta.trackMode === 'admin' && !msg.post) return;
+      // Admin-only tracking for groups: accept channel posts, or messages sent by the group's
+      // owner/creator or an admin (msg.post is only true for broadcast posts — group admin
+      // messages are regular messages, so the old `!msg.post` check dropped them all).
+      if (!meta.isBroadcast && meta.trackMode === 'admin') {
+        const isAdminSender = await isGroupAdminSender(chatId, msg);
+        if (isAdminSender === false) return;
+      }
 
-    const text = msg.text;
+      const text = msg.text;
 
-    if (onForwardCallback) {
-      onForwardCallback(identifier, msg);
+      if (onForwardCallback) {
+        onForwardCallback(identifier, msg);
+      }
+
+      if (onSignalCallback) {
+        onSignalCallback(identifier, text, msg, null);
+        getSenderUsername(msg).then(username => {
+          if (username) console.log(`[Signal] ${identifier} @${username}`);
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error('[Telegram] Message handler error:', err.message);
     }
+  }
 
-    if (onSignalCallback) {
-      onSignalCallback(identifier, text, msg, null);
-      getSenderUsername(msg).then(username => {
-        if (username) console.log(`[Signal] ${identifier} @${username}`);
-      }).catch(() => {});
+  let _adminCache = new Map();
+  const ADMIN_CACHE_TTL = 60000;
+
+  function _peerId(p) {
+    if (p == null) return '';
+    if (typeof p === 'object') {
+      const v = p.value ?? p.userId ?? p.channelId ?? p.chatId;
+      return v != null ? String(v) : '';
+    }
+    return String(p);
+  }
+
+  // Returns: true = sender is owner/creator or admin, false = regular member, null = unknown
+  async function isGroupAdminSender(chatId, msg) {
+    try {
+      if (msg.post) return true;
+      const sender = await msg.getSender();
+      if (!sender) return null;
+      if (sender.broadcast === true) return true;
+      const sid = _peerId(sender.id);
+      if (!sid) return null;
+
+      const cached = _adminCache.get(chatId);
+      if (cached && Date.now() - cached.ts < ADMIN_CACHE_TTL) return cached.ids.has(sid);
+
+      const { Api } = await import('telegram');
+      const ids = new Set();
+      try {
+        const parts = await client.getParticipants(chatId, { filter: new Api.ChannelParticipantsAdmins() });
+        for (const p of parts) {
+          const uid = _peerId(p.userId);
+          if (uid) ids.add(uid);
+        }
+      } catch (e) {
+        console.warn(`[Telegram] Admin list fetch failed for ${chatId}: ${e.message}`);
+      }
+      _adminCache.set(chatId, { ids, ts: Date.now() });
+      return ids.has(sid);
+    } catch {
+      return null;
     }
   }
 
