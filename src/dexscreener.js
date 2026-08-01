@@ -34,7 +34,7 @@ export async function getDexScreenerInfo(chain, address) {
     return {
       priceUsd: parseFloat(pair.priceUsd) || 0,
       priceNative: parseFloat(pair.priceNative) || 0,
-      marketCap: pair.fdv ? parseFloat(pair.fdv) : 0,
+      marketCap: (pair.marketCap ? parseFloat(pair.marketCap) : 0) || (pair.fdv ? parseFloat(pair.fdv) : 0),
       liquidity: pair.liquidity?.usd ? parseFloat(pair.liquidity.usd) : 0,
       volume24h: pair.volume?.h24 ? parseFloat(pair.volume.h24) : 0,
       tokenSymbol: pair.baseToken?.symbol || '',

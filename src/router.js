@@ -104,11 +104,21 @@ function parseTokenData(info, security, chain, address, sourceChannel, text, dex
   const tokenData = info.data || info || {};
   const securityData = security?.data || security || {};
 
+  // GMGN returns price as either `price_usd`, a `price` object ({price, ...}), or a plain number
+  const rawPrice = tokenData.price_usd != null ? tokenData.price_usd
+    : (tokenData.price && typeof tokenData.price === 'object' ? tokenData.price.price : tokenData.price);
+  const price = parseFloat(rawPrice) || dexFallback?.priceUsd || 0;
+
+  const supply = parseFloat(tokenData.circulating_supply) || parseFloat(tokenData.total_supply);
+  const market_cap = parseFloat(tokenData.market_cap)
+    || (price && supply ? price * supply : 0)
+    || dexFallback?.marketCap || 0;
+
   return {
     token_symbol: tokenData.symbol || dexFallback?.tokenSymbol || '',
     token_name: tokenData.name || dexFallback?.tokenName || '',
-    price: parseFloat(tokenData.price_usd) || dexFallback?.priceUsd || 0,
-    market_cap: parseFloat(tokenData.market_cap) || dexFallback?.marketCap || 0,
+    price,
+    market_cap,
     liquidity: parseFloat(tokenData.liquidity) || dexFallback?.liquidity || 0,
     volume_24h: parseFloat(tokenData.volume_24h) || dexFallback?.volume24h || 0,
     rug_ratio: securityData.rug_ratio !== undefined ? securityData.rug_ratio : -1,
@@ -163,7 +173,8 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   });
 
   // Fetch data from DexScreener (fast) + GMGN (detailed) — both fire-and-forget, non-blocking
-  getDexScreenerInfo(chain, address).then(dexData => {
+  const dexPromise = getDexScreenerInfo(chain, address).catch(() => null);
+  dexPromise.then(dexData => {
     if (!dexData || !signalId) return;
     const catchedMc = dexData.marketCap || 0;
     const update = {
@@ -187,10 +198,10 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     forwardSignal(sourceChannel, address, update, text, null);
   }).catch(() => {});
 
-  Promise.all([getTokenInfo(chain, address).catch(() => null), getTokenSecurity(chain, address).catch(() => null)])
-    .then(([info, security]) => {
+  Promise.all([getTokenInfo(chain, address).catch(() => null), getTokenSecurity(chain, address).catch(() => null), dexPromise])
+    .then(([info, security, dexData]) => {
       if (!info || (info.code && info.code !== 0)) return;
-      const gmgnData = parseTokenData(info, security, chain, address, sourceChannel, text, null);
+      const gmgnData = parseTokenData(info, security, chain, address, sourceChannel, text, dexData);
       gmgnData.sender_username = senderUsername || '';
       gmgnData.latency_ms = Date.now() - t0;
       const gmgnLatency = Date.now() - t0;

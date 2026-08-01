@@ -33,9 +33,10 @@
     let stringSession;
     try { stringSession = new StringSession(sessionStr); } catch { throw new Error('Invalid session format'); }
 
-    const opts = { connectionRetries: 3 };
+    const opts = { connectionRetries: 10, autoReconnect: true, reconnectRetries: Infinity, retryDelay: 3000 };
     if (config.telegram.dcId) opts.dcId = config.telegram.dcId;
     client = new TelegramClient(stringSession, apiId, apiHash, opts);
+    _reconnectCreds = { apiId, apiHash, sessionStr, dcId: config.telegram.dcId };
 
     await client.connect();
     const me = await client.getMe();
@@ -161,15 +162,53 @@
   let _globalHandlerInstalled = false;
   const _listeners = new Set();
   const _channelMeta = new Map(); // chatId → { identifier, trackMode }
+  let _reconnectCreds = null;
+  let _reconnecting = false;
+  let _pingFailures = 0;
+
+  // Force a full re-login from the saved session. Used by the watchdog so the
+  // scraper survives idle disconnects instead of silently going dead.
+  export async function reconnectTelegram() {
+    if (!_reconnectCreds || _reconnecting) return false;
+    _reconnecting = true;
+    try {
+      console.warn('[Telegram] Connection lost — reconnecting...');
+      await destroyClient();
+      const { apiId, apiHash, sessionStr } = _reconnectCreds;
+      await initTelegramWithSession(apiId, apiHash, sessionStr);
+      installGlobalHandler();
+      await startListeners();
+      console.log('[Telegram] ✅ Reconnected');
+      return true;
+    } catch (err) {
+      console.error('[Telegram] Reconnect failed:', err.message);
+      return false;
+    } finally {
+      _reconnecting = false;
+    }
+  }
 
   export function startKeepAlive() {
     if (_pingInterval) clearInterval(_pingInterval);
     _pingInterval = setInterval(async () => {
-      if (!client || !client.connected) return;
       try {
+        if (_reconnecting) return;
+        if (!client || !client.connected) {
+          // Connection dropped — don't just skip, actively recover.
+          await reconnectTelegram();
+          return;
+        }
         await client.invoke(new (await import('telegram')).Api.Ping({ pingId: BigInt(Date.now()) }));
-      } catch {}
-    }, 30000);
+        _pingFailures = 0;
+      } catch {
+        // Connected flag may lie if the socket is half-dead; reconnect on repeated ping failures.
+        _pingFailures++;
+        if (_pingFailures >= 3) {
+          _pingFailures = 0;
+          await reconnectTelegram();
+        }
+      }
+    }, 15000);
   }
 
   export function stopKeepAlive() {
