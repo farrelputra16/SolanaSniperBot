@@ -20,6 +20,13 @@ let _dedupStats = { total_caught: 0, total_ignored: 0, per_channel: {} };
 
 export function getDedupStats() { return _dedupStats; }
 
+function bumpDedup(channel, type) {
+  let entry = _dedupStats.per_channel[channel];
+  if (!entry || typeof entry !== 'object') entry = _dedupStats.per_channel[channel] = { caught: 0, ignored: 0 };
+  if (type === 'caught') { entry.caught++; _dedupStats.total_caught++; }
+  else { entry.ignored++; _dedupStats.total_ignored++; }
+}
+
 function getCacheSize() { return _seenCAs.size; }
 const _channelDedupCache = new Map(); // key: channel, value: { enabled, ts }
 const CHANNEL_DEDUP_TTL = 30000; // 30s
@@ -146,8 +153,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
     const key = `${sourceChannel}:${address}`;
     const seen = _seenCAs.get(key);
     if (seen && Date.now() - seen < SEEN_CA_TTL) {
-      _dedupStats.total_ignored++;
-      _dedupStats.per_channel[sourceChannel] = (_dedupStats.per_channel[sourceChannel]?.ignored || 0) + 1;
+      bumpDedup(sourceChannel, 'ignored');
       return;
     }
     _seenCAs.set(key, Date.now());
@@ -156,9 +162,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
       for (const [k, ts] of _seenCAs) if (ts < threshold) _seenCAs.delete(k);
     }
   }
-  _dedupStats.total_caught++;
-  if (!_dedupStats.per_channel[sourceChannel]) _dedupStats.per_channel[sourceChannel] = { caught: 0, ignored: 0 };
-  _dedupStats.per_channel[sourceChannel].caught = (_dedupStats.per_channel[sourceChannel].caught || 0) + 1;
+  bumpDedup(sourceChannel, 'caught');
 
   // Save signal — appears on dashboard
   const now = Math.floor(Date.now() / 1000);
