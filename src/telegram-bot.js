@@ -293,6 +293,8 @@ async function showChannelSetup(ctx, id) {
 
   let tpLevels = [];
   try { tpLevels = typeof r.tp_levels === 'string' ? JSON.parse(r.tp_levels) : (r.tp_levels || []); } catch {}
+  let slLevels = [];
+  try { slLevels = typeof r.sl_levels === 'string' ? JSON.parse(r.sl_levels) : (r.sl_levels || []); } catch {}
 
   const multi = r.wallet_group_id ? (r.wallet_group_id > 0 ? 'Group ' + r.wallet_group_id : 'Wallet ' + Math.abs(r.wallet_group_id)) : 'Default only';
   const sellOrders = [];
@@ -300,6 +302,9 @@ async function showChannelSetup(ctx, id) {
   if (r.stop_loss_percent) sellOrders.push(`‣ SL | −${Math.abs(r.stop_loss_percent)}% • 100%`);
   for (const tp of tpLevels) {
     if (tp.percent) sellOrders.push(`‣ TP | ${tp.percent}% • ${tp.sell_ratio || 100}%`);
+  }
+  for (const sl of slLevels) {
+    if (sl.percent) sellOrders.push(`‣ SL | −${Math.abs(sl.percent)}% • ${sl.sell_ratio || 100}%`);
   }
   const sellBlock = sellOrders.length
     ? `\nSell Limit Orders\n${sellOrders.join('\n')}`
@@ -322,8 +327,10 @@ async function showChannelSetup(ctx, id) {
     `Max Liquidity: ${r.max_liquidity ? '$' + fmtCur(r.max_liquidity) : 'Disabled'}`,
     ``,
     `📌 <b>Sell</b>`,
-    `Auto Sell: ${r.take_profit_percent || r.stop_loss_percent || tpLevels.length ? '🟢' : '🔴'}`,
+    `Auto Sell: ${r.take_profit_percent || r.stop_loss_percent || tpLevels.length || slLevels.length ? '🟢' : '🔴'}`,
     sellBlock,
+    ``,
+    `Duplicate Filter: ${ch.ignore_duplicate ? '🟢 Ignore repeats' : '🔴 Off'}`,
   ];
   if (r.blind_buy) lines.push(
     ``,
@@ -345,6 +352,7 @@ async function showChannelSetup(ctx, id) {
     .row()
     .text(`${r.anti_mev ? '🛡️' : '🔲'} MEV`, `r_anti_${ch.id}`)
     .text(`${r.track_only ? '👁️' : '🔲'} Track`, `r_track_${ch.id}`)
+    .text(`${ch.ignore_duplicate ? '🔄' : '🔲'} Dedup`, `ch_dedup_${ch.id}`)
     .text(ch.active ? '🔇 Pause' : '🔊 Activate', `ch_t_${ch.id}`)
     .row()
     .text('🗑 Remove', `ch_rem_${ch.id}`)
@@ -390,13 +398,23 @@ async function showTPSEditor(ctx, id) {
   const r = ch.rule || {};
   const name = btnText(ch.display_name || ch.channel_username);
 
+  let tpLevels = [];
+  try { tpLevels = typeof r.tp_levels === 'string' ? JSON.parse(r.tp_levels) : (r.tp_levels || []); } catch {}
+  let slLevels = [];
+  try { slLevels = typeof r.sl_levels === 'string' ? JSON.parse(r.sl_levels) : (r.sl_levels || []); } catch {}
+
+  const levelLines = [];
+  if (r.take_profit_percent) levelLines.push(`TP: ${r.take_profit_percent}% • 100%`);
+  for (const tp of tpLevels) if (tp.percent) levelLines.push(`TP: ${tp.percent}% • ${tp.sell_ratio || 100}%`);
+  if (r.stop_loss_percent) levelLines.push(`SL: −${Math.abs(r.stop_loss_percent)}% • 100%`);
+  for (const sl of slLevels) if (sl.percent) levelLines.push(`SL: −${Math.abs(sl.percent)}% • ${sl.sell_ratio || 100}%`);
+
   const lines = [
     `🎯 <b>TP/SL — ${esc(name)}</b>`,
     `━━━━━━━━━━━━━━━━`,
-    `Take Profit: ${r.take_profit_percent ? r.take_profit_percent + '%' : '—'}`,
-    `Stop Loss: ${r.stop_loss_percent ? r.stop_loss_percent + '%' : '—'}`,
+    ...(levelLines.length ? levelLines : [`<i>No TP/SL configured</i>`]),
     `━━━━━━━━━━━━━━━━`,
-    `Tap to toggle, or set a percentage value.`,
+    `Single TP/SL can be set here. Multi-level TP/SL (e.g. +100% sell 50%, +200% sell 70%) is configured in the web dashboard.`,
   ].join('\n');
 
   const kb = new InlineKeyboard()
@@ -437,6 +455,8 @@ async function handleRuleInput(ctx, text) {
     } else if (field === 'take_profit_percent' || field === 'stop_loss_percent') {
       rule[field] = val ? parseFloat(val) : null;
       if (isNaN(rule[field])) rule[field] = null;
+      if (field === 'take_profit_percent') rule.tp_levels = [];
+      if (field === 'stop_loss_percent') rule.sl_levels = [];
     } else if (field === 'slippage') {
       rule[field] = Math.min(100, Math.max(0, parseInt(val) || 30));
     } else if (field === 'wallet_group_id') {
@@ -1278,6 +1298,17 @@ function registerCommands() {
       return showChannelSetup(ctx, id);
     }
 
+    const rDedupMatch = d.match(/^ch_dedup_(\d+)$/);
+    if (rDedupMatch) {
+      const id = parseInt(rDedupMatch[1]);
+      const ch = await db.getChannel(id);
+      if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
+      const newVal = ch.ignore_duplicate ? 0 : 1;
+      await db.updateChannelSetting(id, 'ignore_duplicate', newVal);
+      ctx.answerCallbackQuery({ text: newVal ? 'Ignore duplicates ON' : 'Ignore duplicates OFF' });
+      return showChannelSetup(ctx, id);
+    }
+
     const rFiltMatch = d.match(/^r_filt_(\d+)$/);
     if (rFiltMatch) { ctx.answerCallbackQuery(); return showFilterEditor(ctx, parseInt(rFiltMatch[1])); }
 
@@ -1340,6 +1371,7 @@ function registerCommands() {
       const rule = ch.rule || {};
       if (rule.take_profit_percent) {
         rule.take_profit_percent = null;
+        rule.tp_levels = [];
         const clean = { ...rule }; delete clean.channel_id;
         await db.upsertChannelRule({ channel_id: Number(id), ...clean });
         ctx.answerCallbackQuery({ text: 'TP OFF' });
@@ -1357,6 +1389,7 @@ function registerCommands() {
       const rule = ch.rule || {};
       if (rule.stop_loss_percent) {
         rule.stop_loss_percent = null;
+        rule.sl_levels = [];
         const clean = { ...rule }; delete clean.channel_id;
         await db.upsertChannelRule({ channel_id: Number(id), ...clean });
         ctx.answerCallbackQuery({ text: 'SL OFF' });

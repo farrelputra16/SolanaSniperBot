@@ -98,6 +98,12 @@ Types: `profit_stop`, `loss_stop`, `profit_stop_trace`, `loss_stop_trace`
 Requires `--priority-fee` + `--tip-fee` on SOL.
 `strategy_order_id` captured from swap response and saved to `strategy_orders` table.
 
+### Multi-Level TP/SL (rules)
+- Rule columns `tp_levels` / `sl_levels` (JSON `[{percent, sell_ratio}]`) hold multiple exit levels.
+- Router `executeAutoBuy` builds one `profit_stop`/`loss_stop` condition order per level, e.g. `+100% sell 50%`, `+200% sell 70%`.
+- Levels take precedence: if `tp_levels` non-empty the legacy `take_profit_percent` is ignored (same for `sl_levels` vs `stop_loss_percent`).
+- Bot single TP/SL input clears the corresponding levels array to avoid conflicts.
+
 ## Real-time Events (SSE)
 - `GET /api/events` — Server-Sent Events stream
 - Events: `signal`, `trade`, `status`

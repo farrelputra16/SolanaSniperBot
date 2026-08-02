@@ -338,8 +338,18 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
       console.log(`[Router] Swap ${perWallet} lamports -> ${address} (${wallet.address})`);
 
       const conditionOrders = [];
-      if (rule.take_profit_percent) conditionOrders.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(rule.take_profit_percent), sell_ratio: '100' });
-      if (rule.stop_loss_percent) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(rule.stop_loss_percent)), sell_ratio: '100' });
+      let tpLevels = [];
+      let slLevels = [];
+      try { tpLevels = typeof rule.tp_levels === 'string' ? JSON.parse(rule.tp_levels) : (Array.isArray(rule.tp_levels) ? rule.tp_levels : []); } catch {}
+      try { slLevels = typeof rule.sl_levels === 'string' ? JSON.parse(rule.sl_levels) : (Array.isArray(rule.sl_levels) ? rule.sl_levels : []); } catch {}
+      for (const tp of tpLevels) {
+        if (tp && Number(tp.percent) > 0) conditionOrders.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(tp.percent), sell_ratio: String(tp.sell_ratio || 100) });
+      }
+      if (tpLevels.length === 0 && rule.take_profit_percent) conditionOrders.push({ order_type: 'profit_stop', side: 'sell', price_scale: String(rule.take_profit_percent), sell_ratio: '100' });
+      for (const sl of slLevels) {
+        if (sl && Number(sl.percent) > 0) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(sl.percent)), sell_ratio: String(sl.sell_ratio || 100) });
+      }
+      if (slLevels.length === 0 && rule.stop_loss_percent) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(rule.stop_loss_percent)), sell_ratio: '100' });
 
       const feeOk = chain === 'sol' ? (rule.priority_fee >= 0.00001 && rule.tip_fee >= 0.00001) : (rule.priority_fee > 0 && rule.tip_fee > 0);
       if (conditionOrders.length && !feeOk) {

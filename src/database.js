@@ -81,7 +81,7 @@ export async function initDatabase() {
   await ensureSqlite();
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_username TEXT UNIQUE, display_name TEXT DEFAULT '', active INTEGER DEFAULT 1, added_at INTEGER DEFAULT (strftime('%s','now')));
-    CREATE TABLE IF NOT EXISTS rules (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER UNIQUE, min_market_cap REAL, max_market_cap REAL, min_liquidity REAL, max_liquidity REAL, auto_buy INTEGER DEFAULT 0, buy_amount_sol REAL DEFAULT 0.01, slippage INTEGER DEFAULT 30, anti_mev INTEGER DEFAULT 1, take_profit_percent REAL, stop_loss_percent REAL, tp_levels TEXT DEFAULT '[]', priority_fee REAL, tip_fee REAL, wallet_group_id INTEGER DEFAULT 0, track_only INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS rules (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER UNIQUE, min_market_cap REAL, max_market_cap REAL, min_liquidity REAL, max_liquidity REAL, auto_buy INTEGER DEFAULT 0, buy_amount_sol REAL DEFAULT 0.01, slippage INTEGER DEFAULT 30, anti_mev INTEGER DEFAULT 1, take_profit_percent REAL, stop_loss_percent REAL, tp_levels TEXT DEFAULT '[]', sl_levels TEXT DEFAULT '[]', priority_fee REAL, tip_fee REAL, wallet_group_id INTEGER DEFAULT 0, track_only INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY AUTOINCREMENT, token_address TEXT, token_symbol TEXT, token_name TEXT, chain TEXT DEFAULT 'sol', source_channel TEXT, source_text TEXT, price REAL, market_cap REAL, liquidity REAL, volume_24h REAL, rug_ratio REAL, smart_degen_count INTEGER DEFAULT 0, bundler_rate REAL, top10_rate REAL, creator_status TEXT, is_honeypot TEXT, sender_username TEXT DEFAULT '', created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY AUTOINCREMENT, signal_id INTEGER, wallet_address TEXT, token_address TEXT, token_symbol TEXT, chain TEXT DEFAULT 'sol', buy_amount_sol REAL, buy_price REAL, buy_price_usd REAL, buy_order_id TEXT, buy_status TEXT DEFAULT 'pending', buy_tx TEXT DEFAULT '', take_profit_percent REAL, stop_loss_percent REAL, source_channel TEXT DEFAULT '', status TEXT DEFAULT 'open', pnl REAL, pnl_percent REAL, sell_amount_sol REAL, sell_price REAL, sell_price_usd REAL, sell_tx TEXT, sell_order_id TEXT, closed_at INTEGER, created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS wallets (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT UNIQUE, label TEXT DEFAULT '', private_key TEXT DEFAULT '', active INTEGER DEFAULT 0, created_at INTEGER DEFAULT (strftime('%s','now')));
@@ -112,6 +112,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE settings ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch {}
   try { sqliteDb.exec("ALTER TABLE rules ADD COLUMN blind_buy INTEGER DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN ignore_duplicate INTEGER DEFAULT 0"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE rules ADD COLUMN sl_levels TEXT DEFAULT '[]'"); } catch {}
   try { sqliteDb.exec("ALTER TABLE channels ADD COLUMN track_mode TEXT DEFAULT 'admin'"); } catch {}
   try { sqliteDb.exec("ALTER TABLE signals ADD COLUMN catched_mc REAL DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN buy_market_cap REAL DEFAULT 0"); } catch {}
@@ -243,6 +244,7 @@ export async function upsertChannelRule(data) {
       take_profit_percent: data.take_profit_percent ?? null,
       stop_loss_percent: data.stop_loss_percent ?? null,
       tp_levels: data.tp_levels || [],
+      sl_levels: data.sl_levels || [],
       priority_fee: data.priority_fee ?? null,
       tip_fee: data.tip_fee ?? null,
       wallet_group_id: data.wallet_group_id || 0,
@@ -256,24 +258,25 @@ export async function upsertChannelRule(data) {
   }
   const existing = sqliteDb.prepare('SELECT id FROM rules WHERE channel_id = ?' + _tidFilter()).get(channelId, ...(_tid() ? [_tid()] : []));
   const tpStr = JSON.stringify(data.tp_levels || []);
+  const slStr = JSON.stringify(data.sl_levels || []);
   if (existing) {
     sqliteDb.prepare(`UPDATE rules SET min_market_cap=?, max_market_cap=?, min_liquidity=?, max_liquidity=?,
       auto_buy=?, blind_buy=?, buy_amount_sol=?, slippage=?, anti_mev=?,
-      take_profit_percent=?, stop_loss_percent=?, tp_levels=?, priority_fee=?, tip_fee=?,
+      take_profit_percent=?, stop_loss_percent=?, tp_levels=?, sl_levels=?, priority_fee=?, tip_fee=?,
       wallet_group_id=?, track_only=?, telegram_id=? WHERE id=?`).run(
       data.min_market_cap ?? null, data.max_market_cap ?? null, data.min_liquidity ?? null, data.max_liquidity ?? null,
       data.auto_buy ? 1 : 0, data.blind_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
-      data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr,
+      data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr, slStr,
       data.priority_fee ?? null, data.tip_fee ?? null, data.wallet_group_id || 0,
       data.track_only ? 1 : 0, _tid() || 'NONE', existing.id);
   } else {
     sqliteDb.prepare(`INSERT INTO rules (channel_id, min_market_cap, max_market_cap, min_liquidity, max_liquidity,
       auto_buy, blind_buy, buy_amount_sol, slippage, anti_mev, take_profit_percent, stop_loss_percent,
-      tp_levels, priority_fee, tip_fee, wallet_group_id, track_only, telegram_id)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      tp_levels, sl_levels, priority_fee, tip_fee, wallet_group_id, track_only, telegram_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       channelId, data.min_market_cap ?? null, data.max_market_cap ?? null, data.min_liquidity ?? null, data.max_liquidity ?? null,
       data.auto_buy ? 1 : 0, data.blind_buy ? 1 : 0, data.buy_amount_sol ?? 0.01, data.slippage ?? 30, data.anti_mev ? 1 : 0,
-      data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr,
+      data.take_profit_percent ?? null, data.stop_loss_percent ?? null, tpStr, slStr,
       data.priority_fee ?? null, data.tip_fee ?? null, data.wallet_group_id || 0,
       data.track_only ? 1 : 0, _tid() || 'NONE');
   }

@@ -213,7 +213,9 @@ export function createWebServer() {
     if (!c) return res.status(404).json({ error: 'not found' });
     let tpLevels = [];
     try { tpLevels = c.rule?.tp_levels ? (typeof c.rule.tp_levels === 'string' ? JSON.parse(c.rule.tp_levels) : c.rule.tp_levels) : []; } catch {}
-    res.json({ ...c, rule: c.rule ? { ...c.rule, tp_levels: tpLevels } : null });
+    let slLevels = [];
+    try { slLevels = c.rule?.sl_levels ? (typeof c.rule.sl_levels === 'string' ? JSON.parse(c.rule.sl_levels) : c.rule.sl_levels) : []; } catch {}
+    res.json({ ...c, rule: c.rule ? { ...c.rule, tp_levels: tpLevels, sl_levels: slLevels } : null });
   });
 
   app.post('/api/channels', async (req, res) => {

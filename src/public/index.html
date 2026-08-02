@@ -591,6 +591,8 @@ function renderChannelCard(c){
   const r=c.rule||{};
   let tpStr='';
   try{const tps=typeof r.tp_levels==='string'?JSON.parse(r.tp_levels):(r.tp_levels||[]);if(tps.length)tpStr=tps.map(t=>`TP${t.percent}%(${t.sell_ratio||100}%)`).join(', ')}catch{}
+  let slStr='';
+  try{const sls=typeof r.sl_levels==='string'?JSON.parse(r.sl_levels):(r.sl_levels||[]);if(sls.length)slStr=sls.map(t=>`SL${t.percent}%(${t.sell_ratio||100}%)`).join(', ')}catch{}
   const chips=[];
   if(r.min_market_cap!=null)chips.push(`MC &ge; ${fmtCur(r.min_market_cap)}`);
   if(r.max_market_cap!=null)chips.push(`MC &le; ${fmtCur(r.max_market_cap)}`);
@@ -599,6 +601,7 @@ function renderChannelCard(c){
   if(r.take_profit_percent)chips.push(`TP:${r.take_profit_percent}%`);
   if(r.stop_loss_percent)chips.push(`SL:${r.stop_loss_percent}%`);
   if(tpStr)chips.push(tpStr);
+  if(slStr)chips.push(slStr);
   if(r.blind_buy)chips.push(`<span style="color:var(--red);font-weight:700">BLIND</span> ${r.buy_amount_sol||0.01}SOL`);
   else if(r.auto_buy)chips.push(`&bull; ${r.buy_amount_sol||0.01}SOL`);
   if(r.priority_fee)chips.push(`Fee:${r.priority_fee}`);
@@ -700,6 +703,10 @@ window.openChannelForm=async function(id){
   const r=ch.rule||{};
   let tps=[];
   try{tps=typeof r.tp_levels==='string'?JSON.parse(r.tp_levels):(r.tp_levels||[])}catch{}
+  let sls=[];
+  try{sls=typeof r.sl_levels==='string'?JSON.parse(r.sl_levels):(r.sl_levels||[])}catch{}
+  if(!tps.length&&r.take_profit_percent)tps=[{percent:r.take_profit_percent,sell_ratio:100}];
+  if(!sls.length&&r.stop_loss_percent)sls=[{percent:r.stop_loss_percent,sell_ratio:100}];
   const isEdit=!!id;
 
   openModal(`<h2>${isEdit?'Edit':'Add'} Channel</h2>
@@ -724,14 +731,18 @@ window.openChannelForm=async function(id){
 </div>
 <label class="cb"><input type="checkbox" id="f-anti" ${(r.anti_mev||true)?'checked':''}/> 🛡️ Anti-MEV <span class="hint" style="display:inline">Protects against sandwich attacks</span></label>
 <label class="cb mt-8"><input type="checkbox" id="f-track" ${r.track_only?'checked':''}/> 👁️ Track Only <span class="hint" style="display:inline">Monitor signals without auto-buying</span></label>
-<div class="section-div">Take Profit</div>
+<div class="section-div">Take Profit (Multi-Level)</div>
 <div id="tp-levels-container">${tps.map((tp,i)=>renderTPLevel(i,tp.percent,tp.sell_ratio)).join('')}</div>
 <div class="form-actions" style="padding-top:0.5rem;border:none;margin-top:0.25rem">
   <button class="btn btn-sm" onclick="addTPLevel()">+ Add TP Level</button>
-  <span class="hint" style="margin-left:0.5rem">Auto-sell when price hits % gain</span>
+  <span class="hint" style="margin-left:0.5rem">Auto-sell when price hits % gain. Example: +100% sell 50%, +200% sell 70%.</span>
 </div>
-<div class="section-div">Stop Loss</div>
-<div class="form-group"><label>Stop Loss (%)</label><input id="f-sl" type="number" value="${r.stop_loss_percent??''}" placeholder="Disabled"/><span class="hint">Auto-sell if price drops this %. Leave empty to disable.</span></div>
+<div class="section-div">Stop Loss (Multi-Level)</div>
+<div id="sl-levels-container">${sls.map((sl,i)=>renderSLLevel(i,sl.percent,sl.sell_ratio)).join('')}</div>
+<div class="form-actions" style="padding-top:0.5rem;border:none;margin-top:0.25rem">
+  <button class="btn btn-sm" onclick="addSLLevel()">+ Add SL Level</button>
+  <span class="hint" style="margin-left:0.5rem">Auto-sell when price drops this %. Example: -20% sell 50%, -40% sell 100%.</span>
+</div>
 <div class="section-div">Buy Wallet</div>
 <div class="form-grid">
   <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select><span class="hint">Single wallet or group for distributed buys</span></div>
@@ -762,6 +773,21 @@ window.addTPLevel=function(){
   c.appendChild(d);
 };
 
+function renderSLLevel(idx,percent,ratio){
+  return`<div class="flex gap-6 items-center mb-8 wrap">
+  <div style="flex:1;min-width:80px"><input type="number" class="sl-pct" value="${percent||''}" placeholder="% drop" style="font-size:0.75rem"/></div>
+  <span class="text-muted text-sm">sell</span>
+  <div style="flex:1;min-width:70px"><input type="number" class="sl-ratio" value="${ratio||''}" placeholder="%" style="font-size:0.75rem"/></div>
+  <button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">X</button>
+</div>`;}
+
+window.addSLLevel=function(){
+  const c=$('#sl-levels-container');
+  const d=document.createElement('div');d.className='flex gap-6 items-center mb-8 wrap';
+  d.innerHTML=`<div style="flex:1;min-width:80px"><input type="number" class="sl-pct" placeholder="% drop" style="font-size:0.75rem"/></div><span class="text-muted text-sm">sell</span><div style="flex:1;min-width:70px"><input type="number" class="sl-ratio" placeholder="%" style="font-size:0.75rem"/></div><button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()" style="color:var(--red)">X</button>`;
+  c.appendChild(d);
+};
+
 window.submitChannelForm=async function(id){
   const isNew=id===null||id==='null';
   if(isNew){
@@ -777,6 +803,13 @@ window.submitChannelForm=async function(id){
     const ratio=parseFloat(el.querySelector('.tp-ratio')?.value);
     if(pct)tps.push({percent:pct,sell_ratio:ratio||100});
   });
+  const slInputs=$$('#sl-levels-container .flex');
+  const sls=[];
+  slInputs.forEach(el=>{
+    const pct=parseFloat(el.querySelector('.sl-pct')?.value);
+    const ratio=parseFloat(el.querySelector('.sl-ratio')?.value);
+    if(pct)sls.push({percent:pct,sell_ratio:ratio||100});
+  });
 
   await api('/channels/'+id+'/rules',{method:'PUT',body:JSON.stringify({
     channel_id:id,
@@ -789,8 +822,8 @@ window.submitChannelForm=async function(id){
     anti_mev:$('#f-anti').checked,
     priority_fee:Number.isFinite($('#f-fee').valueAsNumber)?$('#f-fee').valueAsNumber:null,
     tip_fee:Number.isFinite($('#f-tip').valueAsNumber)?$('#f-tip').valueAsNumber:null,
-    stop_loss_percent:parseFloat($('#f-sl').value)||null,
     tp_levels:tps,
+    sl_levels:sls,
     wallet_group_id:parseInt($('#f-wg').value)||0,
     auto_buy:$('#f-auto').checked,
     blind_buy:$('#f-blind').checked,
