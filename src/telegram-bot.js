@@ -414,19 +414,35 @@ async function showTPSEditor(ctx, id) {
     `━━━━━━━━━━━━━━━━`,
     ...(levelLines.length ? levelLines : [`<i>No TP/SL configured</i>`]),
     `━━━━━━━━━━━━━━━━`,
-    `Single TP/SL can be set here. Multi-level TP/SL (e.g. +100% sell 50%, +200% sell 70%) is configured in the web dashboard.`,
+    `<i>Set multi-level TP/SL as</i> <code>percent:sell_ratio</code> <i>, comma-separated.</i>`,
+    `<i>Example:</i> <code>100:50, 200:70</code> <i>→ TP +100% sell 50%, +200% sell 70%.</i>`,
+    `<i>Send</i> <code>0</code> <i>to clear levels.</i>`,
   ].join('\n');
 
   const kb = new InlineKeyboard()
-    .text(`🎯 TP: ${r.take_profit_percent ? r.take_profit_percent + '%' : 'OFF'}`, `t_tp_${ch.id}`)
-    .text(`🛑 SL: ${r.stop_loss_percent ? r.stop_loss_percent + '%' : 'OFF'}`, `t_sl_${ch.id}`)
+    .text(`🎯 Set TP Levels (${tpLevels.length || (r.take_profit_percent ? 1 : 0)})`, `t_tp_${ch.id}`)
+    .text(`🛑 Set SL Levels (${slLevels.length || (r.stop_loss_percent ? 1 : 0)})`, `t_sl_${ch.id}`)
     .row()
+    .text('🗑 Clear TP/SL', `t_clear_${ch.id}`)
     .text('🔙 Back', `ch_s_${ch.id}`);
 
   ctx.editMessageText(lines, { parse_mode: 'HTML', reply_markup: kb }).catch(() => {});
 }
 
 const _awaitingRuleInput = new Map();
+
+function parseTpSlLevels(input) {
+  const levels = [];
+  for (const part of String(input).split(',')) {
+    const m = part.trim().match(/^([+-]?[\d.]+)\s*[:/]\s*([\d.]+)$/);
+    if (!m) continue;
+    const percent = Math.abs(parseFloat(m[1]));
+    const ratio = Math.round(parseFloat(m[2]));
+    if (!percent || !isFinite(ratio)) continue;
+    levels.push({ percent, sell_ratio: Math.max(0, Math.min(100, ratio)) });
+  }
+  return levels;
+}
 
 function startRuleInput(ctx, chId, field, prompt) {
   const uid = String(ctx.from.id);
@@ -457,6 +473,16 @@ async function handleRuleInput(ctx, text) {
       if (isNaN(rule[field])) rule[field] = null;
       if (field === 'take_profit_percent') rule.tp_levels = [];
       if (field === 'stop_loss_percent') rule.sl_levels = [];
+    } else if (field === 'tp_levels' || field === 'sl_levels') {
+      const levels = parseTpSlLevels(val);
+      if (val.trim().toLowerCase() !== '0' && val.trim() !== '' && !levels.length) {
+        _awaitingRuleInput.set(uid, { chId, field });
+        return ctx.reply('❌ Invalid format. Use <code>percent:sell_ratio</code>, comma-separated.\nExample: <code>100:50, 200:70</code>\nSend <code>0</code> to clear.', { parse_mode: 'HTML' });
+      }
+      rule[field] = levels;
+      const cleared = !levels.length;
+      if (field === 'tp_levels' && cleared) rule.take_profit_percent = null;
+      if (field === 'sl_levels' && cleared) rule.stop_loss_percent = null;
     } else if (field === 'slippage') {
       rule[field] = Math.min(100, Math.max(0, parseInt(val) || 30));
     } else if (field === 'wallet_group_id') {
@@ -1362,41 +1388,43 @@ function registerCommands() {
       }
     }
 
-    // TP/SL toggles
+    // TP/SL level editors
     const tpMatch = d.match(/^t_tp_(\d+)$/);
     if (tpMatch) {
+      ctx.answerCallbackQuery();
       const id = tpMatch[1];
       const ch = await db.getChannelWithRule(id);
-      if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
-      const rule = ch.rule || {};
-      if (rule.take_profit_percent) {
-        rule.take_profit_percent = null;
-        rule.tp_levels = [];
-        const clean = { ...rule }; delete clean.channel_id;
-        await db.upsertChannelRule({ channel_id: Number(id), ...clean });
-        ctx.answerCallbackQuery({ text: 'TP OFF' });
-        return showTPSEditor(ctx, parseInt(id));
-      }
-      ctx.answerCallbackQuery();
-      return startRuleInput(ctx, id, 'take_profit_percent', '🎯 <b>Take Profit</b>\n\nEnter percentage.\nExample: <code>50</code> for 50%');
+      const cur = ch?.rule ? (() => { try { return typeof ch.rule.tp_levels === 'string' ? JSON.parse(ch.rule.tp_levels) : (ch.rule.tp_levels || []); } catch { return []; } })() : [];
+      const curStr = cur.length ? cur.map(l => `${l.percent}:${l.sell_ratio || 100}`).join(', ') : '';
+      return startRuleInput(ctx, id, 'tp_levels',
+        `🎯 <b>Set TP Levels</b>\n\nEnter levels as <code>percent:sell_ratio</code>, comma-separated.\nExample: <code>100:50, 200:70</code> → TP +100% sell 50%, +200% sell 70%.\n\n${curStr ? `Current: <code>${esc(curStr)}</code>\n` : ''}Send <code>0</code> to clear.`);
     }
 
     const slMatch = d.match(/^t_sl_(\d+)$/);
     if (slMatch) {
+      ctx.answerCallbackQuery();
       const id = slMatch[1];
+      const ch = await db.getChannelWithRule(id);
+      const cur = ch?.rule ? (() => { try { return typeof ch.rule.sl_levels === 'string' ? JSON.parse(ch.rule.sl_levels) : (ch.rule.sl_levels || []); } catch { return []; } })() : [];
+      const curStr = cur.length ? cur.map(l => `${l.percent}:${l.sell_ratio || 100}`).join(', ') : '';
+      return startRuleInput(ctx, id, 'sl_levels',
+        `🛑 <b>Set SL Levels</b>\n\nEnter levels as <code>percent:sell_ratio</code>, comma-separated.\nExample: <code>10:50, 30:100</code> → SL −10% sell 50%, −30% sell 100%.\n\n${curStr ? `Current: <code>${esc(curStr)}</code>\n` : ''}Send <code>0</code> to clear.`);
+    }
+
+    const tpClearMatch = d.match(/^t_clear_(\d+)$/);
+    if (tpClearMatch) {
+      const id = tpClearMatch[1];
       const ch = await db.getChannelWithRule(id);
       if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
       const rule = ch.rule || {};
-      if (rule.stop_loss_percent) {
-        rule.stop_loss_percent = null;
-        rule.sl_levels = [];
-        const clean = { ...rule }; delete clean.channel_id;
-        await db.upsertChannelRule({ channel_id: Number(id), ...clean });
-        ctx.answerCallbackQuery({ text: 'SL OFF' });
-        return showTPSEditor(ctx, parseInt(id));
-      }
-      ctx.answerCallbackQuery();
-      return startRuleInput(ctx, id, 'stop_loss_percent', '🛑 <b>Stop Loss</b>\n\nEnter percentage.\nExample: <code>20</code> for 20%');
+      rule.take_profit_percent = null;
+      rule.stop_loss_percent = null;
+      rule.tp_levels = [];
+      rule.sl_levels = [];
+      const clean = { ...rule }; delete clean.channel_id;
+      await db.upsertChannelRule({ channel_id: Number(id), ...clean });
+      ctx.answerCallbackQuery({ text: 'TP/SL cleared' });
+      return showTPSEditor(ctx, parseInt(id));
     }
 
     // ───── Positions ─────
