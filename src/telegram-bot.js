@@ -1485,8 +1485,18 @@ function auth(ctx) {
 }
 
 // ───── Start ─────
+function sleepMs(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function isConflictError(err) {
+  if (!err) return false;
+  if (err.error_code === 409) return true;
+  const msg = err.message || err.description || '';
+  return msg.includes('409') && (msg.includes('Conflict') || msg.includes('terminated by other getUpdates request'));
+}
+
 export async function startBot() {
   if (!TOKEN) return console.warn('[Bot] No TELEGRAM_BOT_TOKEN — bot disabled');
+  if (bot) return console.warn('[Bot] Already running — skipping duplicate start');
   bot = new Bot(TOKEN);
   registerCommands();
   attachLiveForwarding();
@@ -1495,6 +1505,22 @@ export async function startBot() {
     const on = err.ctx?.msg?.text || err.ctx?.callbackQuery?.data || '';
     console.error('[Bot] Error:', desc, '| ctx:', on.slice(0, 100));
   });
-  bot.start({ drop_pending_updates: true }).catch(err => console.error('[Bot] Start error:', err.message));
+
+  // Long polling only allows ONE instance per token. During a Render deploy the
+  // old instance still polls for a few seconds → new instance gets 409 and grammy
+  // permanently stops. Retry with backoff so we survive the overlap.
+  let attempt = 0;
+  for (;;) {
+    try {
+      await bot.start({ drop_pending_updates: true });
+      break;
+    } catch (err) {
+      if (!isConflictError(err)) throw err;
+      attempt++;
+      const delay = Math.min(15000, 2000 * 2 ** Math.min(attempt - 1, 3));
+      console.error(`[Bot] 409 conflict (another instance polling) — retry #${attempt} in ${(delay / 1000).toFixed(1)}s`);
+      await sleepMs(delay);
+    }
+  }
   console.log('[Bot] ✅ Telegram bot active');
 }
