@@ -350,6 +350,10 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
         if (sl && Number(sl.percent) > 0) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(sl.percent)), sell_ratio: String(sl.sell_ratio || 100) });
       }
       if (slLevels.length === 0 && rule.stop_loss_percent) conditionOrders.push({ order_type: 'loss_stop', side: 'sell', price_scale: String(Math.abs(rule.stop_loss_percent)), sell_ratio: '100' });
+      if (conditionOrders.length > 10) {
+        db.addScraperLog(sourceChannel, 'warn', `TP/SL levels capped at 10 (GMGN limit)`).catch(() => {});
+        conditionOrders.length = 10;
+      }
 
       const feeOk = chain === 'sol' ? (rule.priority_fee >= 0.00001 && rule.tip_fee >= 0.00001) : (rule.priority_fee > 0 && rule.tip_fee > 0);
       if (conditionOrders.length && !feeOk) {
