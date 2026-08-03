@@ -296,7 +296,17 @@ async function showChannelSetup(ctx, id) {
   let slLevels = [];
   try { slLevels = typeof r.sl_levels === 'string' ? JSON.parse(r.sl_levels) : (r.sl_levels || []); } catch {}
 
-  const multi = r.wallet_group_id ? (r.wallet_group_id > 0 ? 'Group ' + r.wallet_group_id : 'Wallet ' + Math.abs(r.wallet_group_id)) : 'Default only';
+  let multi = 'Default only';
+  let multiDetail = '';
+  if (r.wallet_group_id > 0) {
+    const grp = (await db.getWalletGroups().catch(() => [])).find(g => g.id === r.wallet_group_id);
+    const wcount = grp ? (Number(grp.member_count) || 0) : 0;
+    multi = 'Group ' + (grp ? esc(grp.name) : r.wallet_group_id) + (wcount ? ` · ${wcount} wallet${wcount !== 1 ? 's' : ''}` : '');
+    const total = Number(r.buy_amount_sol) || 0.01;
+    multiDetail = `→ Buy = ${total} SOL TOTAL, split across ${wcount || '?'} wallet(s). Per-wallet ≈ ${wcount ? (total / wcount).toFixed(4) : '?'} SOL`;
+  } else if (r.wallet_group_id < 0) {
+    multi = 'Wallet ' + Math.abs(r.wallet_group_id);
+  }
   const sellOrders = [];
   if (r.take_profit_percent) sellOrders.push(`‣ TP | ${r.take_profit_percent}% • 100%`);
   if (r.stop_loss_percent) sellOrders.push(`‣ SL | −${Math.abs(r.stop_loss_percent)}% • 100%`);
@@ -321,6 +331,7 @@ async function showChannelSetup(ctx, id) {
     `Gas Price: ${fmtFee(r.priority_fee)} SOL + ${fmtFee(r.tip_fee)} SOL tip`,
     `Anti-MEV: ${r.anti_mev ? '🟢 ON' : '🔴 OFF'}`,
     `Multi: ${multi}`,
+    ...(multiDetail ? [`<i>${multiDetail}</i>`] : []),
     `Min MarketCap: ${r.min_market_cap ? '$' + fmtCur(r.min_market_cap) : 'Disabled'}`,
     `Max MarketCap: ${r.max_market_cap ? '$' + fmtCur(r.max_market_cap) : 'Disabled'}`,
     `Min Liquidity: ${r.min_liquidity ? '$' + fmtCur(r.min_liquidity) : 'Disabled'}`,
@@ -1280,7 +1291,7 @@ function registerCommands() {
     if (rAmtMatch) {
       const id = rAmtMatch[1];
       ctx.answerCallbackQuery();
-      return startRuleInput(ctx, id, 'buy_amount_sol', '💰 <b>Buy Amount</b>\n\nEnter SOL amount per buy.\nExample: <code>0.05</code>');
+      return startRuleInput(ctx, id, 'buy_amount_sol', '💰 <b>Buy Amount</b>\n\nEnter the SOL amount.\n\nThis is the <b>TOTAL</b> per signal. If a Wallet Group is set for this channel, it is split equally across the group\'s wallets (per-wallet = amount ÷ wallet count).\n\nExample: <code>0.05</code>');
     }
 
     const rGrpMatch = d.match(/^r_grp_(\d+)$/);

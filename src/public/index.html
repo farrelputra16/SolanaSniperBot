@@ -724,7 +724,7 @@ window.openChannelForm=async function(id){
 </div>
 <div class="section-div">Execution</div>
 <div class="form-grid">
-  <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-buy" type="number" step="0.001" value="${r.buy_amount_sol||0.01}"/><span class="hint">SOL amount per buy signal</span></div>
+  <div class="form-group"><label>Buy Amount (SOL)</label><input id="f-buy" type="number" step="0.001" value="${r.buy_amount_sol||0.01}"/><span class="hint">SOL <span class="em">total</span> per signal. When a Wallet Group is selected below, it's split equally: per-wallet = amount ÷ number of wallets.</span></div>
   <div class="form-group"><label>Slippage (%)</label><input id="f-slip" type="number" value="${r.slippage||30}"/><span class="hint">Max price slippage tolerance</span></div>
   <div class="form-group"><label>Priority Fee (SOL)</label><input id="f-fee" type="number" value="${r.priority_fee??''}" placeholder="Auto"/><span class="hint">Extra fee for faster tx (<span class="key">≥0.00001</span>)</span></div>
   <div class="form-group"><label>Tip Fee (SOL)</label><input id="f-tip" type="number" value="${r.tip_fee??''}" placeholder="Auto"/><span class="hint">Jito tip for frontrun protection</span></div>
@@ -745,7 +745,7 @@ window.openChannelForm=async function(id){
 </div>
 <div class="section-div">Buy Wallet</div>
 <div class="form-grid">
-  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select><span class="hint">Single wallet or group for distributed buys</span></div>
+  <div class="form-group"><label>Execute with</label><select id="f-wg"><option value="0">Active Wallet</option>${allWallets.map(w=>`<option value="-${w.id}" ${r.wallet_group_id==-w.id?'selected':''}>${esc(w.label||addrShort(w.address))}</option>`).join('')}${groups.length?`<optgroup label="Wallet Groups">${groups.map(g=>`<option value="${g.id}" ${r.wallet_group_id==g.id?'selected':''}>${esc(g.name)} (${g.member_count||0} wallets)</option>`).join('')}</optgroup>`:''}</select><span class="hint">Single wallet, or a group → distributes the Buy Amount across wallets (amount ÷ wallets in group).</span></div>
 </div>
 <div class="section-div">Buy Mode</div>
 <div class="feat"><div class="icon">🎯</div><div class="body"><div class="title">Auto-Buy (Filtered)</div><div class="desc">Buys when a signal passes all MC, liquidity, and other filters. Safe, targeted entry.</div></div></div>
