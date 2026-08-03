@@ -658,6 +658,16 @@ async function removeWallet(ctx, id) {
 
 // ───── Wallet Groups ─────
 let _awaitingGroupName = new Set();
+let _pendingGroupName = null;
+let _groupPicker = null; // { mode:'create'|'manage', name, groupId, selected:Set, chatId, msgId }
+
+function _gptTitle(mode, name) {
+  return mode === 'create'
+    ? `➕ <b>Create Group — ${esc(name)}</b>`
+    : `⚙️ <b>Manage Wallets — ${esc(name)}</b>`;
+}
+function _walletLabel(w) { return w.label || addrShort(w.address); }
+
 async function showGroups(ctx, edit = true) {
   await db.setTelegramId(adminId);
   const groups = await db.getWalletGroups();
@@ -689,57 +699,146 @@ async function handleGroupNameInput(ctx, text) {
   const name = text.trim();
   if (!name) return ctx.reply('❌ Name cannot be empty.', { parse_mode: 'HTML' });
   await db.setTelegramId(adminId);
-  await db.createWalletGroup(name);
-  const kb = new InlineKeyboard().text('👥 Groups', 'menu_groups').text('🔙 Menu', 'menu_main');
-  ctx.reply(`✅ Group <b>${esc(name)}</b> created!`, { parse_mode: 'HTML', reply_markup: kb });
-  showGroups(ctx, false);
+  _pendingGroupName = name;
+  _groupPicker = { mode: 'create', name, groupId: null, selected: new Set(), chatId: null, msgId: null };
+  await renderGroupPicker(ctx, false);
 }
 
-let _awaitingGroupWallets = new Set();
 async function showGroupDetail(ctx, id) {
   await db.setTelegramId(adminId);
   const g = await db.getWalletGroups().then(gs => gs.find(gg => gg.id === id));
   if (!g) return ctx.answerCallbackQuery({ text: 'Not found' });
   const wallets = await db.getGroupWallets(id);
-  const lines = [`👥 <b>${esc(g.name)}</b>`, `━━━━━━━━━━━━━━━━`];
-  if (wallets.length) {
-    for (const w of wallets) {
-      lines.push(`<code>${esc(w.address)}</code>${w.label ? ' — ' + esc(w.label) : ''}`);
-    }
-  } else {
-    lines.push('No wallets in this group.');
-  }
-  const text = lines.join('\n');
+  const lines = [
+    `👥 <b>${esc(g.name)}</b>`,
+    `━━━━━━━━━━━━━━━━`,
+    ...(wallets.length
+      ? wallets.map(w => `<code>${esc(w.address)}</code>${w.label ? ' — ' + esc(w.label) : ''}`)
+      : ['No wallets in this group.']),
+    `━━━━━━━━━━━━━━━━`,
+    `<i>${wallets.length} wallet${wallets.length !== 1 ? 's' : ''}.</i>`,
+  ];
   const kb = new InlineKeyboard()
-    .text('➕ Add Wallet', `grp_aw_${g.id}`)
+    .text('⚙️ Manage Wallets', `grp_aw_${g.id}`)
     .row()
     .text('🔙 Groups', 'menu_groups');
-  ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb }));
+  ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }));
 }
-async function promptGroupWalletAdd(ctx, groupId) {
-  _awaitingGroupWallets.add(String(ctx.from.id));
-  _pendingGroupId = groupId;
-  const kb = new InlineKeyboard().text('🔙 Back', 'menu_groups');
-  ctx.reply('➕ <b>Add Wallet to Group</b>\n\nSend the wallet ID number to add.\n\nGet wallet IDs from 💰 Wallets menu.\n\nOr /cancel to abort.', { parse_mode: 'HTML', reply_markup: kb });
-}
-let _pendingGroupId = null;
-async function handleGroupWalletInput(ctx, text) {
-  _awaitingGroupWallets.delete(String(ctx.from.id));
-  const walletId = parseInt(text.trim());
-  if (isNaN(walletId)) return ctx.reply('❌ Enter a valid wallet ID number.', { parse_mode: 'HTML' });
+
+// ── Wallet picker (create + manage — like the web checkbox modal) ──
+async function renderGroupPicker(ctx, isCallbackEdit) {
+  const st = _groupPicker;
+  if (!st) return ctx.answerCallbackQuery();
   await db.setTelegramId(adminId);
-  if (_pendingGroupId) {
-    await db.addWalletToGroup(_pendingGroupId, walletId);
-    _pendingGroupId = null;
-    const kb = new InlineKeyboard().text('👥 Groups', 'menu_groups').text('🔙 Menu', 'menu_main');
-    ctx.reply(`✅ Wallet #${walletId} added to group!`, { parse_mode: 'HTML', reply_markup: kb });
+  const wallets = await db.getAllWallets();
+  let name = st.name || '';
+  if (st.mode === 'manage' && !name) {
+    const g = (await db.getWalletGroups().catch(() => [])).find(x => x.id === st.groupId);
+    name = g ? g.name : '#' + st.groupId;
   }
+  const lines = [
+    _gptTitle(st.mode, name),
+    `━━━━━━━━━━━━━━━━`,
+    ...(wallets.length
+      ? wallets.map(w => `${st.selected.has(w.id) ? '✅' : '⬜'} ${_walletLabel(w)}`)
+      : ['<i>No imported wallets yet — add wallets via 💰 Wallets first.</i>']),
+    `━━━━━━━━━━━━━━━━`,
+    `<i>${st.selected.size} selected — each buy divides the total amount equally across these wallets.</i>`,
+  ];
+  const kb = new InlineKeyboard();
+  for (const w of wallets) {
+    kb.text(`${st.selected.has(w.id) ? '✅' : '⬜'} ${btnText(_walletLabel(w))}`, `pk_t_${w.id}`).row();
+  }
+  kb.text(st.mode === 'create' ? '✅ Create Group' : '✅ Done', 'pk_done').row();
+  kb.text('🔙 Groups', 'menu_groups');
+  const opts = { parse_mode: 'HTML', reply_markup: kb };
+  if (st.msgId && st.chatId) {
+    try { await bot.api.editMessageText(st.chatId, st.msgId, lines.join('\n'), opts); return; } catch {}
+  }
+  const sent = await ctx.reply(lines.join('\n'), opts);
+  st.chatId = ctx.chat.id;
+  st.msgId = sent.message_id;
 }
+
+async function finalizeGroupPicker(ctx) {
+  const st = _groupPicker;
+  if (!st) return ctx.answerCallbackQuery();
+  await db.setTelegramId(adminId);
+  if (st.mode === 'create') {
+    const id = await db.createWalletGroup(st.name);
+    for (const wid of st.selected) await db.addWalletToGroup(id, wid);
+    _groupPicker = null; _pendingGroupName = null;
+    ctx.answerCallbackQuery({ text: 'Group created' });
+    return showGroupDetail(ctx, id);
+  }
+  const current = await db.getGroupWallets(st.groupId);
+  const currentIds = new Set(current.map(w => w.id));
+  for (const wid of st.selected) if (!currentIds.has(wid)) await db.addWalletToGroup(st.groupId, wid);
+  for (const wid of currentIds) if (!st.selected.has(wid)) await db.removeWalletFromGroup(st.groupId, wid);
+  _groupPicker = null; _pendingGroupName = null;
+  ctx.answerCallbackQuery({ text: 'Saved' });
+  return showGroupDetail(ctx, st.groupId);
+}
+
 async function removeGroup(ctx, id) {
   await db.setTelegramId(adminId);
   await db.deleteWalletGroup(id);
   ctx.answerCallbackQuery({ text: 'Removed' });
   showGroups(ctx, true);
+}
+
+// ── Channel "Execute with" wallet-type picker (like web dropdown) ──
+async function showChannelWalletPicker(ctx, chId) {
+  await db.setTelegramId(adminId);
+  const ch = await db.getChannelWithRule(chId);
+  if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
+  const r = ch.rule || {};
+  const name = btnText(ch.display_name || ch.channel_username);
+
+  const [wallets, groups] = await Promise.all([
+    db.getAllWallets().catch(() => []),
+    db.getWalletGroups().catch(() => []),
+  ]);
+  let sel = 'Active Wallet';
+  if (r.wallet_group_id > 0) {
+    const g = groups.find(x => x.id === r.wallet_group_id);
+    sel = (g ? g.name : 'Group #' + r.wallet_group_id) + (g?.member_count ? ` (${g.member_count} wallets)` : '');
+  } else if (r.wallet_group_id < 0) {
+    const w = wallets.find(x => x.id === Math.abs(r.wallet_group_id));
+    sel = w ? (_walletLabel(w)) : 'Wallet ' + Math.abs(r.wallet_group_id);
+  }
+
+  const lines = [
+    `💼 <b>Execute with — ${esc(name)}</b>`,
+    `━━━━━━━━━━━━━━━━`,
+    `Current: <b>${esc(sel)}</b>`,
+    `<i>Buy amount = TOTAL, split equally across the chosen wallets.</i>`,
+  ];
+
+  const kb = new InlineKeyboard()
+    .text(r.wallet_group_id === 0 ? '✅ Active Wallet' : '⚪ Active Wallet', `wgp0_${chId}`).row();
+  for (const w of wallets) {
+    kb.text((r.wallet_group_id === -w.id ? '✅ ' : '⬜ ') + btnText(_walletLabel(w)), `wgpw_${chId}_${w.id}`).row();
+  }
+  for (const g of groups) {
+    kb.text((r.wallet_group_id === g.id ? '✅ ' : '⬜ ') + btnText(g.name) + ` (${g.member_count || 0})`, `wgpg_${chId}_${g.id}`).row();
+  }
+  kb.text('🔙 Channel', `ch_s_${chId}`);
+
+  ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }).catch(() => ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb }));
+}
+
+async function applyChannelWalletGroup(ctx, chId, value) {
+  await db.setTelegramId(adminId);
+  const ch = await db.getChannelWithRule(chId);
+  if (!ch) return ctx.answerCallbackQuery({ text: 'Not found' });
+  const rule = ch.rule || {};
+  rule.blind_buy = rule.blind_buy || false;
+  const clean = { ...rule }; delete clean.channel_id;
+  clean.wallet_group_id = value;
+  await db.upsertChannelRule({ channel_id: Number(chId), ...clean });
+  ctx.answerCallbackQuery({ text: 'Saved' });
+  return showChannelWalletPicker(ctx, parseInt(chId));
 }
 
 // ───── Signals ─────
@@ -1150,9 +1249,9 @@ function registerCommands() {
     _awaitingWalletKey.delete(uid);
     _awaitingRuleInput.delete(uid);
     _awaitingGroupName.delete(uid);
-    _awaitingGroupWallets.delete(uid);
     _awaitingPosTPSL.delete(uid);
-    _pendingGroupId = null;
+    _groupPicker = null;
+    _pendingGroupName = null;
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
     ctx.reply('Cancelled.', { parse_mode: 'HTML', reply_markup: kb });
     showMainMenu(ctx, false);
@@ -1175,7 +1274,6 @@ function registerCommands() {
     if (_awaitingWalletKey.has(uid)) return handleWalletKeyInput(ctx, ctx.message.text);
     if (_awaitingRuleInput.has(uid)) return handleRuleInput(ctx, ctx.message.text);
     if (_awaitingGroupName.has(uid)) return handleGroupNameInput(ctx, ctx.message.text);
-    if (_awaitingGroupWallets.has(uid)) return handleGroupWalletInput(ctx, ctx.message.text);
     if (_awaitingPosTPSL.has(uid)) return handlePositionTPSLInput(ctx, ctx.message.text);
 
     if (!auth(ctx)) return;
@@ -1296,10 +1394,17 @@ function registerCommands() {
 
     const rGrpMatch = d.match(/^r_grp_(\d+)$/);
     if (rGrpMatch) {
-      const id = rGrpMatch[1];
       ctx.answerCallbackQuery();
-      return startRuleInput(ctx, id, 'wallet_group_id', '💼 <b>Wallet Group</b>\n\nEnter wallet group ID:\n0 = active wallet\nNegative = single wallet ID');
+      return showChannelWalletPicker(ctx, parseInt(rGrpMatch[1]));
     }
+
+    // Channel wallet picker selections
+    const wgp0 = d.match(/^wgp0_(\d+)$/);
+    if (wgp0) return applyChannelWalletGroup(ctx, wgp0[1], 0);
+    const wgpw = d.match(/^wgpw_(\d+)_(\d+)$/);
+    if (wgpw) return applyChannelWalletGroup(ctx, wgpw[1], -parseInt(wgpw[2]));
+    const wgpg = d.match(/^wgpg_(\d+)_(\d+)$/);
+    if (wgpg) return applyChannelWalletGroup(ctx, wgpg[1], parseInt(wgpg[2]));
 
     const rSlipMatch = d.match(/^r_slip_(\d+)$/);
     if (rSlipMatch) {
@@ -1513,7 +1618,27 @@ function registerCommands() {
     }
 
     const grpAwMatch = d.match(/^grp_aw_(\d+)$/);
-    if (grpAwMatch) { ctx.answerCallbackQuery(); return promptGroupWalletAdd(ctx, parseInt(grpAwMatch[1])); }
+    if (grpAwMatch) {
+      ctx.answerCallbackQuery();
+      const gid = parseInt(grpAwMatch[1]);
+      await db.setTelegramId(adminId);
+      const current = await db.getGroupWallets(gid);
+      _groupPicker = { mode: 'manage', name: null, groupId: gid, selected: new Set(current.map(w => w.id)), chatId: null, msgId: null };
+      return renderGroupPicker(ctx, false);
+    }
+
+    // Wallet picker toggles
+    const pkTMatch = d.match(/^pk_t_(\d+)$/);
+    if (pkTMatch) {
+      if (!_groupPicker) return ctx.answerCallbackQuery();
+      const wid = parseInt(pkTMatch[1]);
+      if (_groupPicker.selected.has(wid)) _groupPicker.selected.delete(wid);
+      else _groupPicker.selected.add(wid);
+      ctx.answerCallbackQuery();
+      return renderGroupPicker(ctx, true);
+    }
+
+    if (d === 'pk_done') return finalizeGroupPicker(ctx);
   });
 }
 
