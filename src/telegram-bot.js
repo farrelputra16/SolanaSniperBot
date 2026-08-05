@@ -543,7 +543,7 @@ async function showWallets(ctx, edit = true) {
   await db.setTelegramId(adminId);
   const wallets = await db.getAllWallets();
   if (!wallets.length) {
-    const kb = new InlineKeyboard().text('➕ Add Wallet', 'wallet_add').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
+    const kb = new InlineKeyboard().text('➕ Add Wallet', 'wallet_add').text('✨ Generate', 'wallet_gen').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
     const text = `💰 <b>Wallets</b>\n━━━━━━━━━━━━━━━━\nNo wallets yet.\n\nAdd your first wallet to start trading.`;
     const opts = { parse_mode: 'HTML', reply_markup: kb };
     if (edit) {
@@ -570,7 +570,7 @@ async function showWallets(ctx, edit = true) {
       .text(w.active ? '⭐' : '☆', `wallet_act_${w.id}`)
       .text('🗑', `wallet_d_${w.id}`).row();
   }
-  kb.text('➕ Add Wallet', 'wallet_add').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
+  kb.text('➕ Add Wallet', 'wallet_add').text('✨ Generate', 'wallet_gen').text('👥 Groups', 'menu_groups').row().text('🔙 Menu', 'menu_main');
 
   const opts = { parse_mode: 'HTML', reply_markup: kb };
   const text = lines.join('\n\n');
@@ -606,6 +606,101 @@ async function handleWalletKeyInput(ctx, text) {
   } catch (e) {
     ctx.reply(`❌ ${esc(e.message)}`, { parse_mode: 'HTML' });
   }
+}
+
+// ───── Vanity Wallet Generation ─────
+const _awaitingVanitySuffix = new Set();
+const _awaitingWalletLabel = new Set();
+let _vanity = null;          // { ac, chatId, msgId, timer, startTs, suffix, attempts }
+let _pendingGenWallet = null; // { address, privateKey }
+
+const _VANITY_HINT = `✨ <b>Generate Wallet (Vanity)</b>\n\nAddress akan diakhiri dengan teks pilihanmu (contoh: <code>D1ck</code>).\n\n✅ <b>Bisa</b> (semua base58):\n<code>123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz</code>\n\n❌ <b>Tidak bisa</b> (bukan base58): <code>0</code> <code>O</code> <code>I</code> <code>l</code>, spasi, simbol\n\nMaks 4 karakter:\n• 2 huruf ≈ kurang dari 1 detik\n• 3 huruf ≈ 15 detik\n• 4 huruf ≈ beberapa menit\n\nKirim akhiran yang diinginkan, atau ketik <code>0</code> untuk generate biasa (tanpa akhiran).`;
+
+async function promptVanitySuffix(ctx) {
+  _awaitingVanitySuffix.add(String(ctx.from.id));
+  const kb = new InlineKeyboard().text('🔙 Back', 'menu_wallets');
+  ctx.reply(_VANITY_HINT, { parse_mode: 'HTML', reply_markup: kb });
+}
+
+async function handleVanitySuffixInput(ctx, text) {
+  const uid = String(ctx.from.id);
+  _awaitingVanitySuffix.delete(uid);
+  const s = text.trim();
+  if (s === '0' || s.toLowerCase() === 'skip') return startVanityJob(ctx, '');
+  const { isValidVanitySuffix } = await import('./gmgn.js');
+  if (!isValidVanitySuffix(s)) {
+    _awaitingVanitySuffix.add(uid);
+    return ctx.reply(`❌ <b>${esc(s)}</b> tidak valid sebagai akhiran.\n\nBase58 cuma boleh: angka <code>1-9</code>, huruf besar/kecil (tanpa <code>0</code> <code>O</code> <code>I</code> <code>l</code>), maks 4 karakter.\n\n✅ Contoh yang bisa: <code>D1ck</code> <code>Xx</code> <code>GG</code> <code>abc</code>\n❌ Contoh yang tidak bisa: <code>G04t</code> (pakai 0), <code>Wow!</code>, <code>hello5</code>, <code>a b</code>\n\nKirim ulang akhiran, atau ketik <code>0</code> untuk generate biasa.`, { parse_mode: 'HTML' });
+  }
+  return startVanityJob(ctx, s);
+}
+
+async function startVanityJob(ctx, suffix) {
+  if (_vanity) return ctx.reply('⚠️ Masih ada vanity wallet yang sedang digenerate — cancel dulu sebelum mulai yang baru.', { parse_mode: 'HTML' });
+  const g = await import('./gmgn.js');
+  if (!suffix) {
+    const w = g.generateSolanaWallet();
+    return showVanityResult(ctx, w.address, w.privateKey, null);
+  }
+  const ac = new AbortController();
+  const sent = await ctx.reply(`⏳ <b>Generating vanity wallet</b> — ending "<code>${esc(suffix)}</code>"\n0 addresses tried · 0s`, {
+    parse_mode: 'HTML',
+    reply_markup: new InlineKeyboard().text('✖ Cancel', 'vanity_cancel'),
+  });
+  const st = { ac, chatId: ctx.chat.id, msgId: sent.message_id, timer: null, startTs: Date.now(), suffix, attempts: 0 };
+  _vanity = st;
+  st.timer = setInterval(() => {
+    if (!_vanity) return;
+    const secs = Math.floor((Date.now() - st.startTs) / 1000);
+    bot.api.editMessageText(st.chatId, st.msgId, `⏳ <b>Generating vanity wallet</b> — ending "<code>${esc(suffix)}</code>"\n${st.attempts.toLocaleString()} addresses tried · ${secs}s`, {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard().text('✖ Cancel', 'vanity_cancel'),
+    }).catch(() => {});
+  }, 1000);
+  try {
+    const r = await g.generateVanityWallet(suffix, { signal: ac.signal, onAttempt: a => { st.attempts = a; } });
+    clearInterval(st.timer);
+    if (_vanity === st) _vanity = null;
+    return showVanityResult(ctx, r.address, r.privateKey, st);
+  } catch (e) {
+    clearInterval(st.timer);
+    if (_vanity === st) _vanity = null;
+    bot.api.editMessageText(st.chatId, st.msgId, '✖ Generation cancelled.', { parse_mode: 'HTML' }).catch(() => {});
+    return ctx.reply('✖ Vanity wallet generation cancelled.', { parse_mode: 'HTML' });
+  }
+}
+
+async function showVanityResult(ctx, address, privateKey, st) {
+  const msg = `✨ <b>Vanity Wallet Found</b>\n\n<code>${esc(address)}</code>\n\nPrivate key:\n<code>${esc(privateKey)}</code>\n\n⚠️ Simpan private key sekarang — tidak akan ditampilkan lagi.`;
+  const kb = new InlineKeyboard()
+    .text('💾 Save Wallet', 'wallet_save_v')
+    .text('🏷️ Label & Save', 'wallet_label_v')
+    .row()
+    .text('🔙 Wallets', 'menu_wallets');
+  const opts = { parse_mode: 'HTML', reply_markup: kb };
+  if (st && st.msgId) {
+    await bot.api.editMessageText(st.chatId, st.msgId, msg, opts).catch(() => ctx.reply(msg, opts));
+  } else {
+    await ctx.reply(msg, opts);
+  }
+  _pendingGenWallet = { address, privateKey };
+}
+
+async function saveGeneratedWallet(ctx, label) {
+  if (!_pendingGenWallet) return ctx.answerCallbackQuery({ text: 'Nothing to save' });
+  const addr = _pendingGenWallet.address;
+  await db.setTelegramId(adminId);
+  await db.addWallet(addr, label || 'Generated Wallet', _pendingGenWallet.privateKey);
+  _pendingGenWallet = null;
+  ctx.answerCallbackQuery({ text: 'Saved' });
+  const kb = new InlineKeyboard().text('💰 Wallets', 'menu_wallets');
+  ctx.reply(`✅ <b>Wallet saved!</b>\n<code>${esc(addr)}</code>`, { parse_mode: 'HTML', reply_markup: kb });
+  showWallets(ctx, false);
+}
+
+async function handleWalletLabelInput(ctx, text) {
+  _awaitingWalletLabel.delete(String(ctx.from.id));
+  await saveGeneratedWallet(ctx, text.trim() || 'Generated Wallet');
 }
 
 async function showWalletDetail(ctx, id) {
@@ -1250,6 +1345,9 @@ function registerCommands() {
     _awaitingRuleInput.delete(uid);
     _awaitingGroupName.delete(uid);
     _awaitingPosTPSL.delete(uid);
+    _awaitingVanitySuffix.delete(uid);
+    _awaitingWalletLabel.delete(uid);
+    if (_vanity) _vanity.ac.abort();
     _groupPicker = null;
     _pendingGroupName = null;
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
@@ -1275,6 +1373,8 @@ function registerCommands() {
     if (_awaitingRuleInput.has(uid)) return handleRuleInput(ctx, ctx.message.text);
     if (_awaitingGroupName.has(uid)) return handleGroupNameInput(ctx, ctx.message.text);
     if (_awaitingPosTPSL.has(uid)) return handlePositionTPSLInput(ctx, ctx.message.text);
+    if (_awaitingVanitySuffix.has(uid)) return handleVanitySuffixInput(ctx, ctx.message.text);
+    if (_awaitingWalletLabel.has(uid)) return handleWalletLabelInput(ctx, ctx.message.text);
 
     if (!auth(ctx)) return;
     showMainMenu(ctx, false);
@@ -1586,6 +1686,17 @@ function registerCommands() {
 
     // ───── Wallets ─────
     if (d === 'wallet_add') { ctx.answerCallbackQuery(); return promptWalletKey(ctx); }
+    if (d === 'wallet_gen') { ctx.answerCallbackQuery(); return promptVanitySuffix(ctx); }
+    if (d === 'vanity_cancel') {
+      ctx.answerCallbackQuery({ text: 'Cancelling...' });
+      if (_vanity) _vanity.ac.abort();
+      return;
+    }
+    if (d === 'wallet_save_v') return saveGeneratedWallet(ctx, null);
+    if (d === 'wallet_label_v') {
+      _awaitingWalletLabel.add(String(ctx.from.id));
+      return ctx.reply('🏷️ <b>Set Label</b>\n\nKirim label untuk wallet ini (contoh: <code>Mega Wallet</code>).', { parse_mode: 'HTML' });
+    }
 
     const walletViewMatch = d.match(/^wallet_v_(\d+)$/);
     if (walletViewMatch) { ctx.answerCallbackQuery(); return showWalletDetail(ctx, parseInt(walletViewMatch[1])); }
