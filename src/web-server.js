@@ -581,11 +581,54 @@ export function createWebServer() {
   });
 
   // ───── Generate Wallet ─────
+  const _vanityJobs = new Map();
+  let _vanitySeq = 0;
+
   app.post('/api/wallets/generate', async (req, res) => {
     try {
-      const { address, privateKey } = gmgn.generateSolanaWallet();
-      res.json({ success: true, address, privateKey });
+      const suffix = String(req.body?.suffix || '').trim();
+      if (!suffix) {
+        const { address, privateKey } = gmgn.generateSolanaWallet();
+        return res.json({ success: true, address, privateKey });
+      }
+      if (!gmgn.isValidVanitySuffix(suffix)) {
+        return res.status(400).json({ error: 'Suffix must be 1-4 characters using base58 alphabet (no 0, O, I, l).' });
+      }
+      const id = 'v' + (++_vanitySeq) + '_' + Date.now();
+      const ac = new AbortController();
+      const job = { id, suffix, status: 'running', attempts: 0, started: Date.now(), ac, result: null, error: null };
+      _vanityJobs.set(id, job);
+      gmgn.generateVanityWallet(suffix, {
+        signal: ac.signal,
+        onAttempt: (a) => { job.attempts = a; },
+      }).then(r => {
+        job.status = 'done';
+        job.attempts = r.attempts;
+        job.result = r;
+      }).catch(e => {
+        job.status = e.message === 'cancelled' ? 'cancelled' : 'error';
+        job.error = e.message;
+      });
+      setTimeout(() => _vanityJobs.delete(id), 10 * 60 * 1000);
+      return res.json({ success: true, jobId: id });
     } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get('/api/wallets/generate/status', async (req, res) => {
+    const job = _vanityJobs.get(String(req.query.jobId || ''));
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json({
+      status: job.status, suffix: job.suffix, attempts: job.attempts,
+      elapsedMs: Date.now() - job.started,
+      address: job.result?.address, privateKey: job.result?.privateKey, error: job.error,
+    });
+  });
+
+  app.post('/api/wallets/generate/cancel', async (req, res) => {
+    const job = _vanityJobs.get(String(req.body?.jobId || ''));
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    job.ac.abort();
+    res.json({ success: true });
   });
 
   // ───── Wallet Analysis (for Smart Money / KOL) ─────

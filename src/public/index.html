@@ -1056,16 +1056,59 @@ window.delW=async function(id){
 };
 window.copyAddr=function(a){navigator.clipboard.writeText(a);toast('Copied','ok')};
 
-window.openGenerateWallet=async function(){
-  const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
-  if(!r)return toast('Failed to generate wallet','err');
+window.openGenerateWallet=function(){
+  openModal(`<h2>Generate Wallet</h2>
+<p class="text-sm text-muted mb-8">Create a brand-new Solana wallet. Optionally pick a <b>vanity ending</b> so the address ends with your chosen text.</p>
+<div class="form-group"><label>Vanity Ending <span class="text-muted" style="font-weight:400">— optional</span></label><input id="f-vs" maxlength="4" placeholder="e.g. D1ck or G04t" style="font-family:var(--font-mono);text-transform:none"/><span class="hint">Address will end with this text. Base58 only — <span style="color:var(--red)">no 0, O, I, l</span>. Time: 2 chars ≈ instant, 3 chars ≈ 15s, 4 chars ≈ minutes.</span></div>
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="startGenerateWallet()">Generate</button></div>`);
+};
+window.startGenerateWallet=async function(){
+  const suffix=($('#f-vs').value||'').trim();
+  if(suffix&&!/^[1-9A-HJ-NP-Za-km-z]{1,4}$/.test(suffix))return toast('Vanity ending: 1-4 chars, base58 only (no 0, O, I, l)','err');
+  if(!suffix){
+    const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
+    if(!r)return toast('Failed to generate wallet','err');
+    return showGeneratedResult(r.address,r.privateKey);
+  }
+  const r=await api('/wallets/generate',{method:'POST',body:JSON.stringify({suffix})}).catch(e=>null);
+  if(!r||!r.jobId)return toast('Failed to start generation','err');
+  pollVanityJob(r.jobId);
+};
+let _vanityPollTimer=null;
+async function pollVanityJob(jobId){
+  openModal(`<h2>Generating Vanity Wallet</h2>
+<div style="text-align:center;padding:1rem 0;margin-bottom:0.5rem"><div style="font-size:1.5rem;animation:pulse 1.2s infinite">⏳</div>
+<div id="f-vp" class="text-sm text-muted" style="margin-top:0.6rem">Starting…</div></div>
+<div class="modal-actions"><button class="btn btn-r" onclick="cancelVanityJob('${jobId}')">Cancel</button></div>`);
+  clearInterval(_vanityPollTimer);
+  _vanityPollTimer=setInterval(async()=>{
+    try{
+      const s=await api('/wallets/generate/status?jobId='+encodeURIComponent(jobId)+'&_t='+Date.now());
+      const secs=(s.elapsedMs/1000).toFixed(0);
+      $('#f-vp').textContent=`Searching ending "${s.suffix}" — ${s.attempts.toLocaleString()} addresses tried · ${secs}s`;
+      if(s.status==='done'){
+        clearInterval(_vanityPollTimer);_vanityPollTimer=null;
+        showGeneratedResult(s.address,s.privateKey);
+      }else if(s.status==='cancelled'||s.status==='error'){
+        clearInterval(_vanityPollTimer);_vanityPollTimer=null;
+        closeModal();toast(s.error||'Generation cancelled','err');
+      }
+    }catch(e){ clearInterval(_vanityPollTimer);_vanityPollTimer=null; closeModal(); }
+  },1000);
+}
+window.cancelVanityJob=async function(jobId){
+  clearInterval(_vanityPollTimer);_vanityPollTimer=null;
+  await api('/wallets/generate/cancel',{method:'POST',body:JSON.stringify({jobId})}).catch(()=>{});
+  closeModal();toast('Generation cancelled','info');
+};
+window.showGeneratedResult=function(address,privateKey){
   openModal(`<h2>Wallet Generated</h2>
 <div style="text-align:center;padding:0.5rem 0;margin-bottom:0.75rem"><div style="width:2.5rem;height:2.5rem;border-radius:9999px;background:var(--green-bg);display:inline-flex;align-items:center;justify-content:center;font-size:1.25rem">✓</div></div>
 <p class="text-sm text-muted mb-8" style="text-align:center"><span class="badge badge-r">⚠️ Save the private key now</span> — it won't be shown again after closing.</p>
-<div class="form-group"><label>Address</label><input value="${r.address}" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer"/><span class="hint">Your new Solana wallet address</span></div>
-<div class="form-group"><label>Private Key <span class="badge badge-r">Save this!</span></label><textarea rows="2" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;color:#f1c40f;resize:none">${r.privateKey}</textarea><span class="hint" style="color:var(--yellow)">Store securely. Irrecoverable if lost.</span></div>
+<div class="form-group"><label>Address</label><input value="${address}" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer"/><span class="hint">Your new Solana wallet address</span></div>
+<div class="form-group"><label>Private Key <span class="badge badge-r">Save this!</span></label><textarea rows="2" readonly onclick="this.select();navigator.clipboard.writeText(this.value)" style="font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;color:#f1c40f;resize:none">${privateKey}</textarea><span class="hint" style="color:var(--yellow)">Store securely. Irrecoverable if lost.</span></div>
 <div class="form-group"><label>Label</label><input id="f-gl" placeholder="Generated Wallet"/><span class="hint">Optional name for this wallet</span></div>
-<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitGeneratedWallet('${r.address}','${r.privateKey}')">Save Wallet</button></div>`);
+<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="submitGeneratedWallet('${address}','${privateKey}')">Save Wallet</button></div>`);
 };
 window.submitGeneratedWallet=async function(addr,pk){
   const lbl=$('#f-gl').value.trim()||'Generated Wallet';

@@ -498,6 +498,44 @@ export function generateSolanaWallet() {
   return { address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])) };
 }
 
+export function isValidVanitySuffix(s) {
+  if (!s || typeof s !== 'string') return false;
+  return /^[1-9A-HJ-NP-Za-km-z]{1,4}$/.test(s);
+}
+
+// Generates a wallet whose base58 address ENDS with the given suffix ("D1ck", "G04t", ...).
+// Brute-forces keypairs until the address residue matches. Lengths: 2 chars ≈ <1s,
+// 3 chars ≈ ~15s, 4 chars ≈ several minutes — pass an AbortSignal to cancel.
+export async function generateVanityWallet(suffix, { signal, onAttempt } = {}) {
+  const L = suffix.length;
+  let target = 0n;
+  let base = 1n;
+  for (let i = 0; i < L; i++) { target = target * 58n + BigInt(BS58_MAP[suffix[i]]); base *= 58n; }
+
+  return await new Promise((resolve, reject) => {
+    let attempts = 0;
+    const tick = () => {
+      if (signal && signal.aborted) return reject(new Error('cancelled'));
+      attempts++;
+      const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {
+        publicKeyEncoding: { type: 'spki', format: 'der' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'der' },
+      });
+      const pub = Buffer.from(publicKey).subarray(-32);
+      let n = 0n;
+      for (const b of pub) n = (n << 8n) | BigInt(b);
+      if (n % base === target) {
+        const seed = Buffer.from(privateKey).subarray(-32);
+        return resolve({ address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])), attempts });
+      }
+      if (onAttempt && attempts % 250 === 0) onAttempt(attempts);
+      if (attempts % 2500 === 0) setImmediate(tick);
+      else tick();
+    };
+    setImmediate(tick);
+  });
+}
+
 export function deriveAddressFromPrivateKey(pkBase58) {
   try {
     const decoded = bs58Decode(pkBase58);
