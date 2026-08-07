@@ -482,7 +482,7 @@ export async function getPortfolioInfo() {
 export async function getWalletHoldings(chain, wallet, opts = {}) {
   const params = { chain, wallet_address: wallet, limit: opts.limit || 50, order_by: opts.orderBy || 'usd_value', direction: opts.direction || 'desc' };
   if (opts.sellOut) params['sell_out'] = true;
-  return request('GET', '/v1/user/wallet_holdings', params, null, true);
+  return request('GET', '/v1/user/wallet_holdings', params, null, true, opts.creds || null);
 }
 
 export async function getWalletStats(chain, wallet, period = '7d') {

@@ -93,7 +93,11 @@ async function showMainMenu(ctx, edit) {
 
   let totalSol = 0;
   if (wallets.length) {
-    const balances = await Promise.allSettled(wallets.map(w => fetchSolBalance(w.address)));
+    // Never block the menu on balances: bound each fetch to 3s (cached 15s after).
+    const balances = await Promise.allSettled(wallets.map(w => Promise.race([
+      fetchSolBalance(w.address),
+      new Promise(r => setTimeout(() => r(null), 3000)),
+    ])));
     for (const b of balances) { if (b.status === 'fulfilled' && b.value != null) totalSol += b.value; }
   }
 
@@ -523,25 +527,34 @@ async function handleRuleInput(ctx, text) {
 }
 
 // ───── SOL Balance (GMGN → RPC fallback) ─────
+const _solBalCache = new Map();
+const SOL_BAL_TTL = 15000;
+
 async function fetchSolBalance(address) {
+  const c = _solBalCache.get(address);
+  if (c && Date.now() - c.ts < SOL_BAL_TTL) return c.v;
+  let v = null;
   try {
     const { getWalletTokenBalance } = await import('./gmgn.js');
     const raw = await getWalletTokenBalance('sol', address, 'So11111111111111111111111111111111111111112');
     const entry = raw?.data?.balances?.[0] || {};
     const b = Number(entry.balance ?? 0);
     const d = entry.decimal ?? 9;
-    if (b > 0) return b / Math.pow(10, d);
+    if (b > 0) v = b / Math.pow(10, d);
   } catch {}
-  try {
-    const r = await fetch('https://api.mainnet-beta.solana.com', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [address] }),
-      signal: AbortSignal.timeout(5000),
-    });
-    const j = await r.json();
-    if (j.result?.value != null) return j.result.value / 1e9;
-  } catch {}
-  return null;
+  if (v == null) {
+    try {
+      const r = await fetch('https://api.mainnet-beta.solana.com', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [address] }),
+        signal: AbortSignal.timeout(5000),
+      });
+      const j = await r.json();
+      if (j.result?.value != null) v = j.result.value / 1e9;
+    } catch {}
+  }
+  _solBalCache.set(address, { v, ts: Date.now() });
+  return v;
 }
 
 // ───── Wallets ─────

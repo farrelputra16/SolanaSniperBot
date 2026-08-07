@@ -570,35 +570,35 @@ export async function reconcileOpenPositions() {
     let reopened = 0;
 
     // Close confirmed trades whose token balance is confirmed 0 (sold on-chain)
-    for (const t of open) {
-      if (!t.wallet_address || !t.token_address || t.buy_status !== 'confirmed') continue;
-      const ageMs = now - (t.created_at ? t.created_at * 1000 : 0);
-      if (ageMs < 5 * 60000) continue;
-      let held;
-      try { held = await walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol'); } catch { continue; }
-      if (held === false) {
-        try {
-          db.setTelegramId(t.telegram_id);
-          await db.closeTrade(t.id, { status: 'closed' });
-          console.log(`[Router] Position ${t.id} confirmed sold (balance 0) — marked closed`);
-          liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'closed', reason: 'no_balance' });
-          closed++;
-        } catch {}
-      }
+    const closeCandidates = open.filter(t => t.wallet_address && t.token_address && t.buy_status === 'confirmed' && (now - (t.created_at ? t.created_at * 1000 : 0)) >= 5 * 60000);
+    const heldResults = await Promise.allSettled(closeCandidates.map(t =>
+      walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol').then(v => ({ t, v })).catch(() => ({ t, v: null }))
+    ));
+    for (const r of heldResults) {
+      const { t, v } = r.status === 'fulfilled' ? r.value : { t: null, v: null };
+      if (!t || v !== false) continue;
+      try {
+        db.setTelegramId(t.telegram_id);
+        await db.closeTrade(t.id, { status: 'closed' });
+        console.log(`[Router] Position ${t.id} confirmed sold (balance 0) — marked closed`);
+        liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'closed', reason: 'no_balance' });
+        closed++;
+      } catch {}
     }
 
     // Reopen trades that were auto-closed (no sell order/tx) but still hold the token
     const verifyCutoff = now - 24 * 3600 * 1000;
     const reconcileClosed = all.filter(t => t.status === 'closed' && !t.sell_order_id && !t.sell_tx && (!t.reconcile_verified_at || t.reconcile_verified_at < verifyCutoff));
-    for (const t of reconcileClosed) {
-      if (!t.wallet_address || !t.token_address) continue;
-      let held;
-      try { held = await walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol'); } catch { continue; }
-      if (held === null) continue;
+    const reopenResults = await Promise.allSettled(reconcileClosed.map(t =>
+      walletHoldsToken(t.wallet_address, t.token_address, t.chain || 'sol').then(v => ({ t, v })).catch(() => ({ t, v: null }))
+    ));
+    for (const r of reopenResults) {
+      const { t, v } = r.status === 'fulfilled' ? r.value : { t: null, v: null };
+      if (!t || v === null) continue;
       try {
         db.setTelegramId(t.telegram_id);
         await db.updateTrade(t.id, { reconcile_verified_at: Date.now() });
-        if (held === true) {
+        if (v === true) {
           await db.updateTrade(t.id, { status: 'open', closed_at: null });
           console.log(`[Router] Position ${t.id} still held — reopened`);
           liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'open', reason: 'reopened' });
@@ -625,13 +625,14 @@ async function walletHoldsToken(wallet, token, chain = 'sol') {
 let _lastReconcile = 0;
 const RECONCILE_COOLDOWN = 60000;
 
-let _extCache = null;
+let _extCache = new Map();
 let _extTs = 0;
 const EXT_CACHE_TTL = 20000;
 
 export async function getExternalPositions(openTrades = null, opts = {}) {
   try {
-    if (_extCache && Date.now() - _extTs < EXT_CACHE_TTL) return _extCache;
+    const scope = opts.global ? 'global' : (db.getTelegramId() || 'user');
+    if (_extCache.has(scope) && Date.now() - _extTs < EXT_CACHE_TTL) return _extCache.get(scope);
     const open = openTrades || await db.getOpenTrades();
     const tracked = new Set(open.map(t => t.token_address).filter(Boolean));
     const wallets = opts.global ? await db.getAllWalletsGlobal() : await db.getAllWallets();
@@ -640,9 +641,14 @@ export async function getExternalPositions(openTrades = null, opts = {}) {
       if (!w.address) continue;
       let holdings = [];
       try {
-        const r = await getWalletHoldings('sol', w.address, { limit: 300 });
+        const creds = await getUserCredentials(w.telegram_id || db.getTelegramId());
+        const r = await getWalletHoldings('sol', w.address, { limit: 300, creds });
         holdings = r?.data?.list || r?.data?.holdings || r?.data || [];
-      } catch { continue; }
+        if (!Array.isArray(holdings)) holdings = Array.isArray(holdings?.list) ? holdings.list : [];
+      } catch (e) {
+        console.log(`[Router] ext holdings failed ${w.address.slice(0, 8)}…: ${e.status || ''} ${e.message}`);
+        continue;
+      }
       for (const h of holdings) {
         const tok = h.token || {};
         const addr = tok.token_address || tok.address || h.address || h.token_address;
@@ -674,7 +680,7 @@ export async function getExternalPositions(openTrades = null, opts = {}) {
         result.push(entry);
       }
     }
-    _extCache = result;
+    _extCache.set(scope, result);
     _extTs = Date.now();
     return result;
   } catch (e) {
