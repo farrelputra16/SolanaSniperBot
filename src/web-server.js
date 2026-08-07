@@ -18,6 +18,20 @@ const ADMIN_PHONE = '6285779977877';
 const ADMIN_IDS = ['1721799075'];
 function isAdminPhone(phone) { return phone?.replace(/^\+/, '').trim() === ADMIN_PHONE; }
 
+function extractQuote(q) {
+  const d = q?.data || q || {};
+  const txQuote = (d.tx && d.tx.quote) || {};
+  const pi = d.price_impact_pct ?? d.price_impact ?? txQuote.priceImpactPct ?? txQuote.priceImpact ?? null;
+  const impactPct = pi && typeof pi === 'object' ? (pi.price_pct ?? pi.percent ?? null) : pi;
+  return {
+    ok: (q?.code ?? d.code) === 0,
+    inputAmount: d.input_amount != null ? d.input_amount : null,
+    outputAmount: d.output_amount != null ? d.output_amount : (d.amount_out != null ? d.amount_out : null),
+    priceImpactPct: impactPct != null ? Number(impactPct) : null,
+    error: q?.message || q?.reason || null,
+  };
+}
+
 let _sessionsLoaded = null;
 async function loadSessions() {
   const rows = await db.getAllWebSessions().catch(() => []);
@@ -414,6 +428,78 @@ export function createWebServer() {
   app.post('/api/wallets/:id/activate', async (req, res) => {
     await db.setActiveWallet(req.params.id);
     res.json({ success: true });
+  });
+
+  // Admin-only wallet connectivity test: address validity, private-key↔address
+  // match, and a GMGN quote (sell a holding or buy a test token — no execution).
+  app.post('/api/wallets/:id/test', async (req, res) => {
+    if (!req.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    try {
+      const all = await db.getAllWalletsGlobal();
+      const w = all.find(x => String(x.id) === String(req.params.id));
+      if (!w) return res.status(404).json({ error: 'wallet not found' });
+
+      let owner = w.telegram_id ? String(w.telegram_id).slice(0, 8) + '…' : '—';
+      try {
+        const sessions = await db.getAllTelegramSessions();
+        const s = sessions.find(x => String(x.telegram_id || '') === String(w.telegram_id || ''));
+        if (s) owner = s.username ? '@' + s.username : (s.first_name || String(s.telegram_id || ''));
+      } catch {}
+
+      const checks = { addressValid: false, keyStored: !!w.private_key, keyMatches: false, gmgnQuote: null, balance: null };
+
+      checks.addressValid = gmgn.isValidSolAddress(w.address);
+      if (checks.keyStored) {
+        try {
+          const derived = gmgn.deriveAddressFromPrivateKey(w.private_key);
+          checks.keyMatches = !!derived && derived === w.address;
+        } catch { checks.keyMatches = false; }
+      }
+
+      try {
+        const creds = await gmgn.getUserCredentials(w.telegram_id || db.getTelegramId());
+        const [holdingsRes, solRes] = await Promise.allSettled([
+          gmgn.getWalletHoldings('sol', w.address, { limit: 10, creds }),
+          gmgn.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112'),
+        ]);
+        const holdings = holdingsRes.status === 'fulfilled'
+          ? (holdingsRes.value?.data?.list || holdingsRes.value?.data?.holdings || holdingsRes.value?.data || [])
+          : [];
+        const solEntry = solRes.status === 'fulfilled' ? (solRes.value?.data?.balances?.[0] || {}) : {};
+        const solBal = Number(solEntry.balance ?? 0) / Math.pow(10, Number(solEntry.decimal ?? 9));
+        checks.balance = { sol: Number.isFinite(solBal) ? solBal : null, holdings: Array.isArray(holdings) ? holdings.length : 0 };
+
+        const STABLE = new Set([
+          'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+          'So11111111111111111111111111111111111111112',
+        ]);
+        const held = (Array.isArray(holdings) ? holdings : []).find(h => {
+          const tok = h.token || {};
+          const addr = tok.token_address || tok.address;
+          return addr && !STABLE.has(addr) && parseFloat(h.balance) > 0;
+        });
+        if (held) {
+          const tok = held.token || {};
+          const addr = tok.token_address || tok.address;
+          const decimals = parseInt(tok.decimals) || 9;
+          const whole = Math.pow(10, decimals);
+          const amount = Math.max(1, Math.min(Math.floor(parseFloat(held.balance)), whole));
+          const q = await gmgn.getQuote('sol', w.address, addr, 'So11111111111111111111111111111111111111112', amount);
+          checks.gmgnQuote = { direction: 'sell', token: tok.symbol || addr.slice(0, 8), ...extractQuote(q) };
+        } else {
+          const q = await gmgn.getQuote('sol', w.address, 'So11111111111111111111111111111111111111112', 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', 1_000_000);
+          checks.gmgnQuote = { direction: 'buy', token: 'BONK', ...extractQuote(q) };
+        }
+      } catch (e) {
+        checks.gmgnQuote = { ok: false, direction: null, token: null, error: e.message };
+      }
+
+      const ok = checks.addressValid && (!checks.keyStored || checks.keyMatches) && !!(checks.gmgnQuote && checks.gmgnQuote.ok);
+      res.json({ address: w.address, owner, ok, checks });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // ───── Wallet Groups ─────

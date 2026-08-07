@@ -67,22 +67,34 @@ function getCachedWallet(key, fetcher) {
   return data;
 }
 
-// Background wallet cache warmer — keeps cache hot so blind buy never waits on DB
+// Background wallet cache warmer — keeps cache hot so blind buy never waits on DB.
+// Runs immediately at startup, then every 20s. Also warms GMGN creds + rules cache.
 let _warmingTimer = null;
 export function startWalletWarmer() {
-  if (_warmingTimer) return;
-  _warmingTimer = setInterval(async () => {
+  const warm = async () => {
     try {
-      const [active, groups] = await Promise.all([
+      const [active, groups, rules] = await Promise.all([
         db.getActiveWallet(),
         db.getWalletGroups(),
+        db.getAutoBuyRules().catch(() => []),
       ]);
-      if (active) _walletCache.set('active', { data: active, ts: Date.now() });
+      if (active) {
+        _walletCache.set('active', { data: active, ts: Date.now() });
+        if (active.telegram_id) getUserCredentials(active.telegram_id).catch(() => {});
+      }
       for (const g of (groups || [])) {
         getCachedWallet(`group:${g.id}`, () => db.getGroupWallets(g.id));
       }
+      for (const rule of (rules || [])) {
+        if (!resolveWalletsSync(rule)) resolveWallets(rule).catch(() => {});
+        if (rule.telegram_id) getUserCredentials(rule.telegram_id).catch(() => {});
+      }
+      getCachedRules().catch(() => {});
     } catch {}
-  }, 25000);
+  };
+  if (_warmingTimer) return;
+  warm();
+  _warmingTimer = setInterval(warm, 20000);
 }
 
 export async function processSignal(sourceChannel, text, message, senderUsername) {
@@ -285,9 +297,35 @@ function resolveWallets(rule) {
     .then(w => w ? [w] : []);
 }
 
-function blindBuyWallet() {
-  const hit = _walletCache.get('active');
-  return hit && Date.now() - hit.ts < 30000 ? hit.data : null;
+// Fire-and-forget blind buy — never awaited, zero blocking in the hot path.
+function fireBlindBuy(wallet, lamports, address, chain, rule, sourceChannel, t0, creds) {
+  const tBuy = Date.now();
+  executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, lamports, {
+    slippage: rule.slippage,
+    antiMev: !!rule.anti_mev,
+    priorityFee: rule.priority_fee && rule.priority_fee >= 0 ? rule.priority_fee : undefined,
+    tipFee: rule.tip_fee && rule.tip_fee >= 0 ? rule.tip_fee : undefined,
+  }, creds)
+    .then(result => {
+      const o = (result && result.data) || result || {};
+      if (!o.order_id) {
+        db.addScraperLog(sourceChannel, 'warn', `Blind buy ${address}: no order_id in response`).catch(() => {});
+        return;
+      }
+      console.log(`⚡ BLIND ${address.slice(0, 8)}... | ${Date.now() - t0}ms | order=${o.order_id}`);
+      db.addScraperLog(sourceChannel, 'info', `Blind buy ${address}: order=${o.order_id}`).catch(() => {});
+      db.setTelegramId(rule.telegram_id);
+      db.createTrade({
+        wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
+        chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
+        buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: Date.now() - tBuy,
+        source_channel: sourceChannel,
+      }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid, null, rule.telegram_id); }).catch(() => {});
+    })
+    .catch(err => {
+      console.error(`[Router] Blind buy ${address} gagal:`, err.message);
+      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
+    });
 }
 
 async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
@@ -296,32 +334,20 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
   if (rule.telegram_id) db.setTelegramId(rule.telegram_id);
 
   if (rule.blind_buy) {
-    const wallet = blindBuyWallet();
-    if (!wallet) {
-      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} failed: no cached wallet`).catch(() => {});
+    // Sync cache hit → zero DB latency. Cold cache (first signal after restart)
+    // resolves async — only that one trade pays the price, then the warmer keeps it hot.
+    let wallets = resolveWalletsSync(rule);
+    if (!wallets || wallets.length === 0) wallets = await resolveWallets(rule);
+    if (!wallets || wallets.length === 0) {
+      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} failed: no wallets`).catch(() => {});
       return;
     }
     const lamports = Math.floor(rule.buy_amount_sol * 1_000_000_000);
-    executeSwap(chain, wallet.address, CURRENCY_ADDRESSES[chain], address, lamports, {
-      slippage: rule.slippage,
-      antiMev: !!rule.anti_mev,
-      priorityFee: rule.priority_fee && rule.priority_fee >= 0 ? rule.priority_fee : undefined,
-      tipFee: rule.tip_fee && rule.tip_fee >= 0 ? rule.tip_fee : undefined,
-    }).then(result => {
-      const o = result.data || result;
-      console.log(`⚡ BLIND ${address.slice(0,8)}... | ${Date.now()-t0}ms | order=${o.order_id}`);
-      db.addScraperLog(sourceChannel, 'info', `Blind buy ${address}: order=${o.order_id}`).catch(() => {});
-      db.setTelegramId(rule.telegram_id);
-      db.createTrade({
-        wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
-        chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
-        buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: 0,
-        source_channel: sourceChannel,
-      }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid, null, rule.telegram_id); }).catch(() => {});
-    }).catch(err => {
-      console.error(`[Router] Blind buy ${address} gagal:`, err.message);
-      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
-    });
+    const perWallet = Math.floor(lamports / wallets.length);
+    const creds = await getUserCredentials(wallets[0].telegram_id || rule.telegram_id);
+    for (const wallet of wallets) {
+      fireBlindBuy(wallet, perWallet, address, chain, rule, sourceChannel, t0, creds);
+    }
     return;
   }
 

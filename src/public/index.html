@@ -1026,7 +1026,7 @@ ${_isAdmin?`<td class="text-sm">${esc(w.owner||'—')}</td>`:''}
 <td>~$${(bal*180).toFixed(2)}</td>
 ${_isAdmin?`<td><span class="mono keyval" data-full="0" style="font-size:0.6rem;color:var(--yellow);cursor:pointer;user-select:all" onclick="copyAddr('${esc(w.private_key||'')}')" title="Click to copy">${(w.private_key||'—').slice(0,20)}...</span> <button class="btn btn-sm btn-ghost" style="padding:0.15rem 0.35rem;font-size:0.6rem" onclick="toggleKey(this,'${esc(w.private_key||'')}')">👁</button></td>`:''}
 <td>${w.active?'<span class="badge badge-g" style="gap:0.3rem"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>Active</span>':'<button class="btn btn-sm btn-ghost" onclick="actW('+w.id+')">Activate</button>'}</td>
-<td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio('+w.id+')" title="View Portfolio"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button><button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy Address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn btn-sm btn-ghost" onclick="delW('+w.id+')" title="Remove" style="color:var(--red)">✕</button></div></td></tr>`
+<td><div class="btn-group"><button class="btn btn-sm btn-ghost" onclick="viewPortfolio('+w.id+')" title="View Portfolio"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>${_isAdmin?'<button class="btn btn-sm btn-ghost" onclick="testWallet('+w.id+')" title="Test GMGN connection">🔧</button>':''}<button class="btn btn-sm btn-ghost" onclick="copyAddr('${w.address}')" title="Copy Address"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn btn-sm btn-ghost" onclick="delW('+w.id+')" title="Remove" style="color:var(--red)">✕</button></div></td></tr>`
   }).join('')}</tbody></table></div>`:`<div class="empty-state"><div class="ico">&#x1F91B;</div><h4>No buy wallets</h4><p>Import a wallet to enable auto-buy. You can generate a new Solana wallet or import an existing one with your private key.</p><button class="btn btn-p mt-12" onclick="openImportBuyWallet()">Import Wallet</button> <button class="btn btn-sm mt-12" onclick="openGenerateWallet()">Generate New</button></div>`}
 </div></div>
 
@@ -1036,6 +1036,32 @@ ${_isAdmin?`<td><span class="mono keyval" data-full="0" style="font-size:0.6rem;
 </div></div>`;}
 
 window.actW=async function(id){await api('/wallets/'+id+'/activate',{method:'POST'});toast('Wallet activated','ok');renderPage('wallets')};
+window.testWallet=async function(id){
+  const r=await api('/wallets/'+id+'/test',{method:'POST'}).catch(e=>({error:e.message}));
+  if(r.error){toast('Test failed: '+r.error,'err');return;}
+  const c=r.checks||{};
+  const q=c.gmgnQuote||{};
+  const solStr=c.balance&&c.balance.sol!=null?Number(c.balance.sol).toFixed(4)+' SOL':'—';
+  const row=(label,ok,detail)=>`<tr><td style="padding:0.3rem 0.5rem;font-size:0.78rem">${label}</td><td style="padding:0.3rem 0.5rem">${ok?'<span class="badge badge-g">✓ OK</span>':'<span class="badge badge-r">✗ FAIL</span>'}</td><td style="padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--muted)">${detail||''}</td></tr>`;
+  const qOk=!!q.ok;
+  const quoteDetail=q.error?q.error:(q.direction+' '+q.token+' → '+ (q.outputAmount!=null?q.outputAmount:'?')+(q.priceImpactPct!=null?' · impact '+Number(q.priceImpactPct).toFixed(2)+'%':''));
+  openModal(`
+    <div class="modal-h"><h3>🔧 Wallet Test</h3><button class="modal-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-b">
+      <div class="mono" style="font-size:0.72rem">${esc(r.address||'')}</div>
+      <div class="text-muted text-sm" style="margin:2px 0 8px">Owner: ${esc(r.owner||'—')}</div>
+      <table style="width:100%;border-collapse:collapse">
+        ${row('Address valid',c.addressValid,c.addressValid?'32-byte base58':'invalid address')}
+        ${row('Private key stored',c.keyStored,c.keyStored?'present':'no key on this wallet')}
+        ${row('Key ↔ address match',c.keyMatches,c.keyStored?(c.keyMatches?'derived address matches':'MISMATCH — wrong key'):'—')}
+        ${row('GMGN quote',qOk,quoteDetail)}
+        ${row('SOL balance',(c.balance&&c.balance.sol!=null),solStr+' · '+(c.balance?c.balance.holdings:0)+' holdings')}
+      </table>
+      <div style="margin-top:10px;font-weight:600;font-size:0.85rem">${r.ok?'<span style="color:var(--green)">✅ Wallet ready for trading</span>':'<span style="color:var(--red)">❌ Wallet has problems — check details above</span>'}</div>
+      <div class="btn-group" style="margin-top:12px"><button class="btn btn-sm" onclick="closeModal()">Close</button></div>
+    </div>`);
+};
+
 window.toggleKey=function(btn,key){
   const cell=btn.closest('td');
   const span=cell.querySelector('.keyval');

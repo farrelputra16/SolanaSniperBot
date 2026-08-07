@@ -520,7 +520,7 @@ function bs58Decode(s) {
   return Buffer.from(bytes);
 }
 
-function isValidSolAddress(addr) {
+export function isValidSolAddress(addr) {
   if (addr.length < 32 || addr.length > 44) return false;
   try {
     const decoded = bs58Decode(addr);
