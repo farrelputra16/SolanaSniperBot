@@ -110,7 +110,22 @@ async function main() {
   console.log('   Press Ctrl+C to stop\n');
 }
 
-process.on('uncaughtException', (err) => console.error('[FATAL]', err));
-process.on('unhandledRejection', (err) => console.error('[FATAL]', err));
+process.on('uncaughtException', (err) => {
+  if (isBenignBotError(err)) return;
+  console.error('[FATAL]', err);
+});
+process.on('unhandledRejection', (err) => {
+  if (isBenignBotError(err)) return;
+  console.error('[FATAL]', err);
+});
+
+// Benign Telegram bot errors (e.g. answering a callback query that already
+// expired) must not spam [FATAL]. Real errors still log.
+function isBenignBotError(err) {
+  if (!err) return false;
+  const msg = err.message || String(err) || '';
+  if (err.name === 'GrammyError' && /query is too old|query id is invalid/i.test(msg)) return true;
+  return false;
+}
 
 main();

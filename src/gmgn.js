@@ -105,7 +105,7 @@ async function rateLimit(path) {
   }
 }
 
-async function request(method, path, params = {}, body = null, signed = false, overrideCreds = null, skipRateLimit = false) {
+async function request(method, path, params = {}, body = null, signed = false, overrideCreds = null, skipRateLimit = false, retryCount = 0) {
   if (!skipRateLimit) await rateLimit(path);
   const creds = overrideCreds || { apiKey: envApiKey, privateKey: envPrivateKey };
   const authQuery = buildAuthQuery();
@@ -161,9 +161,18 @@ async function request(method, path, params = {}, body = null, signed = false, o
         err.code = json.code;
         throw err;
       }
+      // Cap retries — an unbounded 429 retry loop hangs the whole app (slow token
+      // info, empty external positions, wedged scraper). Fail fast after 3 tries.
+      if (retryCount >= 3) {
+        const err = new Error(`GMGN rate limited (429) after ${retryCount} retries — reset at ${new Date(resetAt * 1000).toISOString()}`);
+        err.status = 429;
+        err.body = json;
+        err.code = json.code;
+        throw err;
+      }
       const wait = Math.max(1000, (resetAt - Math.floor(Date.now() / 1000)) * 1000);
       await new Promise(r => setTimeout(r, Math.min(wait, 5000)));
-      return request(method, path, params, body, signed, overrideCreds, true);
+      return request(method, path, params, body, signed, overrideCreds, true, retryCount + 1);
     }
 
     if (!res.ok) {

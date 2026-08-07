@@ -1804,6 +1804,17 @@ export async function startBot() {
     bot = new Bot(TOKEN);
     registerCommands();
     attachLiveForwarding();
+    // Swallow benign "query too old / query ID is invalid" errors from
+    // answerCallbackQuery. In webhook mode stale updates get delivered late, so a
+    // user tapping an old inline button produces a 400 that used to spam [FATAL].
+    const origAnswer = bot.api.answerCallbackQuery.bind(bot.api);
+    bot.api.answerCallbackQuery = async (payload, other) => {
+      try { return await origAnswer(payload, other); }
+      catch (err) {
+        if (err?.name === 'GrammyError' && /query is too old|query id is invalid/i.test(err?.message || '')) return;
+        throw err;
+      }
+    };
     bot.catch(err => {
       const desc = err.error?.description || err.message;
       const on = err.ctx?.msg?.text || err.ctx?.callbackQuery?.data || '';
