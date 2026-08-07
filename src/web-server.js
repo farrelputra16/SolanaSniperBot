@@ -72,6 +72,25 @@ export function createWebServer() {
   app.use(express.json());
   app.use(express.static(join(__dirname, 'public')));
 
+  // Telegram bot webhook endpoint (not under /api — no auth). Used instead of long
+  // polling on Render (RENDER_EXTERNAL_URL) to avoid multi-instance 409 conflicts.
+  app.post('/webhook/telegram/:secret', async (req, res) => {
+    try {
+      const { getBot, getWebhookSecret } = await import('./telegram-bot.js');
+      const secret = getWebhookSecret();
+      if (!secret || req.params.secret !== secret) return res.sendStatus(403);
+      const header = req.headers['x-telegram-bot-api-secret-token'];
+      if (header && header !== secret) return res.sendStatus(403);
+      const b = getBot();
+      if (!b) return res.sendStatus(404);
+      await b.handleUpdate(req.body);
+      res.sendStatus(200);
+    } catch (err) {
+      console.error('[Bot] Webhook error:', err?.message);
+      res.sendStatus(200);
+    }
+  });
+
   // Extract telegramId from session for all routes
   app.use('/api', async (req, res, next) => {
     try {

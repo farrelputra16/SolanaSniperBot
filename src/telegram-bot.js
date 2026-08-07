@@ -1,9 +1,11 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { createHash } from 'crypto';
 import * as db from './database.js';
 import * as tg from './telegram.js';
 import { liveEvents } from './web-server.js';
+import { config } from './config.js';
 
 function env(key, dv) {
   if (process.env[key] !== undefined) return process.env[key];
@@ -21,10 +23,14 @@ function env(key, dv) {
 
 const TOKEN = env('TELEGRAM_BOT_TOKEN');
 let bot = null;
+let _webhookMode = false;
+const WEBHOOK_SECRET = TOKEN ? createHash('sha256').update(TOKEN + 'webhook').digest('hex').slice(0, 32) : '';
 let adminId = env('BOT_ADMIN_IDS') ? String(env('BOT_ADMIN_IDS')).split(',')[0].trim() : null;
 
 export function setAdminId(id) { if (id) adminId = id; }
 export function isBotActive() { return !!bot; }
+export function getBot() { return bot; }
+export function getWebhookSecret() { return WEBHOOK_SECRET; }
 
 // ───── State ─────
 const _awaitingLink = new Set();
@@ -1794,6 +1800,7 @@ export async function startBot() {
       try { bot.stop().catch(() => {}); } catch {}
       bot = null;
     }
+    _webhookMode = false;
     bot = new Bot(TOKEN);
     registerCommands();
     attachLiveForwarding();
@@ -1802,6 +1809,26 @@ export async function startBot() {
       const on = err.ctx?.msg?.text || err.ctx?.callbackQuery?.data || '';
       console.error('[Bot] Error:', desc, '| ctx:', on.slice(0, 100));
     });
+
+    // Webhook mode — preferred on Render (RENDER_EXTERNAL_URL is set). Telegram
+    // webhooks have NO "one instance polling" conflict: the last setWebhook wins,
+    // so old/new instances during a deploy never fight each other. Falls back to
+    // long polling locally where there's no public URL.
+    const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
+    if (publicUrl) {
+      try {
+        const base = publicUrl.replace(/\/+$/, '');
+        await bot.api.setWebhook(base + '/webhook/telegram/' + WEBHOOK_SECRET, {
+          secret_token: WEBHOOK_SECRET,
+          allowed_updates: ['message', 'callback_query', 'inline_query'],
+        });
+        _webhookMode = true;
+        console.log(`[Bot] ✅ Telegram bot active (webhook: ${base}/webhook/telegram/${WEBHOOK_SECRET})`);
+        return;
+      } catch (e) {
+        console.warn('[Bot] Webhook setup failed, falling back to long polling:', e.message);
+      }
+    }
 
     // Long polling only allows ONE instance per token. During a Render deploy the
     // old instance still polls for a few seconds → new instance gets 409 and grammy
@@ -1835,9 +1862,12 @@ export async function startBot() {
 
 // Watchdog — if the long-polling runner ever dies silently (Render sleep, stuck
 // getUpdates, crash), tear down and restart the bot so it's always reachable.
+// Webhook mode doesn't need a runner — bot.handleUpdate is driven by incoming
+// HTTP, so there's nothing to keep alive.
 function ensureBotRunning() {
   if (!TOKEN) return;
   if (_botStarting) return;
+  if (_webhookMode && bot) return;
   if (bot && bot.isRunning()) return;
   startBot().catch(e => console.warn('[Bot] Restart failed:', e.message));
 }
