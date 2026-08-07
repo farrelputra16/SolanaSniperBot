@@ -1577,14 +1577,16 @@ async function initDashboard(){
   // Check Telegram status first
   const prev=localStorage.getItem('auth_token')||'';
   const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':prev}}).then(r=>r.json()).catch(()=>({}));
-  if(tg.token && (!prev || !tg.guest)){localStorage.setItem('auth_token',tg.token)}
-  if(tg.isAdmin) _isAdmin = true;
-  if(tg.isAdmin){ _initRetries=0; showDashboard(); return; }
+  if(tg.token){localStorage.setItem('auth_token',tg.token)}
+  if(tg.isAdmin){ _initRetries=0; _isAdmin=true; showDashboard(); return; }
   if(tg.connected && tg.authenticated){
     _initRetries = 0;
     showDashboard();
     return;
   }
+  // Returning visitor with a stored session → go straight to dashboard instead of
+  // bouncing to the login overlay every reload.
+  if(prev && tg.guest){ _initRetries=0; showDashboard(); return; }
   if(tg.authenticated && !tg.connected && _initRetries < 30){
     _initRetries++;
     setTimeout(initDashboard, 2000);
