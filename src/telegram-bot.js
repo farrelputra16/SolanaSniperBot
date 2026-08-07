@@ -1782,46 +1782,55 @@ function isConflictError(err) {
   return msg.includes('409') && (msg.includes('Conflict') || msg.includes('terminated by other getUpdates request'));
 }
 
+let _botStarting = false;
+
 export async function startBot() {
   if (!TOKEN) return console.warn('[Bot] No TELEGRAM_BOT_TOKEN — bot disabled');
-  if (bot) return console.warn('[Bot] Already running — skipping duplicate start');
-  bot = new Bot(TOKEN);
-  registerCommands();
-  attachLiveForwarding();
-  bot.catch(err => {
-    const desc = err.error?.description || err.message;
-    const on = err.ctx?.msg?.text || err.ctx?.callbackQuery?.data || '';
-    console.error('[Bot] Error:', desc, '| ctx:', on.slice(0, 100));
-  });
-
-  // Long polling only allows ONE instance per token. During a Render deploy the
-  // old instance still polls for a few seconds → new instance gets 409 and grammy
-  // permanently stops. Retry with backoff so we survive the overlap.
-  let attempt = 0;
-  for (;;) {
-    try {
-      await bot.start({ drop_pending_updates: true });
-      break;
-    } catch (err) {
-      if (!isConflictError(err)) throw err;
-      attempt++;
-      const delay = Math.min(15000, 2000 * 2 ** Math.min(attempt - 1, 3));
-      console.error(`[Bot] 409 conflict (another instance polling) — retry #${attempt} in ${(delay / 1000).toFixed(1)}s`);
-      await sleepMs(delay);
+  if (_botStarting) return;
+  if (bot && bot.isRunning()) return;
+  _botStarting = true;
+  try {
+    if (bot) {
+      try { bot.stop().catch(() => {}); } catch {}
+      bot = null;
     }
+    bot = new Bot(TOKEN);
+    registerCommands();
+    attachLiveForwarding();
+    bot.catch(err => {
+      const desc = err.error?.description || err.message;
+      const on = err.ctx?.msg?.text || err.ctx?.callbackQuery?.data || '';
+      console.error('[Bot] Error:', desc, '| ctx:', on.slice(0, 100));
+    });
+
+    // Long polling only allows ONE instance per token. During a Render deploy the
+    // old instance still polls for a few seconds → new instance gets 409 and grammy
+    // permanently stops. Retry with backoff so we survive the overlap.
+    let attempt = 0;
+    for (;;) {
+      try {
+        await bot.start({ drop_pending_updates: true });
+        break;
+      } catch (err) {
+        if (!isConflictError(err)) throw err;
+        attempt++;
+        const delay = Math.min(15000, 2000 * 2 ** Math.min(attempt - 1, 3));
+        console.error(`[Bot] 409 conflict (another instance polling) — retry #${attempt} in ${(delay / 1000).toFixed(1)}s`);
+        await sleepMs(delay);
+      }
+    }
+    console.log('[Bot] ✅ Telegram bot active');
+  } finally {
+    _botStarting = false;
   }
-  console.log('[Bot] ✅ Telegram bot active');
 }
 
 // Watchdog — if the long-polling runner ever dies silently (Render sleep, stuck
 // getUpdates, crash), tear down and restart the bot so it's always reachable.
 function ensureBotRunning() {
   if (!TOKEN) return;
-  if (bot && bot.isRunning && bot.isRunning()) return;
-  if (bot) {
-    try { bot.stop().catch(() => {}); } catch {}
-    bot = null;
-  }
+  if (_botStarting) return;
+  if (bot && bot.isRunning()) return;
   startBot().catch(e => console.warn('[Bot] Restart failed:', e.message));
 }
 setInterval(ensureBotRunning, 60000);

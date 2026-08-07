@@ -97,8 +97,10 @@ async function main() {
     if (msg && msg !== 'dashboard-only mode') {
       console.warn('   Telegram: ⏸️  ' + msg);
     }
-    // Only clear corrupted session on explicit session errors
-    if (msg.includes('Session') || msg.includes('AUTH_KEY') || msg.includes('connection') || msg.includes('expired')) {
+    // Only clear corrupted session on definitive expiry/revocation errors. A
+    // transient connection failure must NOT wipe the saved session, otherwise a
+    // single bad startup permanently kills the scraper ("No session" forever).
+    if (/AUTH_KEY|expired|revoked|invalid|401/i.test(msg)) {
       try { await db.setSetting('telegram_session', ''); } catch {}
     }
   }

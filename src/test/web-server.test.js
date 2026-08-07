@@ -246,6 +246,35 @@ test('buy-with-tp-sl creates a trade', async () => {
   assert.equal(trade.stop_loss_percent, 10);
 });
 
+// ───── Operator mode: guest/password sessions see ALL data ─────
+test('guest/password session (no telegramId) sees open trades from any owner', async () => {
+  db.setTelegramId('1721799075');
+  await db.createTrade({
+    wallet_address: 'W_OP', token_address: 'T_OP', token_symbol: 'OPX',
+    chain: 'sol', buy_amount_sol: 0.1, buy_price: 0.000001, buy_order_id: 'op-1',
+    status: 'open',
+  });
+  db.setTelegramId('');
+  const t = await authed();
+  const { status, data } = await req('/positions', { token: t });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(Array.isArray(data));
+  assert.ok(data.some(x => x.token_address === 'T_OP'), 'operator session must see trades tagged with another telegram_id: ' + JSON.stringify(data));
+});
+
+test('telegram-authenticated session is still isolated to its own telegram_id', async () => {
+  db.setTelegramId('OTHER-USER');
+  await db.createTrade({
+    wallet_address: 'W_OTHER', token_address: 'T_OTHER', token_symbol: 'OTH',
+    chain: 'sol', buy_amount_sol: 0.1, buy_price: 0.000001, buy_order_id: 'op-2',
+    status: 'open',
+  });
+  db.setTelegramId('');
+  const { status, data } = await req('/positions', { token: 'restart-token' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(!data.some(x => x.token_address === 'T_OTHER'), "authenticated user must NOT see another owner's trade: " + JSON.stringify(data));
+});
+
 // ───── SSE live events ─────
 test('SSE delivers signals to anonymous dashboard even when _tid is set', async () => {
   const { liveEvents } = await import('../web-server.js');

@@ -165,12 +165,14 @@
   let _reconnectCreds = null;
   let _reconnecting = false;
   let _pingFailures = 0;
+  let _senderReconnectingSince = 0;
 
   // Force a full re-login from the saved session. Used by the watchdog so the
   // scraper survives idle disconnects instead of silently going dead.
   export async function reconnectTelegram() {
     if (!_reconnectCreds || _reconnecting) return false;
     _reconnecting = true;
+    _senderReconnectingSince = 0;
     try {
       console.warn('[Telegram] Connection lost — reconnecting...');
       await destroyClient();
@@ -199,7 +201,17 @@
           return;
         }
         // GramJS is already reconnecting internally — don't fight it with a full teardown.
-        if (client._sender?.isReconnecting) return;
+        if (client._sender?.isReconnecting) {
+          // ...but cap it: if the internal reconnect stays stuck too long, force
+          // a full reconnect instead of skipping keep-alive forever.
+          if (!_senderReconnectingSince) _senderReconnectingSince = Date.now();
+          if (Date.now() - _senderReconnectingSince > 90000) {
+            _senderReconnectingSince = 0;
+            await reconnectTelegram();
+          }
+          return;
+        }
+        _senderReconnectingSince = 0;
         await client.invoke(new (await import('telegram')).Api.Ping({ pingId: BigInt(Date.now()) }));
         _pingFailures = 0;
       } catch {
