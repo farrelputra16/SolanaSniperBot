@@ -611,10 +611,17 @@ async function handleWalletKeyInput(ctx, text) {
 // ───── Vanity Wallet Generation ─────
 const _awaitingVanitySuffix = new Set();
 const _awaitingWalletLabel = new Set();
-let _vanity = null;          // { ac, chatId, msgId, timer, startTs, suffix, attempts }
+let _vanity = null;          // { ac, chatId, msgId, timer, startTs, suffix, prefix, attempts }
 let _pendingGenWallet = null; // { address, privateKey }
 
-const _VANITY_HINT = `✨ <b>Generate Wallet (Vanity)</b>\n\nAddress akan diakhiri dengan teks pilihanmu (contoh: <code>D1ck</code>).\n\n✅ <b>Bisa</b> (semua base58):\n<code>123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz</code>\n\n❌ <b>Tidak bisa</b> (bukan base58): <code>0</code> <code>O</code> <code>I</code> <code>l</code>, spasi, simbol\n\nMaks 4 karakter:\n• 2 huruf ≈ kurang dari 1 detik\n• 3 huruf ≈ 15 detik\n• 4 huruf ≈ beberapa menit\n\nKirim akhiran yang diinginkan, atau ketik <code>0</code> untuk generate biasa (tanpa akhiran).`;
+function vanityLabel(suffix, prefix) {
+  const parts = [];
+  if (prefix) parts.push(`start:<code>${esc(prefix)}</code>`);
+  if (suffix) parts.push(`end:<code>${esc(suffix)}</code>`);
+  return parts.join(' + ') || 'plain';
+}
+
+const _VANITY_HINT = `✨ <b>Generate Wallet (Vanity)</b>\n\nAddress bisa dibuat <b>diawali</b> dan/atau <b>diakhiri</b> teks pilihanmu.\n\n<b>Format:</b>\n• <code>start:abc</code> — address DIMULAI dengan <code>abc</code>\n• <code>end:abc</code> — address diakhiri <code>abc</code> (bisa juga langsung ketik <code>abc</code>)\n• <code>start:abc,end:xyz</code> — dua-duanya\n• <code>0</code> — generate biasa (tanpa pattern)\n\nContoh: <code>start:6Gt</code>  •  <code>end:D1ck</code>\n\n✅ <b>Bisa</b> (semua base58):\n<code>123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz</code>\n\n❌ <b>Tidak bisa</b> (bukan base58): <code>0</code> <code>O</code> <code>I</code> <code>l</code>, spasi, simbol\n\nMaks 4 karakter per bagian:\n• 2 huruf ≈ kurang dari 1 detik\n• 3 huruf ≈ 15 detik\n• 4 huruf ≈ beberapa menit\n• start + end digabung = lebih lama (contoh 2+2 ≈ menit)`;
 
 async function promptVanitySuffix(ctx) {
   _awaitingVanitySuffix.add(String(ctx.from.id));
@@ -626,39 +633,42 @@ async function handleVanitySuffixInput(ctx, text) {
   const uid = String(ctx.from.id);
   _awaitingVanitySuffix.delete(uid);
   const s = text.trim();
-  if (s === '0' || s.toLowerCase() === 'skip') return startVanityJob(ctx, '');
-  const { isValidVanitySuffix } = await import('./gmgn.js');
-  if (!isValidVanitySuffix(s)) {
+  if (s === '0' || s.toLowerCase() === 'skip') return startVanityJob(ctx, {});
+  const { parseVanityPattern } = await import('./gmgn.js');
+  const pat = parseVanityPattern(s);
+  if (!pat) {
     _awaitingVanitySuffix.add(uid);
-    return ctx.reply(`❌ <b>${esc(s)}</b> tidak valid sebagai akhiran.\n\nBase58 cuma boleh: angka <code>1-9</code>, huruf besar/kecil (tanpa <code>0</code> <code>O</code> <code>I</code> <code>l</code>), maks 4 karakter.\n\n✅ Contoh yang bisa: <code>D1ck</code> <code>Xx</code> <code>GG</code> <code>abc</code>\n❌ Contoh yang tidak bisa: <code>G04t</code> (pakai 0), <code>Wow!</code>, <code>hello5</code>, <code>a b</code>\n\nKirim ulang akhiran, atau ketik <code>0</code> untuk generate biasa.`, { parse_mode: 'HTML' });
+    return ctx.reply(`❌ <b>${esc(s)}</b> tidak valid sebagai pattern.\n\nBase58 cuma boleh: angka <code>1-9</code>, huruf besar/kecil (tanpa <code>0</code> <code>O</code> <code>I</code> <code>l</code>), maks 4 karakter per bagian.\n\n✅ Contoh yang bisa: <code>end:D1ck</code> <code>start:6Gt</code> <code>Xx</code> <code>start:GG,end:abc</code>\n❌ Contoh yang tidak bisa: <code>G04t</code> (pakai 0), <code>start:Wow!</code>, <code>end:hello5</code>, <code>a b</code>\n\nKirim ulang pattern, atau ketik <code>0</code> untuk generate biasa.`, { parse_mode: 'HTML' });
   }
-  return startVanityJob(ctx, s);
+  return startVanityJob(ctx, pat);
 }
 
-async function startVanityJob(ctx, suffix) {
+async function startVanityJob(ctx, pat) {
   if (_vanity) return ctx.reply('⚠️ Masih ada vanity wallet yang sedang digenerate — cancel dulu sebelum mulai yang baru.', { parse_mode: 'HTML' });
   const g = await import('./gmgn.js');
-  if (!suffix) {
+  const suffix = pat?.suffix || '';
+  const prefix = pat?.prefix || '';
+  if (!suffix && !prefix) {
     const w = g.generateSolanaWallet();
     return showVanityResult(ctx, w.address, w.privateKey, null);
   }
   const ac = new AbortController();
-  const sent = await ctx.reply(`⏳ <b>Generating vanity wallet</b> — ending "<code>${esc(suffix)}</code>"\n0 addresses tried · 0s`, {
+  const sent = await ctx.reply(`⏳ <b>Generating vanity wallet</b> — ${vanityLabel(suffix, prefix)}\n0 addresses tried · 0s`, {
     parse_mode: 'HTML',
     reply_markup: new InlineKeyboard().text('✖ Cancel', 'vanity_cancel'),
   });
-  const st = { ac, chatId: ctx.chat.id, msgId: sent.message_id, timer: null, startTs: Date.now(), suffix, attempts: 0 };
+  const st = { ac, chatId: ctx.chat.id, msgId: sent.message_id, timer: null, startTs: Date.now(), suffix, prefix, attempts: 0 };
   _vanity = st;
   st.timer = setInterval(() => {
     if (!_vanity) return;
     const secs = Math.floor((Date.now() - st.startTs) / 1000);
-    bot.api.editMessageText(st.chatId, st.msgId, `⏳ <b>Generating vanity wallet</b> — ending "<code>${esc(suffix)}</code>"\n${st.attempts.toLocaleString()} addresses tried · ${secs}s`, {
+    bot.api.editMessageText(st.chatId, st.msgId, `⏳ <b>Generating vanity wallet</b> — ${vanityLabel(suffix, prefix)}\n${st.attempts.toLocaleString()} addresses tried · ${secs}s`, {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard().text('✖ Cancel', 'vanity_cancel'),
     }).catch(() => {});
   }, 1000);
   try {
-    const r = await g.generateVanityWallet(suffix, { signal: ac.signal, onAttempt: a => { st.attempts = a; } });
+    const r = await g.generateVanityWallet({ suffix, prefix }, { signal: ac.signal, onAttempt: a => { st.attempts = a; } });
     clearInterval(st.timer);
     if (_vanity === st) _vanity = null;
     return showVanityResult(ctx, r.address, r.privateKey, st);
@@ -687,12 +697,15 @@ async function showVanityResult(ctx, address, privateKey, st) {
 }
 
 async function saveGeneratedWallet(ctx, label) {
-  if (!_pendingGenWallet) return ctx.answerCallbackQuery({ text: 'Nothing to save' });
+  if (!_pendingGenWallet) {
+    if (ctx.callbackQuery) return ctx.answerCallbackQuery({ text: 'Nothing to save' });
+    return ctx.reply('Nothing to save yet.', { parse_mode: 'HTML' });
+  }
   const addr = _pendingGenWallet.address;
   await db.setTelegramId(adminId);
   await db.addWallet(addr, label || 'Generated Wallet', _pendingGenWallet.privateKey);
   _pendingGenWallet = null;
-  ctx.answerCallbackQuery({ text: 'Saved' });
+  if (ctx.callbackQuery) ctx.answerCallbackQuery({ text: 'Saved' }).catch(() => {});
   const kb = new InlineKeyboard().text('💰 Wallets', 'menu_wallets');
   ctx.reply(`✅ <b>Wallet saved!</b>\n<code>${esc(addr)}</code>`, { parse_mode: 'HTML', reply_markup: kb });
   showWallets(ctx, false);
@@ -1799,3 +1812,16 @@ export async function startBot() {
   }
   console.log('[Bot] ✅ Telegram bot active');
 }
+
+// Watchdog — if the long-polling runner ever dies silently (Render sleep, stuck
+// getUpdates, crash), tear down and restart the bot so it's always reachable.
+function ensureBotRunning() {
+  if (!TOKEN) return;
+  if (bot && bot.isRunning && bot.isRunning()) return;
+  if (bot) {
+    try { bot.stop().catch(() => {}); } catch {}
+    bot = null;
+  }
+  startBot().catch(e => console.warn('[Bot] Restart failed:', e.message));
+}
+setInterval(ensureBotRunning, 60000);

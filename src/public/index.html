@@ -1057,45 +1057,51 @@ window.delW=async function(id){
 window.copyAddr=function(a){navigator.clipboard.writeText(a);toast('Copied','ok')};
 
 window.openGenerateWallet=function(){
-  openModal(`<h2>Generate Wallet</h2>
-<p class="text-sm text-muted mb-8">Create a brand-new Solana wallet. Optionally pick a <b>vanity ending</b> so the address ends with your chosen text.</p>
-<div class="form-group"><label>Vanity Ending <span class="text-muted" style="font-weight:400">— optional</span></label><input id="f-vs" maxlength="4" placeholder="e.g. D1ck or G04t" style="font-family:var(--font-mono);text-transform:none"/><span class="hint">Address will end with this text. Base58 only — <span style="color:var(--red)">no 0, O, I, l</span>. Time: 2 chars ≈ instant, 3 chars ≈ 15s, 4 chars ≈ minutes.</span></div>
-<div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="startGenerateWallet()">Generate</button></div>`);
-};
-window.startGenerateWallet=async function(){
-  const suffix=($('#f-vs').value||'').trim();
-  if(suffix&&!/^[1-9A-HJ-NP-Za-km-z]{1,4}$/.test(suffix))return toast('Vanity ending: 1-4 chars, base58 only (no 0, O, I, l)','err');
-  if(!suffix){
-    const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
-    if(!r)return toast('Failed to generate wallet','err');
-    return showGeneratedResult(r.address,r.privateKey);
-  }
-  const r=await api('/wallets/generate',{method:'POST',body:JSON.stringify({suffix})}).catch(e=>null);
-  if(!r||!r.jobId)return toast('Failed to start generation','err');
-  pollVanityJob(r.jobId);
-};
-let _vanityPollTimer=null;
-async function pollVanityJob(jobId){
-  openModal(`<h2>Generating Vanity Wallet</h2>
-<div style="text-align:center;padding:1rem 0;margin-bottom:0.5rem"><div style="font-size:1.5rem;animation:pulse 1.2s infinite">⏳</div>
-<div id="f-vp" class="text-sm text-muted" style="margin-top:0.6rem">Starting…</div></div>
-<div class="modal-actions"><button class="btn btn-r" onclick="cancelVanityJob('${jobId}')">Cancel</button></div>`);
-  clearInterval(_vanityPollTimer);
-  _vanityPollTimer=setInterval(async()=>{
-    try{
-      const s=await api('/wallets/generate/status?jobId='+encodeURIComponent(jobId)+'&_t='+Date.now());
-      const secs=(s.elapsedMs/1000).toFixed(0);
-      $('#f-vp').textContent=`Searching ending "${s.suffix}" — ${s.attempts.toLocaleString()} addresses tried · ${secs}s`;
-      if(s.status==='done'){
-        clearInterval(_vanityPollTimer);_vanityPollTimer=null;
-        showGeneratedResult(s.address,s.privateKey);
-      }else if(s.status==='cancelled'||s.status==='error'){
-        clearInterval(_vanityPollTimer);_vanityPollTimer=null;
-        closeModal();toast(s.error||'Generation cancelled','err');
-      }
-    }catch(e){ clearInterval(_vanityPollTimer);_vanityPollTimer=null; closeModal(); }
-  },1000);
-}
+   openModal(`<h2>Generate Wallet</h2>
+ <p class="text-sm text-muted mb-8">Create a brand-new Solana wallet. Optionally set a <b>vanity</b> pattern — the address can <b>end with</b> or <b>start with</b> your chosen text (or both).</p>
+ <div class="form-group"><label>Ending <span class="text-muted" style="font-weight:400">— optional</span></label><input id="f-vs" maxlength="4" placeholder="e.g. D1ck" style="font-family:var(--font-mono);text-transform:none"/><span class="hint">Address ends with this text.</span></div>
+ <div class="form-group"><label>Beginning <span class="text-muted" style="font-weight:400">— optional</span></label><input id="f-vp" maxlength="4" placeholder="e.g. 6Gt" style="font-family:var(--font-mono);text-transform:none"/><span class="hint">Address starts with this text.</span></div>
+ <p class="text-sm text-muted mb-8" style="font-size:0.75rem">Base58 only — <span style="color:var(--red)">no 0, O, I, l</span> (e.g. <b>G04t</b> fails, <b>G4t</b> works). Fill one or both. Time: 2 chars ≈ instant, 3 ≈ 15s, 4 ≈ minutes; beginning + ending together takes longer.</p>
+ <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="startGenerateWallet()">Generate</button></div>`);
+ };
+ window.startGenerateWallet=async function(){
+   const suffix=($('#f-vs').value||'').trim();
+   const prefix=($('#f-vp').value||'').trim();
+   const re=/^[1-9A-HJ-NP-Za-km-z]{1,4}$/;
+   if(suffix&&!re.test(suffix))return toast('Vanity ending: 1-4 chars, base58 only (no 0, O, I, l)','err');
+   if(prefix&&!re.test(prefix))return toast('Vanity beginning: 1-4 chars, base58 only (no 0, O, I, l)','err');
+   if(!suffix&&!prefix){
+     const r=await api('/wallets/generate',{method:'POST'}).catch(()=>null);
+     if(!r)return toast('Failed to generate wallet','err');
+     return showGeneratedResult(r.address,r.privateKey);
+   }
+   const r=await api('/wallets/generate',{method:'POST',body:JSON.stringify({suffix,prefix})}).catch(e=>null);
+   if(!r||!r.jobId)return toast('Failed to start generation','err');
+   pollVanityJob(r.jobId);
+ };
+ let _vanityPollTimer=null;
+ async function pollVanityJob(jobId){
+   openModal(`<h2>Generating Vanity Wallet</h2>
+ <div style="text-align:center;padding:1rem 0;margin-bottom:0.5rem"><div style="font-size:1.5rem;animation:pulse 1.2s infinite">⏳</div>
+ <div id="f-vprog" class="text-sm text-muted" style="margin-top:0.6rem">Starting…</div></div>
+ <div class="modal-actions"><button class="btn btn-r" onclick="cancelVanityJob('${jobId}')">Cancel</button></div>`);
+   clearInterval(_vanityPollTimer);
+   _vanityPollTimer=setInterval(async()=>{
+     try{
+       const s=await api('/wallets/generate/status?jobId='+encodeURIComponent(jobId)+'&_t='+Date.now());
+       const secs=(s.elapsedMs/1000).toFixed(0);
+       const pat=[s.prefix?('start:'+s.prefix):'',s.suffix?('end:'+s.suffix):''].filter(Boolean).join(' + ')||'plain';
+       $('#f-vprog').textContent=`Searching ${pat} — ${s.attempts.toLocaleString()} addresses tried · ${secs}s`;
+       if(s.status==='done'){
+         clearInterval(_vanityPollTimer);_vanityPollTimer=null;
+         showGeneratedResult(s.address,s.privateKey);
+       }else if(s.status==='cancelled'||s.status==='error'){
+         clearInterval(_vanityPollTimer);_vanityPollTimer=null;
+         closeModal();toast(s.error||'Generation cancelled','err');
+       }
+     }catch(e){ clearInterval(_vanityPollTimer);_vanityPollTimer=null; closeModal(); }
+   },1000);
+ }
 window.cancelVanityJob=async function(jobId){
   clearInterval(_vanityPollTimer);_vanityPollTimer=null;
   await api('/wallets/generate/cancel',{method:'POST',body:JSON.stringify({jobId})}).catch(()=>{});

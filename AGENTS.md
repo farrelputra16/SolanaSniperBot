@@ -82,10 +82,11 @@ Login flow is done via the web dashboard, not CLI:
 - Wallets = OUR buy wallets (imported with private key for signing)
 - Wallet groups = distribute buy across multiple wallets
 - `wallet_group_id` in rule: positive = group, negative = single wallet, 0/absent = active wallet
-- Balance via GMGN `wallet_token_balance` → fallback Solana RPC
+- SOL balance: Solana RPC `getBalance` first (parallel, no GMGN rate cost) → GMGN `wallet_token_balance` fallback; 8s cache on `/api/wallets/portfolio`
 - Generate wallet via `generateSolanaWallet()` (ed25519 keypair)
 
 ## GMGN API Patterns
+- **Rate limiter**: global weighted token bucket in `request()` — base-tier budget `GMGN_MAX_RPS` (default 5, set to 15 if the key traded in 24h), each endpoint consumes `weight` tokens (wallet/order endpoints weight 3, token/market/swap weight 1). Bursts queue instead of 429-storming.
 - Exist auth (API key only): `token/info`, `token/security`, `user/wallet_token_balance`, `user/info`, `user/wallet_stats`, `user/wallet_activity`
 - Critical auth (+ signature): `trade/swap`, `trade/multi_swap`, `user/wallet_holdings`
 - Signing uses `GMGN_PRIVATE_KEY` (RSA or Ed25519 auto-detected)

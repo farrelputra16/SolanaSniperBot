@@ -198,6 +198,8 @@
           await reconnectTelegram();
           return;
         }
+        // GramJS is already reconnecting internally — don't fight it with a full teardown.
+        if (client._sender?.isReconnecting) return;
         await client.invoke(new (await import('telegram')).Api.Ping({ pingId: BigInt(Date.now()) }));
         _pingFailures = 0;
       } catch {

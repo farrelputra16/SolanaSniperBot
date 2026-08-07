@@ -48,3 +48,40 @@ test('generateVanityWallet can be cancelled via AbortSignal', async () => {
   ac.abort();
   await assert.rejects(p, /cancelled/);
 });
+
+test('isValidVanityPrefix accepts base58 beginnings, rejects bad chars', async () => {
+  const { isValidVanityPrefix } = await import('../gmgn.js');
+  assert.equal(isValidVanityPrefix('6Gt'), true);
+  assert.equal(isValidVanityPrefix('G04t'), false);
+  assert.equal(isValidVanityPrefix('0lOI'), false);
+  assert.equal(isValidVanityPrefix(''), false);
+  assert.equal(isValidVanityPrefix('ABCDE'), false);
+});
+
+test('parseVanityPattern handles end/start/both syntax', async () => {
+  const { parseVanityPattern } = await import('../gmgn.js');
+  assert.deepEqual(parseVanityPattern('end:D1ck'), { suffix: 'D1ck', prefix: '' });
+  assert.deepEqual(parseVanityPattern('start:6Gt'), { suffix: '', prefix: '6Gt' });
+  assert.deepEqual(parseVanityPattern('start:GG,end:abc'), { suffix: 'abc', prefix: 'GG' });
+  assert.deepEqual(parseVanityPattern('begin:abc'), { suffix: '', prefix: 'abc' });
+  assert.deepEqual(parseVanityPattern('Xx'), { suffix: 'Xx', prefix: '' });
+  assert.deepEqual(parseVanityPattern('  end:XY  '), { suffix: 'XY', prefix: '' });
+  assert.equal(parseVanityPattern('G04t'), null);
+  assert.equal(parseVanityPattern(''), null);
+  assert.equal(parseVanityPattern('start:Wow!'), null);
+});
+
+test('generateVanityWallet honors a prefix (startsWith)', async () => {
+  const { generateVanityWallet, deriveAddressFromPrivateKey } = await import('../gmgn.js');
+  const w = await generateVanityWallet({ prefix: '6Gt' });
+  assert.ok(w.address.startsWith('6Gt'), `expected ${w.address} to start with 6Gt`);
+  assert.equal(deriveAddressFromPrivateKey(w.privateKey), w.address);
+});
+
+test('generateVanityWallet honors prefix + suffix together', async () => {
+  const { generateVanityWallet, deriveAddressFromPrivateKey } = await import('../gmgn.js');
+  const w = await generateVanityWallet({ prefix: 'A', suffix: 'Z' });
+  assert.ok(w.address.startsWith('A'), `expected ${w.address} to start with A`);
+  assert.ok(w.address.endsWith('Z'), `expected ${w.address} to end with Z`);
+  assert.equal(deriveAddressFromPrivateKey(w.privateKey), w.address);
+});

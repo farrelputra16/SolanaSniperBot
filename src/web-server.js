@@ -414,9 +414,12 @@ export function createWebServer() {
   app.get('/api/positions', async (req, res) => {
     try {
       const { reconcileOpenPositions, getExternalPositions } = await import('./router.js');
-      await reconcileOpenPositions();
+      reconcileOpenPositions().catch(() => {});
       const open = await db.getOpenTrades();
-      const extern = await getExternalPositions(open);
+      const extern = await Promise.race([
+        getExternalPositions(open),
+        new Promise(r => setTimeout(() => r([]), 8000)),
+      ]);
       res.json([...open, ...extern]);
     } catch {
       res.json(await db.getOpenTrades());
@@ -546,37 +549,47 @@ export function createWebServer() {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
+  const _balanceCache = new Map();
+  const BALANCE_CACHE_TTL = 8000;
+
   app.get('/api/wallets/portfolio', async (req, res) => {
     try {
       const wallets = req.isAdmin ? await db.getAllWalletsGlobal() : await db.getAllWallets();
       if (wallets.length === 0) return res.json({ wallets: [] });
-      const g = await gmgn.createUserClient(req.telegramId);
+      const key = (req.isAdmin ? 'admin' : req.telegramId) || 'guest';
+      const now = Date.now();
+      const hit = _balanceCache.get(key);
+      if (hit && now - hit.ts < BALANCE_CACHE_TTL) return res.json(hit.data);
+
       const results = await Promise.all(wallets.map(async (w) => {
         if (!w.address || w.address === 'pending' || w.address.length < 32) {
           return { ...w, balance: null, error: 'invalid address' };
         }
         let balance = null;
         try {
-          const r = await g.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
-          const d = r?.data || r || {};
-          const balEntry = d?.balances?.[0] || {};
-          const raw = parseFloat(balEntry.balance);
-          if (!isNaN(raw) && raw > 0) balance = raw / Math.pow(10, balEntry.decimal ?? 9);
+          const rpc = await fetch('https://api.mainnet-beta.solana.com', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [w.address] }),
+            signal: AbortSignal.timeout(4000),
+          });
+          const j = await rpc.json();
+          if (j.result?.value != null) balance = j.result.value / 1e9;
         } catch {}
-        if (balance === null || balance === 0) {
+        if (balance === null) {
           try {
-            const rpc = await fetch('https://api.mainnet-beta.solana.com', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [w.address] }),
-              signal: AbortSignal.timeout(5000),
-            });
-            const j = await rpc.json();
-            if (j.result?.value != null) balance = j.result.value / 1e9;
+            const g = await gmgn.createUserClient(req.telegramId);
+            const r = await g.getWalletTokenBalance('sol', w.address, 'So11111111111111111111111111111111111111112');
+            const d = r?.data || r || {};
+            const balEntry = d?.balances?.[0] || {};
+            const raw = parseFloat(balEntry.balance);
+            if (!isNaN(raw) && raw > 0) balance = raw / Math.pow(10, balEntry.decimal ?? 9);
           } catch {}
         }
         return { ...w, balance: balance != null ? Number(balance.toFixed(4)) : null };
       }));
-      res.json({ wallets: results });
+      const out = { wallets: results };
+      _balanceCache.set(key, { data: out, ts: now });
+      res.json(out);
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -587,18 +600,22 @@ export function createWebServer() {
   app.post('/api/wallets/generate', async (req, res) => {
     try {
       const suffix = String(req.body?.suffix || '').trim();
-      if (!suffix) {
+      const prefix = String(req.body?.prefix || '').trim();
+      if (!suffix && !prefix) {
         const { address, privateKey } = gmgn.generateSolanaWallet();
         return res.json({ success: true, address, privateKey });
       }
-      if (!gmgn.isValidVanitySuffix(suffix)) {
-        return res.status(400).json({ error: 'Suffix must be 1-4 characters using base58 alphabet (no 0, O, I, l).' });
+      if (suffix && !gmgn.isValidVanitySuffix(suffix)) {
+        return res.status(400).json({ error: 'Ending must be 1-4 characters using base58 alphabet (no 0, O, I, l).' });
+      }
+      if (prefix && !gmgn.isValidVanityPrefix(prefix)) {
+        return res.status(400).json({ error: 'Beginning must be 1-4 characters using base58 alphabet (no 0, O, I, l).' });
       }
       const id = 'v' + (++_vanitySeq) + '_' + Date.now();
       const ac = new AbortController();
-      const job = { id, suffix, status: 'running', attempts: 0, started: Date.now(), ac, result: null, error: null };
+      const job = { id, suffix, prefix, status: 'running', attempts: 0, started: Date.now(), ac, result: null, error: null };
       _vanityJobs.set(id, job);
-      gmgn.generateVanityWallet(suffix, {
+      gmgn.generateVanityWallet({ suffix, prefix }, {
         signal: ac.signal,
         onAttempt: (a) => { job.attempts = a; },
       }).then(r => {
@@ -618,7 +635,7 @@ export function createWebServer() {
     const job = _vanityJobs.get(String(req.query.jobId || ''));
     if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json({
-      status: job.status, suffix: job.suffix, attempts: job.attempts,
+      status: job.status, suffix: job.suffix, prefix: job.prefix, attempts: job.attempts,
       elapsedMs: Date.now() - job.started,
       address: job.result?.address, privateKey: job.result?.privateKey, error: job.error,
     });
@@ -657,14 +674,13 @@ export function createWebServer() {
     const { chain, address } = req.query;
     if (!address) return res.status(400).json({ error: 'address required' });
     try {
-      const g = await gmgn.createUserClient(req.telegramId);
       const [info, security] = await Promise.allSettled([
-        g.getTokenInfo(chain || 'sol', address),
-        g.getTokenSecurity(chain || 'sol', address),
+        gmgn.getTokenInfo(chain || 'sol', address),
+        gmgn.getTokenSecurity(chain || 'sol', address),
       ]);
       res.json({
-        info: info.status === 'fulfilled' ? info.value?.data || info.value : null,
-        security: security.status === 'fulfilled' ? security.value?.data || security.value : null,
+        info: info.status === 'fulfilled' ? (info.value?.data || info.value) : null,
+        security: security.status === 'fulfilled' ? (security.value?.data || security.value) : null,
       });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });

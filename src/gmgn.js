@@ -64,7 +64,49 @@ export async function getUserCredentials(telegramId) {
   return data;
 }
 
-async function request(method, path, params = {}, body = null, signed = false, overrideCreds = null) {
+// ───── GMGN Rate Limiter ─────
+// GMGN 2026 dual-tier limits: RPS(base) = 5 / weight, RPS(traded) = 15 / weight.
+// Budget on the BASE tier so bursts queue smoothly instead of 429-storming.
+// Raise the budget with GMGN_MAX_RPS (e.g. 15 if the key has traded in 24h).
+const GMGN_MAX_RPS = Math.max(1, parseInt(process.env.GMGN_MAX_RPS || '5', 10));
+
+const _ENDPOINT_WEIGHTS = [
+  ['token/holders', 2], ['token/traders', 3],
+  ['user/wallet_token_balance', 3], ['user/wallet_holdings', 3], ['user/wallet_stats', 3],
+  ['user/wallet_created_token', 3], ['user/wallet_activity', 1],
+  ['user/kol', 1], ['user/smartmoney', 1],
+  ['trade/quote', 3], ['trade/query_order', 3],
+  ['order/strategy/cancel', 2], ['order/strategy', 3],
+  ['gas-price', 3],
+  ['market/token_signal', 3], ['trenches', 2], ['market/kline', 1],
+  ['token/info', 1], ['token/security', 1], ['token/pool', 1],
+  ['market/rank', 1], ['trade/swap', 1], ['trade/multi_swap', 1],
+];
+
+function endpointWeight(path) {
+  for (const [k, w] of _ENDPOINT_WEIGHTS) {
+    if (path.includes(k)) return w;
+  }
+  return 1;
+}
+
+let _bucketTokens = GMGN_MAX_RPS;
+let _bucketLast = Date.now();
+
+async function rateLimit(path) {
+  const w = endpointWeight(path);
+  for (;;) {
+    const now = Date.now();
+    _bucketTokens = Math.min(GMGN_MAX_RPS, _bucketTokens + ((now - _bucketLast) / 1000) * GMGN_MAX_RPS);
+    _bucketLast = now;
+    if (_bucketTokens >= w) { _bucketTokens -= w; return; }
+    const deficit = w - _bucketTokens;
+    await new Promise(r => setTimeout(r, Math.min(100, Math.ceil((deficit / GMGN_MAX_RPS) * 1000))));
+  }
+}
+
+async function request(method, path, params = {}, body = null, signed = false, overrideCreds = null, skipRateLimit = false) {
+  if (!skipRateLimit) await rateLimit(path);
   const creds = overrideCreds || { apiKey: envApiKey, privateKey: envPrivateKey };
   const authQuery = buildAuthQuery();
   const allParams = { ...params, ...authQuery };
@@ -121,7 +163,7 @@ async function request(method, path, params = {}, body = null, signed = false, o
       }
       const wait = Math.max(1000, (resetAt - Math.floor(Date.now() / 1000)) * 1000);
       await new Promise(r => setTimeout(r, Math.min(wait, 5000)));
-      return request(method, path, params, body, signed, overrideCreds);
+      return request(method, path, params, body, signed, overrideCreds, true);
     }
 
     if (!res.ok) {
@@ -498,19 +540,49 @@ export function generateSolanaWallet() {
   return { address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])) };
 }
 
-export function isValidVanitySuffix(s) {
-  if (!s || typeof s !== 'string') return false;
-  return /^[1-9A-HJ-NP-Za-km-z]{1,4}$/.test(s);
+export function isValidVanityPart(s) {
+  return !!s && typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{1,4}$/.test(s);
 }
 
-// Generates a wallet whose base58 address ENDS with the given suffix ("D1ck", "G04t", ...).
-// Brute-forces keypairs until the address residue matches. Lengths: 2 chars ≈ <1s,
-// 3 chars ≈ ~15s, 4 chars ≈ several minutes — pass an AbortSignal to cancel.
-export async function generateVanityWallet(suffix, { signal, onAttempt } = {}) {
-  const L = suffix.length;
+export function isValidVanitySuffix(s) { return isValidVanityPart(s); }
+export function isValidVanityPrefix(s) { return isValidVanityPart(s); }
+
+// Parses a vanity pattern string into { suffix, prefix }.
+// Supported syntax: "end:abc", "suffix:abc", "start:abc", "begin:abc",
+// "prefix:abc", comma/semicolon-separated combos ("start:abc,end:xyz"),
+// or a bare base58 token which is treated as the ENDING (suffix).
+// Returns null if nothing valid was found.
+export function parseVanityPattern(str) {
+  if (!str || typeof str !== 'string') return null;
+  const s = str.trim();
+  if (!s) return null;
+  const parts = s.split(/[,;]/).map(x => x.trim()).filter(Boolean);
+  let suffix = '', prefix = '';
+  for (const p of parts) {
+    const m = p.match(/^(start|begin|prefix|end|suffix)\s*[:=]\s*([1-9A-HJ-NP-Za-km-z]{1,4})$/i);
+    if (m) {
+      const val = m[2];
+      if (/^(start|begin|prefix)$/i.test(m[1])) prefix = val;
+      else suffix = val;
+      continue;
+    }
+    if (isValidVanityPart(p) && !suffix) suffix = p;
+  }
+  if (!suffix && !prefix) return null;
+  return { suffix, prefix };
+}
+
+// Generates a wallet whose base58 address ends with `suffix` and/or starts with
+// `prefix` ("D1ck" ending, "6Gt" beginning, or both). Brute-forces keypairs.
+// Lengths: 2 chars ≈ <1s, 3 chars ≈ ~15s, 4 chars ≈ several minutes; a combined
+// prefix+suffix multiplies the expected time — pass an AbortSignal to cancel.
+export async function generateVanityWallet(spec, { signal, onAttempt } = {}) {
+  const cfg = typeof spec === 'string' ? { suffix: spec } : (spec || {});
+  const suffix = cfg.suffix || '';
+  const prefix = cfg.prefix || '';
   let target = 0n;
   let base = 1n;
-  for (let i = 0; i < L; i++) { target = target * 58n + BigInt(BS58_MAP[suffix[i]]); base *= 58n; }
+  for (let i = 0; i < suffix.length; i++) { target = target * 58n + BigInt(BS58_MAP[suffix[i]]); base *= 58n; }
 
   return await new Promise((resolve, reject) => {
     let attempts = 0;
@@ -524,9 +596,16 @@ export async function generateVanityWallet(suffix, { signal, onAttempt } = {}) {
       const pub = Buffer.from(publicKey).subarray(-32);
       let n = 0n;
       for (const b of pub) n = (n << 8n) | BigInt(b);
-      if (n % base === target) {
+      let ok = !suffix || n % base === target;
+      let addr = null;
+      if (ok && prefix) {
+        addr = bs58Encode(pub);
+        ok = addr.startsWith(prefix);
+      }
+      if (ok) {
+        if (!addr) addr = bs58Encode(pub);
         const seed = Buffer.from(privateKey).subarray(-32);
-        return resolve({ address: bs58Encode(pub), privateKey: bs58Encode(Buffer.concat([seed, pub])), attempts });
+        return resolve({ address: addr, privateKey: bs58Encode(Buffer.concat([seed, pub])), attempts });
       }
       if (onAttempt && attempts % 250 === 0) onAttempt(attempts);
       if (attempts % 2500 === 0) setImmediate(tick);
