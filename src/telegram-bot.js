@@ -1810,6 +1810,8 @@ export async function startBot() {
       console.error('[Bot] Error:', desc, '| ctx:', on.slice(0, 100));
     });
 
+    await bot.init(); // ensure API/bot info ready before webhook handleUpdate
+
     // Webhook mode — preferred on Render (RENDER_EXTERNAL_URL is set). Telegram
     // webhooks have NO "one instance polling" conflict: the last setWebhook wins,
     // so old/new instances during a deploy never fight each other. Falls back to
