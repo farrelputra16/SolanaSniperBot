@@ -629,12 +629,12 @@ let _extCache = null;
 let _extTs = 0;
 const EXT_CACHE_TTL = 20000;
 
-export async function getExternalPositions(openTrades = null) {
+export async function getExternalPositions(openTrades = null, opts = {}) {
   try {
     if (_extCache && Date.now() - _extTs < EXT_CACHE_TTL) return _extCache;
     const open = openTrades || await db.getOpenTrades();
     const tracked = new Set(open.map(t => t.token_address).filter(Boolean));
-    const wallets = await db.getAllWallets();
+    const wallets = opts.global ? await db.getAllWalletsGlobal() : await db.getAllWallets();
     const result = [];
     for (const w of wallets) {
       if (!w.address) continue;

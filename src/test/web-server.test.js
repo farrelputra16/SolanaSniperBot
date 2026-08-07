@@ -246,8 +246,8 @@ test('buy-with-tp-sl creates a trade', async () => {
   assert.equal(trade.stop_loss_percent, 10);
 });
 
-// ───── Operator mode: guest/password sessions see ALL data ─────
-test('guest/password session (no telegramId) sees open trades from any owner', async () => {
+// ───── Admin (password login) sees all; Telegram users stay isolated ─────
+test('password-login (operator) sees open trades from any owner', async () => {
   db.setTelegramId('1721799075');
   await db.createTrade({
     wallet_address: 'W_OP', token_address: 'T_OP', token_symbol: 'OPX',
@@ -258,21 +258,22 @@ test('guest/password session (no telegramId) sees open trades from any owner', a
   const t = await authed();
   const { status, data } = await req('/positions', { token: t });
   assert.equal(status, 200, JSON.stringify(data));
-  assert.ok(Array.isArray(data));
-  assert.ok(data.some(x => x.token_address === 'T_OP'), 'operator session must see trades tagged with another telegram_id: ' + JSON.stringify(data));
+  assert.ok(data.some(x => x.token_address === 'T_OP'), 'operator (password login) must see all open trades: ' + JSON.stringify(data));
 });
 
-test('telegram-authenticated session is still isolated to its own telegram_id', async () => {
+test('telegram-authenticated user stays isolated to their own telegram_id', async () => {
+  await db.saveWebSession('iso-token', { telegramId: 'OTHER-USER', phone: '', source: 'login', expires: Date.now() + 86400000 });
   db.setTelegramId('OTHER-USER');
   await db.createTrade({
-    wallet_address: 'W_OTHER', token_address: 'T_OTHER', token_symbol: 'OTH',
-    chain: 'sol', buy_amount_sol: 0.1, buy_price: 0.000001, buy_order_id: 'op-2',
+    wallet_address: 'W_MINE', token_address: 'T_MINE', token_symbol: 'MY',
+    chain: 'sol', buy_amount_sol: 0.1, buy_price: 0.000001, buy_order_id: 'm-1',
     status: 'open',
   });
   db.setTelegramId('');
-  const { status, data } = await req('/positions', { token: 'restart-token' });
+  const { status, data } = await req('/positions', { token: 'iso-token' });
   assert.equal(status, 200, JSON.stringify(data));
-  assert.ok(!data.some(x => x.token_address === 'T_OTHER'), "authenticated user must NOT see another owner's trade: " + JSON.stringify(data));
+  assert.ok(data.some(x => x.token_address === 'T_MINE'), 'user must see their own trade: ' + JSON.stringify(data));
+  assert.ok(!data.some(x => x.token_address === 'T_OP'), "user must NOT see another owner's trade: " + JSON.stringify(data));
 });
 
 // ───── SSE live events ─────
