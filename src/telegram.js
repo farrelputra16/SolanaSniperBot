@@ -348,7 +348,11 @@
 
     installGlobalHandler();
 
-    const channels = await db.getActiveChannels();
+    // Channels are shared infrastructure for the single scraper engine. Scrape ALL
+    // active channels regardless of owner telegram_id — otherwise channels added via
+    // the operator (password) login (tagged 'NONE') are invisible to the scraper and
+    // it listens to 0 channels. Signals/trades are still tagged with the scraper's tid.
+    const channels = await db.getActiveChannels(true);
 
     for (const ch of channels) {
       const identifier = ch.channel_username || ch.channel_id?.toString();

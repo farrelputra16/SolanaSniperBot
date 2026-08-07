@@ -1805,7 +1805,11 @@ export async function startBot() {
 
     // Long polling only allows ONE instance per token. During a Render deploy the
     // old instance still polls for a few seconds → new instance gets 409 and grammy
-    // permanently stops. Retry with backoff so we survive the overlap.
+    // permanently stops. Retry with backoff so we survive the overlap — but CAP the
+    // retries. An unbounded loop leaves BOTH instances (old + new) fighting forever,
+    // so neither can ever serve. After the cap we yield to the winner; the 60s
+    // watchdog will restart us cleanly once the conflict disappears.
+    const MAX_409_RETRIES = 10;
     let attempt = 0;
     for (;;) {
       try {
@@ -1814,6 +1818,10 @@ export async function startBot() {
       } catch (err) {
         if (!isConflictError(err)) throw err;
         attempt++;
+        if (attempt > MAX_409_RETRIES) {
+          console.error(`[Bot] ⚠️ 409 conflict persists after ${attempt} retries — yielding to the polling instance; watchdog will retry in 60s`);
+          return;
+        }
         const delay = Math.min(15000, 2000 * 2 ** Math.min(attempt - 1, 3));
         console.error(`[Bot] 409 conflict (another instance polling) — retry #${attempt} in ${(delay / 1000).toFixed(1)}s`);
         await sleepMs(delay);
