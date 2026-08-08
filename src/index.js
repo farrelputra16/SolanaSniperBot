@@ -67,7 +67,11 @@ async function main() {
         await initTelegramWithSession(apiId, apiHash, sessionStr, { dcId: parseInt(us.dc) || 0 });
         await startListeners(tid);
         connectedAny = true;
-        if (String(apiId) === '20222905') operatorId = tid;
+        // Operator (bot admin) = the configured operator telegram_id, NOT a shared API ID.
+        // Many accounts can share one TELEGRAM_API_ID; only the operator account gets admin.
+        const opTid = (config.server.operatorTelegramId || '').toString();
+        if (opTid && String(us.telegram_id) === opTid) operatorId = tid;
+        else if (!operatorId) operatorId = tid; // fallback: first connected account becomes bot admin
         console.log(`   Telegram: ✅ Connected ${tid}`);
       } catch (err) {
         console.warn(`   Telegram: ⏸️  (${tid}) ${err.message || ''}`);
@@ -102,12 +106,11 @@ async function main() {
     }
 
     if (operatorId) setAdminId(operatorId);
-    if (connectedAny) startBot().catch(e => console.warn('[Bot]', e.message));
-    else startBot().catch(() => {});
+    startBot().catch(e => console.warn('[Bot]', e.message));
   } catch (err) {
     const msg = err?.message || '';
     if (msg) console.warn('   Telegram: ⏸️  ' + msg);
-    startBot().catch(() => {});
+    startBot().catch(e => console.warn('[Bot]', e.message));
   }
 
   console.log(`\n✅ The Scoop Sc(rape)r running!`);

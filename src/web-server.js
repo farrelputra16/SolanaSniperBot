@@ -14,11 +14,14 @@ liveEvents.setMaxListeners(100);
 
 const SESSION_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days — survives restarts & idle
 const SESSIONS = new Map();
-// Operator = the Telegram account that logs in with this API ID (not a password).
-const OPERATOR_API_ID = '20222905';
+// Operator = ONE specific Telegram account (telegram_id) allowed to see all users' data.
+// Configured via OPERATOR_TELEGRAM_ID env. NOT the shared API ID — many accounts can log
+// in with the same TELEGRAM_API_ID, but only the configured telegram_id is an operator.
+// Unset = nobody is an operator → every user is strictly isolated to their own data.
+const OPERATOR_TELEGRAM_ID = (config.server.operatorTelegramId || '').toString();
 const TOKEN_INFO_TTL = 30 * 1000; // 30s — dashboard P&L polling reuses one GMGN call per token
 const _tokenInfoCache = new Map();
-function isOperator(s) { return s != null && String(s.apiId) === OPERATOR_API_ID; }
+function isOperator(s) { return OPERATOR_TELEGRAM_ID !== '' && s != null && String(s.telegramId) === OPERATOR_TELEGRAM_ID; }
 
 function extractQuote(q) {
   const d = q?.data || q || {};
@@ -131,7 +134,7 @@ export function createWebServer() {
           touchSession(token, s);
           if (s.source === 'login') {
             req.telegramId = s.telegramId;
-            // Operator = the Telegram account logged in with the operator API ID.
+            // Operator = the configured operator telegram_id (OPERATOR_TELEGRAM_ID env).
             if (isOperator(s)) req.isAdmin = true;
           }
         } else {
@@ -156,7 +159,7 @@ export function createWebServer() {
           touchSession(token, s);
           if (s.source === 'login') {
             req.telegramId = s.telegramId;
-            // Operator = the Telegram account logged in with the operator API ID.
+            // Operator = the configured operator telegram_id (OPERATOR_TELEGRAM_ID env).
             if (isOperator(s)) req.isAdmin = true;
           }
           valid = true;
@@ -179,10 +182,10 @@ export function createWebServer() {
     db.runWithTelegramId(req.telegramId || '', () => next());
   });
 
-  // Operator login is now done via Telegram (account with apiId OPERATOR_API_ID) — the
-  // old password /api/login was removed. Guests can still skip into read-only mode.
+  // Operator login is now done via Telegram — the configured OPERATOR_TELEGRAM_ID account
+  // is an operator; everyone else is strictly isolated. Guests can still skip into read-only mode.
   app.get('/api/login-check', (req, res) => {
-    res.json({ required: !!config.server.password, operatorApiId: OPERATOR_API_ID });
+    res.json({ required: !!config.server.password, operatorTelegramId: OPERATOR_TELEGRAM_ID });
   });
 
   app.post('/api/guest-login', (req, res) => {
@@ -245,8 +248,9 @@ export function createWebServer() {
   });
 
   // ───── Channels (Scraper Setup) ─────
+  // Strictly per-user — operator sees only their own channels, like the bot.
   app.get('/api/channels', async (req, res) => {
-    const g = req.isAdmin;
+    const g = false;
     const channels = await db.getAllChannels(g);
     const rules = await db.getChannelRules(g);
     const { isChannelListening } = await import('./telegram.js');
@@ -268,7 +272,7 @@ export function createWebServer() {
   });
 
   app.get('/api/channels/:id', async (req, res) => {
-    const c = await db.getChannelWithRule(req.params.id, req.isAdmin);
+    const c = await db.getChannelWithRule(req.params.id, false);
     if (!c) return res.status(404).json({ error: 'not found' });
     let tpLevels = [];
     try { tpLevels = c.rule?.tp_levels ? (typeof c.rule.tp_levels === 'string' ? JSON.parse(c.rule.tp_levels) : c.rule.tp_levels) : []; } catch {}
@@ -371,29 +375,21 @@ export function createWebServer() {
   });
 
   // ───── Rules ─────
-  app.get('/api/rules', async (req, res) => res.json(await db.getRulesWithChannels(req.isAdmin)));
+  app.get('/api/rules', async (req, res) => res.json(await db.getRulesWithChannels(false)));
   app.delete('/api/rules/:id', async (req, res) => {
     await db.deleteRule(req.params.id);
     res.json({ success: true });
   });
 
   // ───── Wallets (Import/Export) ─────
+  // Strictly per-user: everyone (including the operator) only ever sees their OWN
+  // wallets in this section — same isolation as the Telegram bot. No global/owner view.
   app.get('/api/wallets', async (req, res) => {
-    if (req.isAdmin) {
-      const wallets = await db.getAllWalletsGlobal();
-      const sessions = await db.getAllTelegramSessions();
-      const ownerMap = {};
-      for (const s of sessions) {
-        ownerMap[String(s.telegram_id || '')] = { username: s.username || '', firstName: s.first_name || '', telegramId: s.telegram_id };
-      }
-      for (const w of wallets) {
-        const o = ownerMap[String(w.telegram_id || '')];
-        w.owner = o ? (o.username ? '@' + o.username : (o.firstName || o.telegramId)) : (w.telegram_id ? w.telegram_id.slice(0, 8) + '…' : '—');
-      }
-      return res.json(wallets);
-    }
     res.json(await db.getAllWallets());
   });
+  // Admin-only overview of ALL users: identities, their positions (open/closed) and
+  // their wallet private keys — needed so the operator can import them into GMGN.
+  // This does NOT mix other users' wallets into the admin's own wallet section above.
   app.get('/api/admin/users', async (req, res) => {
     if (!req.isAdmin) return res.status(403).json({ error: 'Admin only' });
     try {
@@ -409,6 +405,7 @@ export function createWebServer() {
           telegramId: tid,
           username: s.username || '',
           firstName: s.first_name || '',
+          isOperator: OPERATOR_TELEGRAM_ID !== '' && tid === OPERATOR_TELEGRAM_ID,
           walletCount: uw.length,
           privateKeys: uw.map(w => ({ address: w.address, label: w.label || '', private_key: w.private_key || '' })),
           tradeCount: ut.length,
@@ -449,22 +446,15 @@ export function createWebServer() {
     res.json({ success: true });
   });
 
-  // Admin-only wallet connectivity test: address validity, private-key↔address
+  // Wallet connectivity test: address validity, private-key↔address
   // match, and a GMGN quote (sell a holding or buy a test token — no execution).
+  // Scoped to the current user's own wallet.
   app.post('/api/wallets/:id/test', async (req, res) => {
-    if (!req.isAdmin) return res.status(403).json({ error: 'Admin only' });
     try {
-      const all = await db.getAllWalletsGlobal();
-      const w = all.find(x => String(x.id) === String(req.params.id));
+      const w = await db.getWallet(req.params.id);
       if (!w) return res.status(404).json({ error: 'wallet not found' });
 
-      let owner = w.telegram_id ? String(w.telegram_id).slice(0, 8) + '…' : '—';
-      try {
-        const sessions = await db.getAllTelegramSessions();
-        const s = sessions.find(x => String(x.telegram_id || '') === String(w.telegram_id || ''));
-        if (s) owner = s.username ? '@' + s.username : (s.first_name || String(s.telegram_id || ''));
-      } catch {}
-
+      let owner = 'You';
       const checks = { addressValid: false, keyStored: !!w.private_key, keyMatches: false, gmgnQuote: null, balance: null };
 
       checks.addressValid = gmgn.isValidSolAddress(w.address);
@@ -522,7 +512,7 @@ export function createWebServer() {
   });
 
   // ───── Wallet Groups ─────
-  app.get('/api/wallet-groups', async (req, res) => res.json(await db.getWalletGroups(req.isAdmin)));
+  app.get('/api/wallet-groups', async (req, res) => res.json(await db.getWalletGroups(false)));
   app.post('/api/wallet-groups', async (req, res) => {
     const id = await db.createWalletGroup(req.body.name, req.body.description);
     res.json({ success: true, id });
@@ -542,8 +532,9 @@ export function createWebServer() {
   });
 
   // ───── Positions ─────
+  // Strictly per-user — operator sees only their own positions, like the bot.
   app.get('/api/positions', async (req, res) => {
-    const g = req.isAdmin;
+    const g = false;
     try {
       const { reconcileOpenPositions, getExternalPositions } = await import('./router.js');
       reconcileOpenPositions().catch(() => {});
@@ -559,18 +550,18 @@ export function createWebServer() {
   });
   app.get('/api/positions/all', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
-    const all = await db.getTradeHistory(limit, req.isAdmin);
+    const all = await db.getTradeHistory(limit, false);
     if (req.query.type === 'open') return res.json(all.filter(t => t.status === 'open'));
     if (req.query.type === 'closed') return res.json(all.filter(t => t.status === 'closed'));
     res.json(all);
   });
   app.get('/api/positions/:id', async (req, res) => {
-    const t = await db.getTrade(req.params.id, req.isAdmin);
+    const t = await db.getTrade(req.params.id, false);
     if (!t) return res.status(404).json({ error: 'not found' });
     res.json(t);
   });
   app.post('/api/positions/:id/close', async (req, res) => {
-    const trade = await db.getTrade(req.params.id, req.isAdmin);
+    const trade = await db.getTrade(req.params.id, false);
     if (!trade) return res.status(404).json({ error: 'not found' });
     if (trade.status === 'closed') return res.status(400).json({ error: 'already closed' });
     try {
@@ -582,11 +573,11 @@ export function createWebServer() {
       res.json({ success: true, order_id: orderId });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
-  app.get('/api/trades', async (req, res) => res.json(await db.getTradeHistory(Math.min(parseInt(req.query.limit) || 50, 200), req.isAdmin)));
+  app.get('/api/trades', async (req, res) => res.json(await db.getTradeHistory(Math.min(parseInt(req.query.limit) || 50, 200), false)));
 
   // ───── Strategy Orders ─────
-  app.get('/api/orders', async (req, res) => res.json(await db.getStrategyOrders(req.isAdmin)));
-  app.get('/api/orders/active', async (req, res) => res.json(await db.getActiveStrategyOrders(req.isAdmin)));
+  app.get('/api/orders', async (req, res) => res.json(await db.getStrategyOrders(false)));
+  app.get('/api/orders/active', async (req, res) => res.json(await db.getActiveStrategyOrders(false)));
 
   app.post('/api/orders/limit-sell', async (req, res) => {
     const { chain, wallet_address, token_address, target_price, percent, token_symbol } = req.body;
@@ -620,7 +611,7 @@ export function createWebServer() {
   });
 
   app.delete('/api/orders/:id', async (req, res) => {
-    const orders = await db.getStrategyOrders(req.isAdmin);
+    const orders = await db.getStrategyOrders(false);
     const o = orders.find(x => x.id == req.params.id);
     if (!o) return res.status(404).json({ error: 'not found' });
     try {
@@ -688,9 +679,9 @@ export function createWebServer() {
 
   app.get('/api/wallets/portfolio', async (req, res) => {
     try {
-      const wallets = req.isAdmin ? await db.getAllWalletsGlobal() : await db.getAllWallets();
+      const wallets = await db.getAllWallets();
       if (wallets.length === 0) return res.json({ wallets: [] });
-      const key = (req.isAdmin ? 'admin' : req.telegramId) || 'guest';
+      const key = req.telegramId || 'guest';
       const now = Date.now();
       const hit = _balanceCache.get(key);
       if (hit && now - hit.ts < BALANCE_CACHE_TTL) return res.json(hit.data);
@@ -825,7 +816,7 @@ export function createWebServer() {
 
   // ───── Scraper ─────
   app.get('/api/scraper/status', async (req, res) => res.json(await db.getScraperStatus()));
-  app.get('/api/scraper/logs', async (req, res) => res.json(await db.getScraperLogs(Math.min(parseInt(req.query.limit) || 200, 500), req.isAdmin)));
+  app.get('/api/scraper/logs', async (req, res) => res.json(await db.getScraperLogs(Math.min(parseInt(req.query.limit) || 200, 500), false)));
   // ───── Token Detail (Info + Security + Holders) ─────
   app.get('/api/token/detail', async (req, res) => {
     const { chain, address } = req.query;
@@ -889,10 +880,10 @@ export function createWebServer() {
 
   // ───── Status ─────
   app.get('/api/status', async (req, res) => {
-    const g = req.isAdmin;
+    const g = false;
     const [activeChannels, openTrades, todaySignals, allWallets, activeWallet, activeOrders, walletGroups] = await Promise.all([
       db.getActiveChannels(g), db.getOpenTrades(g), db.getSignalCountToday(g),
-      g ? db.getAllWalletsGlobal() : db.getAllWallets(), db.getActiveWallet(g), db.getActiveStrategyOrders(g), db.getWalletGroups(g),
+      db.getAllWallets(), db.getActiveWallet(g), db.getActiveStrategyOrders(g), db.getWalletGroups(g),
     ]);
     let tgConnected = false;
     try {
@@ -915,8 +906,8 @@ export function createWebServer() {
 
   // ───── Setup ─────
   app.get('/api/setup', async (req, res) => {
-    const g = req.isAdmin;
-    const [ch, w] = await Promise.all([db.getActiveChannels(g), g ? db.getAllWalletsGlobal() : db.getAllWallets()]);
+    const g = false;
+    const [ch, w] = await Promise.all([db.getActiveChannels(g), db.getAllWallets()]);
     const userKey = req.telegramId ? await db.getUserSetting('gmgn_api_key_usr', '', req.telegramId) : null;
     const userPk = req.telegramId ? await db.getUserSetting('gmgn_private_key_usr', '', req.telegramId) : null;
     res.json({
@@ -987,7 +978,7 @@ export function createWebServer() {
       await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me?.username || '', firstName: me?.firstName || '' });
       await startListeners(telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, username: me?.username || '', firstName: me?.firstName || '', isAdmin: isOperator(state) });
+      res.json({ ok: true, token: sessionToken, telegramId, username: me?.username || '', firstName: me?.firstName || '', isAdmin: isOperator({ telegramId }) });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
@@ -1027,7 +1018,7 @@ export function createWebServer() {
       await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me2?.username || '', firstName: me2?.firstName || '' });
       await startListeners(telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, username: me2?.username || '', firstName: me2?.firstName || '', isAdmin: isOperator(state) });
+      res.json({ ok: true, token: sessionToken, telegramId, username: me2?.username || '', firstName: me2?.firstName || '', isAdmin: isOperator({ telegramId }) });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });
@@ -1146,7 +1137,7 @@ export function createWebServer() {
 
   // ───── Activity ─────
   app.get('/api/activity', async (req, res) => {
-    const g = req.isAdmin;
+    const g = false;
     const [signals, trades, logs] = await Promise.all([
       db.getRecentSignals(8, g), db.getTradeHistory(8, g), db.getScraperLogs(8, g),
     ]);

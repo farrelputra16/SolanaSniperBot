@@ -1884,7 +1884,13 @@ export async function startBot() {
     let attempt = 0;
     for (;;) {
       try {
-        await bot.start({ drop_pending_updates: true });
+        await bot.start({
+          drop_pending_updates: true,
+          onStart: async () => {
+            _webhookMode = false;
+            console.log('[Bot] ✅ Telegram bot active (long polling)');
+          },
+        });
         break;
       } catch (err) {
         if (!isConflictError(err)) throw err;

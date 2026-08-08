@@ -101,6 +101,11 @@ export const config = {
     port: parseInt(get('PORT', '3000')),
     host: get('HOST', '0.0.0.0'),
     password: get('DASHBOARD_PASSWORD', ''),
+    // Telegram account (telegram_id) allowed to see ALL users' data (operator/admin).
+    // Leave empty → nobody is an operator → every user is strictly isolated to their
+    // own data. NOTE: NOT the shared TELEGRAM_API_ID — multiple accounts can share one
+    // API ID, but an operator is ONE specific account.
+    operatorTelegramId: get('OPERATOR_TELEGRAM_ID', ''),
   },
 };
 

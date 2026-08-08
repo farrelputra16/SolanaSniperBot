@@ -77,6 +77,10 @@ Login flow is done via the web dashboard, not CLI:
 - On page refresh: `/api/telegram/status` returns fresh token if Telegram client connected
 - Cleanup interval runs only when server is active (in `startWebServer`)
 - Telegram data isolated per user via `telegram_id` column in all tables
+- **Operator/admin is NOT based on the API ID.** Multiple accounts can log in with the
+  same `TELEGRAM_API_ID`, but the operator is ONE specific `telegram_id` configured via
+  `OPERATOR_TELEGRAM_ID` env. If unset → nobody is an operator → every user is strictly
+  isolated (web + bot) and can log in simultaneously on different devices.
 
 ## Wallet System
 - Wallets = OUR buy wallets (imported with private key for signing)
