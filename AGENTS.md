@@ -81,6 +81,13 @@ Login flow is done via the web dashboard, not CLI:
   same `TELEGRAM_API_ID`, but the operator is ONE specific `telegram_id` configured via
   `OPERATOR_TELEGRAM_ID` env. If unset → nobody is an operator → every user is strictly
   isolated (web + bot) and can log in simultaneously on different devices.
+- **Data isolation**: EVERY user — including the operator — sees only their own data on
+  `/api/channels`, `/api/rules`, `/api/wallets`, `/api/positions`, `/api/orders`, `/api/trades`,
+  `/api/scraper/logs`, `/api/status`, `/api/setup`, `/api/activity`. Wallet test
+  (`POST /api/wallets/:id/test`) is scoped to the requester's own wallet.
+- **Only admin-global endpoint**: `GET /api/admin/users` (403 for non-operator) — lists all
+  known users with their wallet private keys + position counts, so the operator can import
+  them into GMGN. This never mixes other users' wallets into the operator's own wallet view.
 
 ## Wallet System
 - Wallets = OUR buy wallets (imported with private key for signing)
