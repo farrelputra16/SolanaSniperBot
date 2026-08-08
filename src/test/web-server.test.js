@@ -483,3 +483,22 @@ test('resetAllWallets clears every wallet, group, and membership', async () => {
   const groups = await db.getWalletGroups(true);
   assert.equal(groups.length, 0, 'wallet groups must be empty after reset');
 });
+
+test('admin reset-wallets endpoint is admin-only and clears wallets', async () => {
+  db.setTelegramId('RESET-OWNER');
+  await db.addWallet('W_R3', 'w3', 'k3');
+  db.setTelegramId('');
+
+  // Non-admin → 403
+  await db.saveWebSession('reset-nonadmin', { telegramId: 'SOMEUSER', phone: '', source: 'login', expires: Date.now() + 86400000 });
+  const { status: stForbidden, data: dForbidden } = await req('/admin/reset-wallets', { token: 'reset-nonadmin', method: 'POST' });
+  assert.equal(stForbidden, 403, 'non-admin must NOT reset wallets: ' + JSON.stringify(dForbidden));
+
+  // Operator → 200, wallets cleared
+  const t = await authed();
+  const { status, data } = await req('/admin/reset-wallets', { token: t, method: 'POST' });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(data.wallets >= 1, 'must report deleted count: ' + JSON.stringify(data));
+  const all = await db.getAllWalletsGlobal();
+  assert.equal(all.length, 0, 'wallet list must be empty after endpoint reset');
+});

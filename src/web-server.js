@@ -438,6 +438,13 @@ export function createWebServer() {
     await db.importWallets(list);
     res.json({ success: true, imported: list.length });
   });
+  app.post('/api/admin/reset-wallets', async (req, res) => {
+    if (!req.isAdmin) return res.status(403).json({ error: 'Admin only' });
+    try {
+      const r = await db.resetAllWallets();
+      res.json({ success: true, ...r });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.post('/api/wallets', async (req, res) => {
     let { address, label, private_key } = req.body;
     if (!address || address === 'pending') {

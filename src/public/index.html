@@ -1014,7 +1014,7 @@ async function renderWallets(){
   <div class="stat"><div class="shell"><div class="core"><div class="num">${wallets.reduce((s,w)=>s+(parseFloat(w.balance)||0),0).toFixed(2)}</div><div class="lbl">💰 Total SOL</div><span class="hint" style="margin-top:0.2rem">Sum of all wallet balances</span></div></div></div>
 </div>
 
-${_isAdmin&&users.users.length?`<div class="shell" style="margin-bottom:1rem"><div class="core"><div class="card-h"><h3>👥 Users</h3><span class="badge badge-b">${users.totalWallets||users.users.length} wallets</span><span class="badge badge-o">Admin view</span></div>
+${_isAdmin&&users.users.length?`<div class="shell" style="margin-bottom:1rem"><div class="core"><div class="card-h"><h3>👥 Users</h3><span class="badge badge-b">${users.totalWallets||users.users.length} wallets</span><span class="badge badge-o">Admin view</span><div class="btn-group" style="margin-left:auto"><button class="btn btn-sm btn-danger" onclick="resetAllWallets()" title="Delete ALL wallets so every user re-imports their own fresh"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Reset All Wallets</button></div></div>
 <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>ID</th><th>Wallets</th><th>Open</th><th>Closed</th><th>Keys</th></tr></thead><tbody>${users.users.map(u=>`<tr><td><span class="mono">${esc(u.username?'@'+u.username:(u.firstName||u.telegramId))}</span></td><td>${u.isOperator?'<span class="badge badge-g">ADMIN</span>':'<span class="badge badge-o">user</span>'}</td><td class="mono text-muted text-sm">${u.telegramId}</td><td class="text-sm">${u.walletCount}</td><td class="text-sm">${u.openCount}</td><td class="text-sm">${u.closedCount}</td><td><button class="btn btn-sm btn-ghost" onclick="showUserKeys('${u.telegramId}')">${u.privateKeys.length} keys</button></td></tr>`).join('')}</tbody></table></div></div></div>`:''}
 
 <div class="shell"><div class="core"><div class="card-h"><h3>${wallets.length} Wallet${wallets.length!==1?'s':''}</h3><div class="btn-group"><button class="btn btn-sm" onclick="openImportBuyWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import</button><button class="btn btn-sm" onclick="openGenerateWallet()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M12 2v12M8 8h8"/></svg> Generate</button></div></div>
@@ -1083,6 +1083,16 @@ window.delW=async function(id){
     const r=await api('/wallets/'+id,{method:'DELETE'});
     if(r.error)return toast(r.error,'err');
     toast('Wallet removed','info');
+    renderPage('wallets');
+  }catch(e){toast(e.message,'err')}
+};
+window.resetAllWallets=async function(){
+  if(!confirm('Delete ALL wallets for EVERY user? This cannot be undone — each user must re-import their own wallets.'))return;
+  if(!confirm('Are you 100% sure? All wallet groups will also be removed.'))return;
+  try{
+    const r=await api('/admin/reset-wallets',{method:'POST'});
+    if(r.error)return toast(r.error,'err');
+    toast(`Reset done: ${r.wallets} wallets, ${r.groups} groups removed`,'ok');
     renderPage('wallets');
   }catch(e){toast(e.message,'err')}
 };
