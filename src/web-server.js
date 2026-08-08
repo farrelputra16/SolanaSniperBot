@@ -393,14 +393,31 @@ export function createWebServer() {
   app.get('/api/admin/users', async (req, res) => {
     if (!req.isAdmin) return res.status(403).json({ error: 'Admin only' });
     try {
-      const sessions = await db.getAllTelegramSessions();
-      const wallets = await db.getAllWalletsGlobal();
-      const trades = await db.getAllTrades(500);
-      const openTrades = trades.filter(t => t.status === 'open');
-      const users = sessions.map(s => {
-        const tid = String(s.telegram_id || '');
-        const uw = wallets.filter(w => String(w.telegram_id || '') === tid);
-        const ut = trades.filter(t => String(t.telegram_id || '') === tid);
+      const [ids, sessions, wallets, trades] = await Promise.all([
+        db.getAllKnownUserIds(),
+        db.getAllTelegramSessions(),
+        db.getAllWalletsGlobal(),
+        db.getAllTrades(500),
+      ]);
+      const sessionMap = new Map(sessions.map(s => [String(s.telegram_id || ''), s]));
+      const walletsByOwner = new Map();
+      for (const w of wallets) {
+        const tid = String(w.telegram_id || '');
+        if (!tid) continue;
+        if (!walletsByOwner.has(tid)) walletsByOwner.set(tid, []);
+        walletsByOwner.get(tid).push(w);
+      }
+      const tradesByOwner = new Map();
+      for (const t of trades) {
+        const tid = String(t.telegram_id || '');
+        if (!tid) continue;
+        if (!tradesByOwner.has(tid)) tradesByOwner.set(tid, []);
+        tradesByOwner.get(tid).push(t);
+      }
+      const users = ids.map(tid => {
+        const s = sessionMap.get(tid) || {};
+        const uw = walletsByOwner.get(tid) || [];
+        const ut = tradesByOwner.get(tid) || [];
         return {
           telegramId: tid,
           username: s.username || '',
@@ -413,7 +430,8 @@ export function createWebServer() {
           closedCount: ut.filter(t => t.status === 'closed').length,
           lastActive: s.updated_at || 0,
         };
-      }).sort((a, b) => b.lastActive - a.lastActive);
+      }).sort((a, b) => (b.lastActive - a.lastActive) || (b.walletCount - a.walletCount));
+      const openTrades = trades.filter(t => t.status === 'open');
       res.json({ users, totalWallets: wallets.length, totalOpen: openTrades.length });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

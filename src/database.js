@@ -765,5 +765,31 @@ export function deleteTelegramSession(tgId) {
   if (!sqliteMode && mdb) { return collections.telegram_sessions.deleteOne({ telegram_id: String(tgId) }); }
   sqliteDb.prepare('DELETE FROM telegram_sessions WHERE telegram_id = ?').run(String(tgId));
 }
+
+// All distinct telegram_ids that have EVER touched data (wallets, trades, signals,
+// channels, rules, logs) — even if they never logged in via the dashboard. The admin
+// overview uses this so users with data but no active login still show up.
+export async function getAllKnownUserIds() {
+  if (!sqliteMode && mdb) {
+    const cols = ['wallets', 'trades', 'signals', 'channels', 'rules', 'scraper_log', 'strategy_orders'];
+    const set = new Set();
+    for (const c of cols) {
+      const docs = await collections[c].find({ telegram_id: { $nin: ['', 'NONE', null] } }).toArray().catch(() => []);
+      for (const d of docs) if (d.telegram_id) set.add(String(d.telegram_id));
+    }
+    return [...set];
+  }
+  const rows = sqliteDb.prepare(`
+    SELECT telegram_id FROM telegram_sessions WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM wallets WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM trades WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM signals WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM channels WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM rules WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM scraper_log WHERE telegram_id != '' AND telegram_id != 'NONE'
+    UNION SELECT telegram_id FROM strategy_orders WHERE telegram_id != '' AND telegram_id != 'NONE'
+  `).all();
+  return rows.map(r => String(r.telegram_id)).filter(Boolean);
+}
 export async function getActiveTelegramSession() { return null; }
 export async function setActiveTelegramSession(id) {}
