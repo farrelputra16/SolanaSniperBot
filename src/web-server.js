@@ -469,7 +469,9 @@ export function createWebServer() {
   // Scoped to the current user's own wallet.
   app.post('/api/wallets/:id/test', async (req, res) => {
     try {
-      const w = await db.getWallet(req.params.id);
+      // Operators can test ANY wallet (their own, other users', or legacy ones with
+      // empty telegram_id). Regular users only their own.
+      const w = req.isAdmin ? await db.getWalletGlobal(req.params.id) : await db.getWallet(req.params.id);
       if (!w) return res.status(404).json({ error: 'wallet not found' });
 
       let owner = 'You';
@@ -1160,6 +1162,14 @@ export function createWebServer() {
       db.getRecentSignals(8, g), db.getTradeHistory(8, g), db.getScraperLogs(8, g),
     ]);
     res.json({ signals, trades, logs });
+  });
+
+  // Last-resort error handler — return the real error JSON instead of an empty 500
+  // body so failures are diagnosable from the dashboard console.
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    console.error('[Web] Unhandled error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Internal server error' });
   });
 
   return app;

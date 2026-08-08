@@ -394,6 +394,12 @@ export async function getWallet(id) {
   if (!sqliteMode && mdb) return collections.wallets.findOne({ id: Number(id), telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT * FROM wallets WHERE id = ?' + _tidFilter()).get(Number(id), ...(_tid() ? [_tid()] : [])) || null;
 }
+// Admin/operator lookup — no telegram_id scoping, so legacy wallets (created before
+// multi-user isolation) and other users' wallets can still be tested/inspected.
+export async function getWalletGlobal(id) {
+  if (!sqliteMode && mdb) return collections.wallets.findOne({ id: Number(id) });
+  return sqliteDb.prepare('SELECT * FROM wallets WHERE id = ?').get(Number(id)) || null;
+}
 export async function getWalletByAddress(address) {
   if (!sqliteMode && mdb) return collections.wallets.findOne({ address, telegram_id: _tid() || 'NONE' });
   return sqliteDb.prepare('SELECT * FROM wallets WHERE address = ?' + _tidFilter()).get(address, ...(_tid() ? [_tid()] : [])) || null;
@@ -771,7 +777,7 @@ export function deleteTelegramSession(tgId) {
 // overview uses this so users with data but no active login still show up.
 export async function getAllKnownUserIds() {
   if (!sqliteMode && mdb) {
-    const cols = ['wallets', 'trades', 'signals', 'channels', 'rules', 'scraper_log', 'strategy_orders'];
+    const cols = ['wallets', 'trades', 'signals', 'channels', 'rules', 'scraper_logs', 'strategy_orders'];
     const set = new Set();
     for (const c of cols) {
       const docs = await collections[c].find({ telegram_id: { $nin: ['', 'NONE', null] } }).toArray().catch(() => []);
@@ -779,17 +785,19 @@ export async function getAllKnownUserIds() {
     }
     return [...set];
   }
-  const rows = sqliteDb.prepare(`
-    SELECT telegram_id FROM telegram_sessions WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM wallets WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM trades WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM signals WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM channels WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM rules WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM scraper_log WHERE telegram_id != '' AND telegram_id != 'NONE'
-    UNION SELECT telegram_id FROM strategy_orders WHERE telegram_id != '' AND telegram_id != 'NONE'
-  `).all();
-  return rows.map(r => String(r.telegram_id)).filter(Boolean);
+  // Query each table separately so a missing column on one table (e.g. an older DB
+  // where a migration silently failed) can never 500 the whole admin overview.
+  const set = new Set();
+  const tables = ['telegram_sessions', 'wallets', 'trades', 'signals', 'channels', 'rules', 'scraper_log', 'strategy_orders'];
+  for (const t of tables) {
+    try {
+      const rows = sqliteDb.prepare(`SELECT telegram_id FROM ${t} WHERE telegram_id != '' AND telegram_id != 'NONE'`).all();
+      for (const r of rows) if (r.telegram_id) set.add(String(r.telegram_id));
+    } catch (e) {
+      console.warn(`[DB] getAllKnownUserIds: skipping ${t}: ${e.message}`);
+    }
+  }
+  return [...set];
 }
 export async function getActiveTelegramSession() { return null; }
 export async function setActiveTelegramSession(id) {}

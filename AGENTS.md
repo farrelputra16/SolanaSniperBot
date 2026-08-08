@@ -145,6 +145,7 @@ Requires `--priority-fee` + `--tip-fee` on SOL.
 ## Testing
 ```
 npm test           # runs all tests
-rm -rf data && npm test  # clean slate
+rm -rf data-test && npm test  # clean slate
 ```
-Tests use SQLite, write to `data/sniper.db`. Delete before run to avoid stale state.
+Tests use SQLite, write to `data-test/sniper.db` — **NEVER the real `data/` dir.**
+Do NOT run `rm -rf data` — that deletes the user's real DB (sessions, wallets, trades).
