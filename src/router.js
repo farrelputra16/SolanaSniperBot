@@ -14,56 +14,64 @@ const STABLECOIN_ADDRESSES = new Set([
   'mSoLzYCxHdYgWUCh4PkK7Z4dUsk5zEZmz8m6Z6w1jJ',   // mSOL
 ]);
 
-const _seenCAs = new Map();  // key: channel:address, value: timestamp
+// Per-user cache key prefix — every hot-path cache MUST be scoped by telegram_id
+// so user B can never see (or trade with) user A's rules/wallets/dedup state.
+function _ck(k) { return (db.getTelegramId() || 'NONE') + ':' + k; }
+
+const _seenCAs = new Map();  // key: tid:channel:address, value: timestamp
 const SEEN_CA_TTL = 300000; // 5 min
 let _dedupStats = { total_caught: 0, total_ignored: 0, per_channel: {} };
 
 export function getDedupStats() { return _dedupStats; }
 
 function bumpDedup(channel, type) {
-  let entry = _dedupStats.per_channel[channel];
-  if (!entry || typeof entry !== 'object') entry = _dedupStats.per_channel[channel] = { caught: 0, ignored: 0 };
+  const key = _ck(channel);
+  let entry = _dedupStats.per_channel[key];
+  if (!entry || typeof entry !== 'object') entry = _dedupStats.per_channel[key] = { caught: 0, ignored: 0 };
   if (type === 'caught') { entry.caught++; _dedupStats.total_caught++; }
   else { entry.ignored++; _dedupStats.total_ignored++; }
 }
 
 function getCacheSize() { return _seenCAs.size; }
-const _channelDedupCache = new Map(); // key: channel, value: { enabled, ts }
+const _channelDedupCache = new Map(); // key: tid:channel, value: { enabled, ts }
 const CHANNEL_DEDUP_TTL = 30000; // 30s
 
 async function isIgnoreDuplicate(channel) {
-  const cached = _channelDedupCache.get(channel);
+  const key = _ck(channel);
+  const cached = _channelDedupCache.get(key);
   if (cached && Date.now() - cached.ts < CHANNEL_DEDUP_TTL) return cached.enabled;
   const channels = await db.getAllChannels();
   const ch = channels.find(c => c.channel_username === channel);
   const enabled = !!(ch && ch.ignore_duplicate);
-  _channelDedupCache.set(channel, { enabled, ts: Date.now() });
+  _channelDedupCache.set(key, { enabled, ts: Date.now() });
   return enabled;
 }
 
-let _rulesCache = null;
-let _rulesCacheTs = 0;
+const _rulesCache = new Map(); // key: tid:rules, value: { data, ts }
 const _walletCache = new Map();
 
 async function getCachedRules() {
+  const key = _ck('rules');
   const now = Date.now();
-  if (_rulesCache && (now - _rulesCacheTs) < 5000) return _rulesCache;
-  _rulesCache = await db.getAutoBuyRules();
-  _rulesCacheTs = now;
-  return _rulesCache;
+  const hit = _rulesCache.get(key);
+  if (hit && now - hit.ts < 5000) return hit.data;
+  const rules = await db.getAutoBuyRules();
+  _rulesCache.set(key, { data: rules, ts: now });
+  return rules;
 }
 
 function getCachedWallet(key, fetcher) {
-  const hit = _walletCache.get(key);
+  const k = _ck(key);
+  const hit = _walletCache.get(k);
   if (hit && Date.now() - hit.ts < 30000) return hit.data;
   const data = fetcher();
   if (data && typeof data.then === 'function') {
     return data.then(w => {
-      if (w) _walletCache.set(key, { data: w, ts: Date.now() });
+      if (w) _walletCache.set(k, { data: w, ts: Date.now() });
       return w;
     });
   }
-  if (data) _walletCache.set(key, { data, ts: Date.now() });
+  if (data) _walletCache.set(k, { data, ts: Date.now() });
   return data;
 }
 
@@ -73,13 +81,17 @@ let _warmingTimer = null;
 export function startWalletWarmer() {
   const warm = async () => {
     try {
+      // Scope the warm cycle to the ACTIVE scraping session so caches land on the
+      // right user even if another user touched the dashboard recently.
+      const activeTgId = await db.getSetting('active_telegram_id', '');
+      if (activeTgId) db.setTelegramId(activeTgId);
       const [active, groups, rules] = await Promise.all([
         db.getActiveWallet(),
         db.getWalletGroups(),
         db.getAutoBuyRules().catch(() => []),
       ]);
       if (active) {
-        _walletCache.set('active', { data: active, ts: Date.now() });
+        _walletCache.set(_ck('active'), { data: active, ts: Date.now() });
         if (active.telegram_id) getUserCredentials(active.telegram_id).catch(() => {});
       }
       for (const g of (groups || [])) {
@@ -162,7 +174,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   // Dedup check runs in parallel — doesn't block blind buy
   const ignoreDup = await isIgnoreDuplicate(sourceChannel);
   if (ignoreDup) {
-    const key = `${sourceChannel}:${address}`;
+    const key = _ck(`${sourceChannel}:${address}`);
     const seen = _seenCAs.get(key);
     if (seen && Date.now() - seen < SEEN_CA_TTL) {
       bumpDedup(sourceChannel, 'ignored');
@@ -271,14 +283,14 @@ function forwardSignal(sourceChannel, address, data, text, error) {
 
 function resolveWalletsSync(rule) {
   if (rule.wallet_group_id && rule.wallet_group_id > 0) {
-    const cached = _walletCache.get(`group:${rule.wallet_group_id}`);
+    const cached = _walletCache.get(_ck(`group:${rule.wallet_group_id}`));
     if (cached && Date.now() - cached.ts < 30000) return cached.data || [];
   }
   if (rule.wallet_group_id && rule.wallet_group_id < 0) {
-    const cached = _walletCache.get(`wallet:${Math.abs(rule.wallet_group_id)}`);
+    const cached = _walletCache.get(_ck(`wallet:${Math.abs(rule.wallet_group_id)}`));
     if (cached && Date.now() - cached.ts < 30000) return cached.data ? [cached.data] : [];
   }
-  const cached = _walletCache.get('active');
+  const cached = _walletCache.get(_ck('active'));
   if (cached && Date.now() - cached.ts < 30000) return cached.data ? [cached.data] : [];
   return null;
 }
@@ -323,8 +335,8 @@ function fireBlindBuy(wallet, lamports, address, chain, rule, sourceChannel, t0,
       }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid, null, rule.telegram_id); }).catch(() => {});
     })
     .catch(err => {
-      console.error(`[Router] Blind buy ${address} gagal:`, err.message);
-      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} gagal: ${err.message}`).catch(() => {});
+      console.error(`[Router] Blind buy ${address} failed:`, err.message);
+      db.addScraperLog(sourceChannel, 'error', `Blind buy ${address} failed: ${err.message}`).catch(() => {});
     });
 }
 
@@ -451,8 +463,8 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
         try { detail = JSON.stringify(err.response?.data || err.data || err).slice(0,300); } catch {}
       }
       if (!detail || detail === '{}') detail = err.message || 'Unknown error';
-      console.error(`[Router] Gagal auto-buy ${address} (${wallet.address}):`, detail);
-      db.addScraperLog(sourceChannel, 'error', `Swap ${address} gagal: ${String(detail).slice(0,200)}`).catch(() => {});
+      console.error(`[Router] Auto-buy ${address} (${wallet.address}) failed:`, detail);
+      db.addScraperLog(sourceChannel, 'error', `Swap ${address} failed: ${String(detail).slice(0,200)}`).catch(() => {});
     }
   }));
 }

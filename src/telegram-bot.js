@@ -640,7 +640,7 @@ function vanityLabel(suffix, prefix) {
   return parts.join(' + ') || 'plain';
 }
 
-const _VANITY_HINT = `✨ <b>Generate Wallet (Vanity)</b>\n\nAddress bisa dibuat <b>diawali</b> dan/atau <b>diakhiri</b> teks pilihanmu.\n\n<b>Format:</b>\n• <code>start:abc</code> — address DIMULAI dengan <code>abc</code>\n• <code>end:abc</code> — address diakhiri <code>abc</code> (bisa juga langsung ketik <code>abc</code>)\n• <code>start:abc,end:xyz</code> — dua-duanya\n• <code>0</code> — generate biasa (tanpa pattern)\n\nContoh: <code>start:6Gt</code>  •  <code>end:D1ck</code>\n\n✅ <b>Bisa</b> (semua base58):\n<code>123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz</code>\n\n❌ <b>Tidak bisa</b> (bukan base58): <code>0</code> <code>O</code> <code>I</code> <code>l</code>, spasi, simbol\n\nMaks 4 karakter per bagian:\n• 2 huruf ≈ kurang dari 1 detik\n• 3 huruf ≈ 15 detik\n• 4 huruf ≈ beberapa menit\n• start + end digabung = lebih lama (contoh 2+2 ≈ menit)`;
+const _VANITY_HINT = `✨ <b>Generate Wallet (Vanity)</b>\n\nThe address can <b>start with</b> and/or <b>end with</b> your chosen text.\n\n<b>Format:</b>\n• <code>start:abc</code> — address STARTS with <code>abc</code>\n• <code>end:abc</code> — address ends with <code>abc</code> (you can also just type <code>abc</code>)\n• <code>start:abc,end:xyz</code> — both\n• <code>0</code> — generate normally (no pattern)\n\nExamples: <code>start:6Gt</code>  •  <code>end:D1ck</code>\n\n✅ <b>Allowed</b> (all base58):\n<code>123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz</code>\n\n❌ <b>Not allowed</b> (not base58): <code>0</code> <code>O</code> <code>I</code> <code>l</code>, spaces, symbols\n\nMax 4 characters per part:\n• 2 chars ≈ under 1 second\n• 3 chars ≈ 15 seconds\n• 4 chars ≈ a few minutes\n• start + end combined = longer (e.g. 2+2 ≈ minutes)`;
 
 async function promptVanitySuffix(ctx) {
   _awaitingVanitySuffix.add(String(ctx.from.id));
@@ -657,13 +657,13 @@ async function handleVanitySuffixInput(ctx, text) {
   const pat = parseVanityPattern(s);
   if (!pat) {
     _awaitingVanitySuffix.add(uid);
-    return ctx.reply(`❌ <b>${esc(s)}</b> tidak valid sebagai pattern.\n\nBase58 cuma boleh: angka <code>1-9</code>, huruf besar/kecil (tanpa <code>0</code> <code>O</code> <code>I</code> <code>l</code>), maks 4 karakter per bagian.\n\n✅ Contoh yang bisa: <code>end:D1ck</code> <code>start:6Gt</code> <code>Xx</code> <code>start:GG,end:abc</code>\n❌ Contoh yang tidak bisa: <code>G04t</code> (pakai 0), <code>start:Wow!</code>, <code>end:hello5</code>, <code>a b</code>\n\nKirim ulang pattern, atau ketik <code>0</code> untuk generate biasa.`, { parse_mode: 'HTML' });
+    return ctx.reply(`❌ <b>${esc(s)}</b> is not a valid pattern.\n\nBase58 only allows: digits <code>1-9</code>, upper/lowercase letters (no <code>0</code> <code>O</code> <code>I</code> <code>l</code>), max 4 characters per part.\n\n✅ Valid examples: <code>end:D1ck</code> <code>start:6Gt</code> <code>Xx</code> <code>start:GG,end:abc</code>\n❌ Invalid examples: <code>G04t</code> (uses 0), <code>start:Wow!</code>, <code>end:hello5</code>, <code>a b</code>\n\nResend the pattern, or type <code>0</code> to generate normally.`, { parse_mode: 'HTML' });
   }
   return startVanityJob(ctx, pat);
 }
 
 async function startVanityJob(ctx, pat) {
-  if (_vanity) return ctx.reply('⚠️ Masih ada vanity wallet yang sedang digenerate — cancel dulu sebelum mulai yang baru.', { parse_mode: 'HTML' });
+  if (_vanity) return ctx.reply('⚠️ A vanity wallet is still being generated — cancel it before starting a new one.', { parse_mode: 'HTML' });
   const g = await import('./gmgn.js');
   const suffix = pat?.suffix || '';
   const prefix = pat?.prefix || '';
@@ -700,7 +700,7 @@ async function startVanityJob(ctx, pat) {
 }
 
 async function showVanityResult(ctx, address, privateKey, st) {
-  const msg = `✨ <b>Vanity Wallet Found</b>\n\n<code>${esc(address)}</code>\n\nPrivate key:\n<code>${esc(privateKey)}</code>\n\n⚠️ Simpan private key sekarang — tidak akan ditampilkan lagi.`;
+  const msg = `✨ <b>Vanity Wallet Found</b>\n\n<code>${esc(address)}</code>\n\nPrivate key:\n<code>${esc(privateKey)}</code>\n\n⚠️ Save your private key now — it will not be shown again.`;
   const kb = new InlineKeyboard()
     .text('💾 Save Wallet', 'wallet_save_v')
     .text('🏷️ Label & Save', 'wallet_label_v')
@@ -1727,7 +1727,7 @@ function registerCommands() {
     if (d === 'wallet_save_v') return saveGeneratedWallet(ctx, null);
     if (d === 'wallet_label_v') {
       _awaitingWalletLabel.add(String(ctx.from.id));
-      return ctx.reply('🏷️ <b>Set Label</b>\n\nKirim label untuk wallet ini (contoh: <code>Mega Wallet</code>).', { parse_mode: 'HTML' });
+      return ctx.reply('🏷️ <b>Set Label</b>\n\nSend a label for this wallet (e.g. <code>Mega Wallet</code>).', { parse_mode: 'HTML' });
     }
 
     const walletViewMatch = d.match(/^wallet_v_(\d+)$/);

@@ -69,11 +69,11 @@ test('dedup stats stay objects; signal still saved after ignore', async () => {
 
   await processSignal('ChanA', `buy ${CA1}`, null, 'alice');
   assert.equal(getDedupStats().total_ignored, 1, 'duplicate CA counted as ignored');
-  assert.deepEqual(getDedupStats().per_channel.ChanA, { caught: 1, ignored: 1 }, 'per-channel stays an object');
+  assert.deepEqual(getDedupStats().per_channel['test-tid:ChanA'], { caught: 1, ignored: 1 }, 'per-channel stays an object');
 
   await processSignal('ChanA', `buy ${CA2}`, null, 'alice');
   assert.equal(getDedupStats().total_caught, 2, 'new CA counted after ignore');
-  assert.deepEqual(getDedupStats().per_channel.ChanA, { caught: 2, ignored: 1 }, 'both counters live on the object');
+  assert.deepEqual(getDedupStats().per_channel['test-tid:ChanA'], { caught: 2, ignored: 1 }, 'both counters live on the object');
 
   assert.equal(saveSignalCalls.length, 2, 'saveSignal fired for both caught CAs (no throw before signal emit)');
 });
