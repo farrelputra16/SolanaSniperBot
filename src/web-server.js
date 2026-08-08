@@ -16,6 +16,8 @@ const SESSION_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days — survives restarts &
 const SESSIONS = new Map();
 const ADMIN_PHONE = '6285779977877';
 const ADMIN_IDS = ['1721799075'];
+const TOKEN_INFO_TTL = 30 * 1000; // 30s — dashboard P&L polling reuses one GMGN call per token
+const _tokenInfoCache = new Map();
 function isAdminPhone(phone) { return phone?.replace(/^\+/, '').trim() === ADMIN_PHONE; }
 
 function extractQuote(q) {
@@ -67,6 +69,7 @@ function setSession(token, data) {
     source: data.source || 'guest',
   };
   SESSIONS.set(token, s);
+  _sessionWriteTs.set(token, Date.now());
   db.saveWebSession(token, s).catch(() => {});
   return s;
 }
@@ -74,6 +77,17 @@ function invalidateSession(token, s) {
   if (!s) return;
   if (SESSIONS.get(token)) SESSIONS.delete(token);
   db.deleteWebSession(token).catch(() => {});
+}
+
+// Throttle web-session persistence — extending expiry must NOT write SQLite on every
+// /api request (dashboard polls every 2s). Persist at most once per token per minute;
+// the in-memory SESSIONS map serves the interval in between.
+const _sessionWriteTs = new Map();
+function touchSession(token, s) {
+  const last = _sessionWriteTs.get(token) || 0;
+  if (Date.now() - last < 60000) return;
+  _sessionWriteTs.set(token, Date.now());
+  db.saveWebSession(token, s).catch(() => {});
 }
 
 export function getTelegramId(token) {
@@ -113,7 +127,7 @@ export function createWebServer() {
       if (s) {
         if (s.expires > Date.now()) {
           s.expires = Date.now() + SESSION_TTL;
-          db.saveWebSession(token, s).catch(() => {});
+          touchSession(token, s);
           if (s.source === 'login') {
             req.telegramId = s.telegramId;
             // Password login (source 'login', no telegramId) = operator/admin → sees all data.
@@ -138,7 +152,7 @@ export function createWebServer() {
         const s = await resolveSession(token);
         if (s && s.expires > Date.now()) {
           s.expires = Date.now() + SESSION_TTL;
-          db.saveWebSession(token, s).catch(() => {});
+          touchSession(token, s);
           if (s.source === 'login') {
             req.telegramId = s.telegramId;
             // Password login (source 'login', no telegramId) = operator/admin → sees all data.
@@ -157,10 +171,11 @@ export function createWebServer() {
     }
   });
 
-  // Isolate data per-request: set _currentTgId from the session, not global state
+  // Isolate data per-request: pin req.telegramId for the ENTIRE async request chain via
+  // AsyncLocalStorage, so a concurrent request from another user can never flip the
+  // scope of THIS request mid-await.
   app.use('/api', (req, res, next) => {
-    db.setTelegramId(req.telegramId || '');
-    next();
+    db.runWithTelegramId(req.telegramId || '', () => next());
   });
 
   app.post('/api/login', (req, res) => {
@@ -556,8 +571,9 @@ export function createWebServer() {
     if (trade.status === 'closed') return res.status(400).json({ error: 'already closed' });
     try {
       const orderId = req.body.sell_order_id || req.body.order_id || '';
-      if (trade.telegram_id) db.setTelegramId(trade.telegram_id);
-      await db.closeTrade(req.params.id, { sell_amount_sol: req.body.sell_amount_sol, sell_price: req.body.sell_price, sell_price_usd: req.body.sell_price_usd, sell_tx: req.body.sell_tx || '', sell_order_id: orderId, status: 'closed' });
+      await db.runWithTelegramId(trade.telegram_id || '', () =>
+        db.closeTrade(req.params.id, { sell_amount_sol: req.body.sell_amount_sol, sell_price: req.body.sell_price, sell_price_usd: req.body.sell_price_usd, sell_tx: req.body.sell_tx || '', sell_order_id: orderId, status: 'closed' })
+      );
       liveEvents.emit('trade_update', { _tid: trade.telegram_id || db.getTelegramId(), trade_id: req.params.id, status: 'closed' });
       res.json({ success: true, order_id: orderId });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -788,14 +804,18 @@ export function createWebServer() {
     const { chain, address } = req.query;
     if (!address) return res.status(400).json({ error: 'address required' });
     try {
+      const cached = _tokenInfoCache.get(address);
+      if (cached && cached.expires > Date.now()) return res.json(cached.data);
       const [info, security] = await Promise.allSettled([
         gmgn.getTokenInfo(chain || 'sol', address),
         gmgn.getTokenSecurity(chain || 'sol', address),
       ]);
-      res.json({
+      const data = {
         info: info.status === 'fulfilled' ? (info.value?.data || info.value) : null,
         security: security.status === 'fulfilled' ? (security.value?.data || security.value) : null,
-      });
+      };
+      _tokenInfoCache.set(address, { data, expires: Date.now() + TOKEN_INFO_TTL });
+      res.json(data);
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

@@ -1,4 +1,5 @@
 import { MongoClient, ObjectId } from 'mongodb';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || '';
 const DB_NAME = 'scoopscraper';
@@ -11,9 +12,24 @@ let sqliteDb = null;
 let sqliteMode = false;
 let _currentTgId = '';
 
+// AsyncLocalStorage scopes telegram_id per async pipeline. Web requests flip the global
+// `_currentTgId` on every /api call; the scraper hot path (processSignal) and web request
+// handlers each run inside runWithTelegramId(), so _tid() reads the owner pinned at the
+// START of the pipeline — immune to concurrent flips — even inside fire-and-forget
+// `.then()` callbacks that resolve long after the signal arrived.
+const _tgScope = new AsyncLocalStorage();
+
 export function setTelegramId(id) { _currentTgId = id || ''; }
-export function getTelegramId() { return _currentTgId; }
-function _tid() { return _currentTgId; }
+export function getTelegramId() { return _tgScope.getStore() ?? _currentTgId; }
+
+// Run `fn` (sync or async) with telegram_id pinned for the ENTIRE async chain created
+// inside it. Nested calls override the outer scope (e.g. a trade operation re-scoping
+// to the trade's real owner inside a request-scoped handler).
+export function runWithTelegramId(tgId, fn) {
+  return _tgScope.run(tgId || '', fn);
+}
+
+function _tid() { return _tgScope.getStore() ?? _currentTgId; }
 
 async function ensureSqlite() {
   if (sqliteDb) return;

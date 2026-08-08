@@ -506,7 +506,10 @@ function showPage(n){
   if (_autoRefresh) clearInterval(_autoRefresh);
   const autoPages = ['dashboard','positions','scraper'];
   if (autoPages.includes(n)) {
-    _autoRefresh = setInterval(refreshCurrentPage, n === 'dashboard' ? 2000 : 3000);
+    // Live tables are patched in-place via SSE — the periodic poll only refreshes
+    // stats/closed rows, so 10s is plenty. Full re-renders every 2-3s hammered the
+    // server (SQLite is synchronous) and starved the scraper hot path.
+    _autoRefresh = setInterval(refreshCurrentPage, 10000);
   }
 }
 document.querySelectorAll('.nav-item').forEach(a=>{

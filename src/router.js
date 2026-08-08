@@ -14,36 +14,68 @@ const STABLECOIN_ADDRESSES = new Set([
   'mSoLzYCxHdYgWUCh4PkK7Z4dUsk5zEZmz8m6Z6w1jJ',   // mSOL
 ]);
 
-// Per-user cache key prefix — every hot-path cache MUST be scoped by telegram_id
-// so user B can never see (or trade with) user A's rules/wallets/dedup state.
+// Per-user cache key prefix — rules/wallets MUST be scoped by telegram_id so user B
+// can never see (or trade with) user A's state. NOTE: channel dedup caches below are
+// intentionally NOT scoped by tid — a channel's identity (and ignore_duplicate flag)
+// is global, and the scraper only ever processes the ACTIVE session's channels.
 function _ck(k) { return (db.getTelegramId() || 'NONE') + ':' + k; }
 
-const _seenCAs = new Map();  // key: tid:channel:address, value: timestamp
+// Cache the active scraper owner id (active_telegram_id setting). Web requests flip the
+// global _currentTgId on every /api call, so the hot path pins the owner once and uses
+// that scope for rules/wallets/dedup instead of whatever web last set.
+let _activeScraperCache = { id: null, ts: 0 };
+const ACTIVE_SCRAPER_TTL = 10000; // 10s
+
+async function getActiveScraperId() {
+  const now = Date.now();
+  if (_activeScraperCache.id != null && now - _activeScraperCache.ts < ACTIVE_SCRAPER_TTL) return _activeScraperCache.id;
+  let id = null;
+  try { id = (await db.getSetting('active_telegram_id', '')) || null; } catch {}
+  _activeScraperCache = { id, ts: now };
+  return id;
+}
+
+const _seenCAs = new Map();  // key: channel:address, value: timestamp (channel dedup is global)
 const SEEN_CA_TTL = 300000; // 5 min
 let _dedupStats = { total_caught: 0, total_ignored: 0, per_channel: {} };
 
 export function getDedupStats() { return _dedupStats; }
 
 function bumpDedup(channel, type) {
-  const key = _ck(channel);
-  let entry = _dedupStats.per_channel[key];
-  if (!entry || typeof entry !== 'object') entry = _dedupStats.per_channel[key] = { caught: 0, ignored: 0 };
+  let entry = _dedupStats.per_channel[channel];
+  if (!entry || typeof entry !== 'object') entry = _dedupStats.per_channel[channel] = { caught: 0, ignored: 0 };
   if (type === 'caught') { entry.caught++; _dedupStats.total_caught++; }
   else { entry.ignored++; _dedupStats.total_ignored++; }
 }
 
 function getCacheSize() { return _seenCAs.size; }
-const _channelDedupCache = new Map(); // key: tid:channel, value: { enabled, ts }
+
+// Cache of getAllChannels() — the query is heavy (per-channel COUNT/MAX subqueries,
+// ~2ms with 100ch+200 signals) and runs on EVERY signal via isIgnoreDuplicate when cold.
+// Keyed by tid so it stays correct per user, but TTL means it's hit ~all the time.
+const _channelsCache = new Map(); // key: tid:all, value: { data, ts }
+const CHANNELS_CACHE_TTL = 5000; // 5s
+
+async function getAllChannelsCached() {
+  const key = _ck('all_channels');
+  const now = Date.now();
+  const hit = _channelsCache.get(key);
+  if (hit && now - hit.ts < CHANNELS_CACHE_TTL) return hit.data;
+  const data = await db.getAllChannels();
+  _channelsCache.set(key, { data, ts: now });
+  return data;
+}
+
+const _channelDedupCache = new Map(); // key: channel, value: { enabled, ts } (global)
 const CHANNEL_DEDUP_TTL = 30000; // 30s
 
 async function isIgnoreDuplicate(channel) {
-  const key = _ck(channel);
-  const cached = _channelDedupCache.get(key);
+  const cached = _channelDedupCache.get(channel);
   if (cached && Date.now() - cached.ts < CHANNEL_DEDUP_TTL) return cached.enabled;
-  const channels = await db.getAllChannels();
+  const channels = await getAllChannelsCached();
   const ch = channels.find(c => c.channel_username === channel);
   const enabled = !!(ch && ch.ignore_duplicate);
-  _channelDedupCache.set(key, { enabled, ts: Date.now() });
+  _channelDedupCache.set(channel, { enabled, ts: Date.now() });
   return enabled;
 }
 
@@ -112,6 +144,17 @@ export function startWalletWarmer() {
 export async function processSignal(sourceChannel, text, message, senderUsername) {
   const t0 = Date.now();
 
+  // Pin to the ACTIVE scraping session for the ENTIRE async pipeline. AsyncLocalStorage
+  // propagates the owner id to every await AND every fire-and-forget .then() created
+  // inside the callback — so web requests flipping the global _currentTgId mid-flight
+  // can never re-scope a signal, saveSignal, or trade to the wrong user.
+  const ownerId = await getActiveScraperId();
+  return db.runWithTelegramId(ownerId || db.getTelegramId(), () =>
+    processSignalInner(sourceChannel, text, message, senderUsername, t0)
+  );
+}
+
+async function processSignalInner(sourceChannel, text, message, senderUsername, t0) {
   const [found, allRules] = await Promise.all([
     Promise.resolve().then(() => extractAddresses(text)),
     getCachedRules(),
@@ -174,7 +217,7 @@ async function processAddress(address, chain, sourceChannel, text, senderUsernam
   // Dedup check runs in parallel — doesn't block blind buy
   const ignoreDup = await isIgnoreDuplicate(sourceChannel);
   if (ignoreDup) {
-    const key = _ck(`${sourceChannel}:${address}`);
+    const key = `${sourceChannel}:${address}`;
     const seen = _seenCAs.get(key);
     if (seen && Date.now() - seen < SEEN_CA_TTL) {
       bumpDedup(sourceChannel, 'ignored');
@@ -326,13 +369,14 @@ function fireBlindBuy(wallet, lamports, address, chain, rule, sourceChannel, t0,
       }
       console.log(`⚡ BLIND ${address.slice(0, 8)}... | ${Date.now() - t0}ms | order=${o.order_id}`);
       db.addScraperLog(sourceChannel, 'info', `Blind buy ${address}: order=${o.order_id}`).catch(() => {});
-      db.setTelegramId(rule.telegram_id);
-      db.createTrade({
-        wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
-        chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
-        buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: Date.now() - tBuy,
-        source_channel: sourceChannel,
-      }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid, null, rule.telegram_id); }).catch(() => {});
+      asOwner(rule.telegram_id, () =>
+        db.createTrade({
+          wallet_address: wallet.address, token_address: address, token_symbol: 'PENDING',
+          chain, buy_amount_sol: lamports / 1e9, buy_price: 0, buy_price_usd: 0,
+          buy_order_id: o.order_id, signal_latency_ms: Date.now() - t0, buy_latency_ms: Date.now() - tBuy,
+          source_channel: sourceChannel,
+        }).then(tid => { if (tid && o.order_id) pollOrder(o.order_id, chain, tid, null, rule.telegram_id); }).catch(() => {})
+      );
     })
     .catch(err => {
       console.error(`[Router] Blind buy ${address} failed:`, err.message);
@@ -469,10 +513,20 @@ async function executeAutoBuy(address, chain, rule, sourceChannel, t0) {
   }));
 }
 
+// Re-scope a DB operation to a specific owner's telegram_id, overriding any enclosing
+// request/signal AsyncLocalStorage scope. Runs `fn` in the current scope when tid is
+// falsy (env-credential trades live under the empty/NONE owner).
+function asOwner(tid, fn) {
+  return tid ? db.runWithTelegramId(tid, fn) : fn();
+}
+
 async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = null) {
+  return asOwner(telegramId, () => pollOrderInner(orderId, chain, tradeId, creds, telegramId));
+}
+
+async function pollOrderInner(orderId, chain, tradeId, creds = null, telegramId = null) {
   let attempts = 0;
   const maxAttempts = 15;
-  if (telegramId) db.setTelegramId(telegramId);
 
   while (attempts < maxAttempts) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -484,7 +538,6 @@ async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = nul
         const report = result.data?.report || result.report;
         const buyTx = report?.hash || result.data?.hash || result.hash;
 
-        if (telegramId) db.setTelegramId(telegramId);
         let priceUsd = report?.price_usd ? parseFloat(report.price_usd) : undefined;
         let symbol;
         let infoPrice;
@@ -516,7 +569,6 @@ async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = nul
       }
 
       if (status === 'failed' || status === 'expired') {
-        if (telegramId) db.setTelegramId(telegramId);
         await db.updateTrade(tradeId, { buy_status: 'failed', status: 'failed' });
         liveEvents.emit('trade_update', { _tid: telegramId || db.getTelegramId(), trade_id: tradeId, status: 'failed' });
         console.log(`[Router] ❌ Buy failed: ${orderId}`);
@@ -535,7 +587,6 @@ async function pollOrder(orderId, chain, tradeId, creds = null, telegramId = nul
     }
   }
 
-  if (telegramId) db.setTelegramId(telegramId);
   await db.updateTrade(tradeId, { buy_status: 'timeout' });
   liveEvents.emit('trade_update', { _tid: telegramId || db.getTelegramId(), trade_id: tradeId, status: 'timeout' });
   console.log(`[Router] ⏰ Buy polling timeout: ${orderId} (order still may confirm later)`);
@@ -551,7 +602,6 @@ export async function backfillPendingTrades() {
       (byUser[tid] = byUser[tid] || []).push(t);
     }
     for (const [tid, trades] of Object.entries(byUser)) {
-      db.setTelegramId(tid);
       const creds = await getUserCredentials(tid || null);
       console.log(`[Router] Backfilling ${trades.length} stale pending trades (user ${tid || 'env'})...`);
       for (const t of trades) {
@@ -585,8 +635,7 @@ export async function backfillTradeMetadata() {
       if (symbol && (!t.token_symbol || t.token_symbol === 'PENDING')) upd.token_symbol = symbol;
       if (t.buy_price_usd && price && mcap && !t.buy_market_cap) upd.buy_market_cap = (t.buy_price_usd / price) * mcap;
       if (!Object.keys(upd).length) continue;
-      db.setTelegramId(t.telegram_id);
-      await db.updateTrade(t.id, upd);
+      await asOwner(t.telegram_id, () => db.updateTrade(t.id, upd));
       updated++;
       console.log(`[Router] Enriched trade ${t.id}: ${symbol} buy_mcap=${upd.buy_market_cap ? upd.buy_market_cap.toFixed(0) : 'n/a'}`);
     }
@@ -616,8 +665,7 @@ export async function reconcileOpenPositions() {
       const { t, v } = r.status === 'fulfilled' ? r.value : { t: null, v: null };
       if (!t || v !== false) continue;
       try {
-        db.setTelegramId(t.telegram_id);
-        await db.closeTrade(t.id, { status: 'closed' });
+        await asOwner(t.telegram_id, () => db.closeTrade(t.id, { status: 'closed' }));
         console.log(`[Router] Position ${t.id} confirmed sold (balance 0) — marked closed`);
         liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'closed', reason: 'no_balance' });
         closed++;
@@ -634,13 +682,16 @@ export async function reconcileOpenPositions() {
       const { t, v } = r.status === 'fulfilled' ? r.value : { t: null, v: null };
       if (!t || v === null) continue;
       try {
-        db.setTelegramId(t.telegram_id);
-        await db.updateTrade(t.id, { reconcile_verified_at: Date.now() });
         if (v === true) {
-          await db.updateTrade(t.id, { status: 'open', closed_at: null });
+          await asOwner(t.telegram_id, async () => {
+            await db.updateTrade(t.id, { reconcile_verified_at: Date.now() });
+            await db.updateTrade(t.id, { status: 'open', closed_at: null });
+          });
           console.log(`[Router] Position ${t.id} still held — reopened`);
           liveEvents.emit('trade_update', { _tid: t.telegram_id || db.getTelegramId(), trade_id: t.id, status: 'open', reason: 'reopened' });
           reopened++;
+        } else {
+          await asOwner(t.telegram_id, () => db.updateTrade(t.id, { reconcile_verified_at: Date.now() }));
         }
       } catch {}
     }

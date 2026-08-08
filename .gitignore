@@ -6,4 +6,5 @@ session/
 *.db-wal
 *.db-shm
 .vco
+.serena/
 .DS_Store

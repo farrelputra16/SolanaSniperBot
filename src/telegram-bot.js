@@ -1815,6 +1815,11 @@ export async function startBot() {
     }
     _webhookMode = false;
     bot = new Bot(TOKEN);
+    // Scope EVERY bot update to the admin's telegram_id via AsyncLocalStorage. Bot
+    // handlers call db.setTelegramId(adminId) individually, but that mutates the GLOBAL
+    // scope — a concurrent web login (also global) could flip it mid-handler. Pinning
+    // the whole update chain makes bot operations immune to web traffic.
+    bot.use((ctx, next) => db.runWithTelegramId(adminId || '', () => next()));
     registerCommands();
     attachLiveForwarding();
     // Swallow benign "query too old / query ID is invalid" errors from

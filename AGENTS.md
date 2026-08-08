@@ -129,6 +129,15 @@ Requires `--priority-fee` + `--tip-fee` on SOL.
 - Negative `wallet_group_id` = abs value = single wallet ID
 - All tables have `telegram_id` TEXT column for multi-user isolation
 
+## AsyncLocalStorage (telegram_id scoping — DO NOT BREAK)
+- `database.js` uses `AsyncLocalStorage` (`_tgScope`). `_tid()` and `getTelegramId()` read the ALS store FIRST, then fall back to the global `_currentTgId`.
+- `db.runWithTelegramId(tid, fn)` pins the tid for the ENTIRE async chain inside `fn` (awaits + fire-and-forget `.then()`). Nested calls override the outer scope. `db.setTelegramId()` only mutates the GLOBAL fallback — inside an ALS scope it is effectively ignored by `_tid()`.
+- Scraper hot path: `processSignal()` wraps the whole pipeline in `runWithTelegramId(ownerId, ...)` (owner = `active_telegram_id`, 10s cached via `getActiveScraperId()`). Signals, saveSignal, trades, and fire-and-forget `.then()` callbacks all inherit the pinned owner — immune to web requests flipping the global mid-flight.
+- Web requests: the `/api` middleware wraps each request in `runWithTelegramId(req.telegramId, ...)` so concurrent requests from different users never interleave scopes.
+- Telegram bot: `bot.use(...)` wraps every update in `runWithTelegramId(adminId, ...)`.
+- Re-scoping to a trade's real owner (closeTrade, reconcile, backfill, pollOrder) MUST use `asOwner(t.telegram_id, fn)` in router.js (wraps in `runWithTelegramId`), NOT `db.setTelegramId()` — the latter no longer works inside an ALS scope.
+- Rules/wallet caches (`_ck()`) key on `db.getTelegramId()` which now returns the ALS-pinned owner.
+
 ## Testing
 ```
 npm test           # runs all tests
