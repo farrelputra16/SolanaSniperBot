@@ -26,6 +26,12 @@ mock.module('../gmgn.js', {
       executeBuyWithTP: async () => ({ data: { order_id: 'mock-tpsl' } }),
       cancelStrategyOrder: async () => ({}),
     }),
+    isValidSolAddress: () => false,
+    deriveAddressFromPrivateKey: () => null,
+    getWalletHoldings: async () => ({ data: [] }),
+    getWalletTokenBalance: async () => ({ data: { balances: [] } }),
+    getQuote: async () => ({ data: null }),
+    getUserCredentials: async () => ({}),
   },
 });
 mock.module('../telegram.js', {
@@ -316,8 +322,8 @@ test('buy-with-tp-sl creates a trade', async () => {
   assert.equal(trade.stop_loss_percent, 10);
 });
 
-// ───── Admin (operator via telegram_id) is ALSO isolated on the web ─────
-test('operator (operator telegram_id) only sees their OWN open trades', async () => {
+// ───── Admin (operator via telegram_id) sees ALL positions globally; regular users isolated ─────
+test('operator sees ALL open trades globally; regular users only their own', async () => {
   db.setTelegramId('1721799075');
   await db.createTrade({
     wallet_address: 'W_OP', token_address: 'T_OP', token_symbol: 'OPX',
@@ -335,7 +341,13 @@ test('operator (operator telegram_id) only sees their OWN open trades', async ()
   const { status, data } = await req('/positions', { token: t });
   assert.equal(status, 200, JSON.stringify(data));
   assert.ok(data.some(x => x.token_address === 'T_OP'), 'operator must see their own trades: ' + JSON.stringify(data));
-  assert.ok(!data.some(x => x.token_address === 'T_OTHER'), "operator must NOT see another owner's trades on the web (like the bot): " + JSON.stringify(data));
+  assert.ok(data.some(x => x.token_address === 'T_OTHER'), 'operator (admin) must see ALL trades including other owners: ' + JSON.stringify(data));
+
+  // A regular user (not admin) must still be isolated to their own trades.
+  await db.saveWebSession('iso-token2', { telegramId: 'OTHER-OWNER', phone: '', source: 'login', expires: Date.now() + 86400000 });
+  const { data: isoData } = await req('/positions', { token: 'iso-token2' });
+  assert.ok(isoData.some(x => x.token_address === 'T_OTHER'), 'regular user must see their own trades');
+  assert.ok(!isoData.some(x => x.token_address === 'T_OP'), 'regular user must NOT see the operator trades: ' + JSON.stringify(isoData));
 });
 
 test('telegram-authenticated user stays isolated to their own telegram_id', async () => {
@@ -353,26 +365,44 @@ test('telegram-authenticated user stays isolated to their own telegram_id', asyn
   assert.ok(!data.some(x => x.token_address === 'T_OP'), "user must NOT see another owner's trade: " + JSON.stringify(data));
 });
 
-// ───── Wallet list isolation: even the operator's /api/wallets stays per-user ─────
-test('operator wallet list stays strictly per-user (no other users wallets mixed in)', async () => {
+// ───── Wallet list: operator/admin sees ALL wallets (global); regular users isolated ─────
+test('operator sees ALL wallets globally; regular users only their own', async () => {
   db.setTelegramId('1721799075');
   await db.addWallet('W_ADMIN_ONLY', 'admin wallet', 'admin-key');
   db.setTelegramId('FROG2');
   await db.addWallet('W_FROG_ONLY', 'frog wallet', 'frog-key');
   db.setTelegramId('');
 
-  // Operator's own wallet endpoint → only admin's wallet, NEVER frog's.
+  // Operator's wallet endpoint → ALL wallets (their own + frog's), with owner info.
   const t = await authed();
   const { status, data } = await req('/wallets', { token: t });
   assert.equal(status, 200, JSON.stringify(data));
   assert.ok(data.some(w => w.address === 'W_ADMIN_ONLY'), 'operator must see their own wallet');
-  assert.ok(!data.some(w => w.address === 'W_FROG_ONLY'), "operator's /api/wallets must NOT contain another user's wallet: " + JSON.stringify(data));
+  assert.ok(data.some(w => w.address === 'W_FROG_ONLY'), 'operator (admin) must see other users wallets too: ' + JSON.stringify(data));
+  const frogW = data.find(w => w.address === 'W_FROG_ONLY');
+  assert.ok(frogW.owner, 'admin wallet list should include the owner identity: ' + JSON.stringify(frogW));
 
-  // Frog's own wallet endpoint → only frog's wallet.
+  // Frog's wallet endpoint → ONLY frog's own wallet, never the operator's.
   await db.saveWebSession('frog2-token', { telegramId: 'FROG2', phone: '', source: 'login', expires: Date.now() + 86400000 });
   const { data: frogData } = await req('/wallets', { token: 'frog2-token' });
   assert.ok(frogData.some(w => w.address === 'W_FROG_ONLY'), 'frog must see their own wallet');
   assert.ok(!frogData.some(w => w.address === 'W_ADMIN_ONLY'), "frog must NOT see the operator's wallet: " + JSON.stringify(frogData));
+});
+
+test('operator can test ANY wallet (including another users / legacy with empty telegram_id)', async () => {
+  db.setTelegramId('1721799075');
+  await db.addWallet('W_ADMIN_OWN', 'own wallet', 'own-key');
+  db.setTelegramId('');
+  const { default: Database } = await import('better-sqlite3');
+  const sqlite = new Database(process.env.DATA_DIR + '/sniper.db');
+  sqlite.prepare('INSERT INTO wallets (address, label, private_key, telegram_id) VALUES (?,?,?,?)').run('W_LEGACY', 'legacy', 'legacy-key', '');
+  sqlite.close();
+  const t = await authed();
+  const { status, data } = await req('/wallets', { token: t });
+  const legacyId = data.find(w => w.address === 'W_LEGACY').id;
+  const { status: st, data: td } = await req(`/wallets/${legacyId}/test`, { token: t, method: 'POST' });
+  assert.equal(st, 200, 'operator must be able to test a legacy (empty telegram_id) wallet: ' + JSON.stringify(td));
+  assert.ok(td.address === 'W_LEGACY');
 });
 
 // ───── SSE live events ─────
