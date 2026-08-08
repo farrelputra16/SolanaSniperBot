@@ -32,6 +32,7 @@ function makeState(telegramId) {
     joinedChannelsCache: null,
     joinedChannelsCacheTime: 0,
     globalHandlerInstalled: false,
+    me: null,
   };
 }
 
@@ -106,6 +107,7 @@ export async function initTelegramWithSession(apiId, apiHash, sessionStr, opts =
   state.sessionStr = sessionStr;
   state.dcId = opts.dcId || 0;
   state.reconnectCreds = { apiId, apiHash, sessionStr, dcId: opts.dcId || 0 };
+  state.me = me;
   _clients.set(telegramId, state);
   startKeepAlive(state);
 
@@ -134,6 +136,25 @@ export function getClient(tid) {
 
 export function listClients() {
   return [..._clients.values()];
+}
+
+// Return the display identity (username/firstName) for a connected account.
+// Prefers the cached `me` captured at connect time; falls back to a live getMe().
+// Returns null when the client isn't connected/resolved.
+export async function getAccountIdentity(tid) {
+  const state = getState(tid);
+  if (!state) return null;
+  let me = state.me;
+  if (!me && state.client?.connected) {
+    try { me = await state.client.getMe(); state.me = me; } catch {}
+  }
+  if (!me) return null;
+  return {
+    telegramId: String(me.id ?? state.telegramId),
+    username: me.username || '',
+    firstName: me.firstName || '',
+    lastName: me.lastName || '',
+  };
 }
 
 // Safety-net: reconnect any registered client that dropped. Runs on a timer from the

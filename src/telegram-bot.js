@@ -69,6 +69,16 @@ function btnText(s) {
 
 function isTgConnected() { try { const c = tg.getClient(); return c?.connected === true; } catch { return false; } }
 
+// Best-effort account name for the currently-connected scraper client (cached).
+async function connectedAccountLabel() {
+  try {
+    const { getAccountIdentity } = await import('./telegram.js');
+    const id = await getAccountIdentity();
+    if (!id) return '';
+    return id.username ? '@' + id.username : (id.firstName || '');
+  } catch { return ''; }
+}
+
 function confirmKb(action) {
   return new InlineKeyboard()
     .text('✅ Yes', `confirm_${action}`).text('❌ No', 'menu_main');
@@ -85,6 +95,7 @@ async function showMainMenu(ctx, edit) {
   if (isTgConnected()) kb.row().text('🔌 Disconnect', 'menu_disconnect');
 
   const conn = isTgConnected() ? '🟢 Connected' : '🔴 Disconnected';
+  const acc = isTgConnected() ? (await connectedAccountLabel().catch(() => '')) : '';
   const [channels, wallets] = await Promise.all([
     db.getAllChannels().catch(() => []),
     db.getAllWallets().catch(() => []),
@@ -103,7 +114,7 @@ async function showMainMenu(ctx, edit) {
 
   const text = `🤖 <b>SniperBot</b>
 ━━━━━━━━━━━━━━━━
-${conn}
+${conn}${acc ? ` · <b>${esc(acc)}</b>` : ''}
 📡 ${activeChs}/${channels.length} channels active
 💰 ${wallets.length} wallets · ${totalSol > 0 ? totalSol.toFixed(2) + ' SOL' : '—'}
 ━━━━━━━━━━━━━━━━
@@ -988,6 +999,7 @@ async function showStats(ctx) {
     .text('🔄 Refresh', 'menu_stats')
     .text('🔙 Menu', 'menu_main');
 
+  const acc = isTgConnected() ? (await connectedAccountLabel().catch(() => '')) : '';
   ctx.reply(
     `📊 <b>SniperBot Stats</b>
 ━━━━━━━━━━━━━━━━
@@ -998,7 +1010,7 @@ async function showStats(ctx) {
 📡 <b>CA caught:</b> ${dedup.total_caught || 0}
 ⏭️ <b>Ignored:</b> ${dedup.total_ignored || 0}
 ⏱ <b>Uptime:</b> ${uptime}
-🟢 <b>TG:</b> ${isTgConnected() ? 'Connected' : 'Disconnected'}
+🟢 <b>TG:</b> ${isTgConnected() ? (acc ? `Connected · ${esc(acc)}` : 'Connected') : 'Disconnected'}
 ━━━━━━━━━━━━━━━━
 Tap 🔄 to refresh`,
     { parse_mode: 'HTML', reply_markup: kb });

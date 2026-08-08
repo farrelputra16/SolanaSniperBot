@@ -987,7 +987,7 @@ export function createWebServer() {
       await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me?.username || '', firstName: me?.firstName || '' });
       await startListeners(telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isOperator(state) });
+      res.json({ ok: true, token: sessionToken, telegramId, username: me?.username || '', firstName: me?.firstName || '', isAdmin: isOperator(state) });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
@@ -1027,7 +1027,7 @@ export function createWebServer() {
       await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me2?.username || '', firstName: me2?.firstName || '' });
       await startListeners(telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isOperator(state) });
+      res.json({ ok: true, token: sessionToken, telegramId, username: me2?.username || '', firstName: me2?.firstName || '', isAdmin: isOperator(state) });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });
@@ -1045,6 +1045,7 @@ export function createWebServer() {
       let apiHash = '';
       let tgId = myTid;
       let connected = false;
+      let account = null; // { username, firstName, lastName }
 
       if (myTid) {
         // Logged-in user: report + auto-reconnect ONLY their own Telegram session/client.
@@ -1055,13 +1056,11 @@ export function createWebServer() {
           apiHash = us.apiHash || '';
         }
         try {
-          const { getClient } = await import('./telegram.js');
+          const { getClient, getAccountIdentity } = await import('./telegram.js');
+          account = await getAccountIdentity(myTid);
           const c = getClient(myTid);
           connected = !!(c && c.connected);
-          if (connected) {
-            const me = await c.getMe().catch(() => null);
-            if (me) tgId = String(me.id);
-          }
+          if (account) tgId = account.telegramId;
         } catch {}
         if (!connected && sessionStr && apiId && apiHash) {
           try {
@@ -1071,6 +1070,10 @@ export function createWebServer() {
             await initTelegramWithSession(apiId, apiHash, sessionStr, { dcId: dc });
             await startListeners(myTid);
             connected = true;
+            try {
+              const { getAccountIdentity } = await import('./telegram.js');
+              account = await getAccountIdentity(myTid);
+            } catch {}
           } catch (e) {
             console.warn(`[Telegram] Auto-reconnect failed (${myTid}):`, e.message);
           }
@@ -1084,8 +1087,9 @@ export function createWebServer() {
           if (any) {
             tgId = any.telegramId;
             try {
-              const me = await any.client.getMe().catch(() => null);
-              if (me) tgId = String(me.id);
+              const { getAccountIdentity } = await import('./telegram.js');
+              account = await getAccountIdentity(any.telegramId);
+              if (account) tgId = account.telegramId;
             } catch {}
           }
         } catch {}
@@ -1112,7 +1116,17 @@ export function createWebServer() {
         setSession(token, { expires: Date.now() + SESSION_TTL, telegramId: '', source: 'guest' });
         guest = true;
       }
-      res.json({ connected, hasSession: !!sessionStr, token, guest, telegramId: tgId, authenticated: !!req.telegramId, isAdmin: !!req.isAdmin });
+      res.json({
+        connected,
+        hasSession: !!sessionStr,
+        token,
+        guest,
+        telegramId: tgId,
+        username: account?.username || '',
+        firstName: account?.firstName || '',
+        authenticated: !!req.telegramId,
+        isAdmin: !!req.isAdmin,
+      });
     } catch { res.json({ connected: false, hasSession: false }); }
   });
 

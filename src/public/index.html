@@ -376,6 +376,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   <div class="nav-item" data-p="scraper">Scraper</div>
   <div class="nav-item" data-p="wallets">Wallets</div>
     <div class="nav-item" data-p="settings">Settings</div>
+    <span class="nav-user" id="navUser" style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.7rem;border-radius:9999px;font-size:0.7rem;font-weight:600;color:var(--text2);background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);white-space:nowrap"></span>
     <div class="nav-item" style="cursor:pointer" onclick="doLogout()">Logout</div>
   </div>
   <button class="hamburger" id="hamburger" aria-label="Menu">
@@ -1293,7 +1294,7 @@ async function renderSettings(){
   </div></div>
 </div>
 <div class="shell"><div class="core"><div class="card-h"><h3>📡 Telegram Connection</h3>${tg.connected?'<button class="btn btn-sm btn-r" onclick="tgDisconnect()">Disconnect</button>':'<button class="btn btn-sm btn-p" onclick="showLogin()">Connect Telegram</button>'}</div>
-  <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0"><span style="width:8px;height:8px;border-radius:50%;background:${tg.connected?'var(--green)':'var(--text3)'};display:inline-block"></span><span class="text-sm">${tg.connected?'Connected — listening for signals from active channels.':(tg.hasSession?'Session saved but not connected. Reconnect to start scraping.':'No Telegram session. Login to scrape signals.')}</span></div>
+  <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0"><span style="width:8px;height:8px;border-radius:50%;background:${tg.connected?'var(--green)':'var(--text3)'};display:inline-block"></span><span class="text-sm">${tg.connected?`Connected as <b>${esc((tg.username?'@'+tg.username:(tg.firstName||tg.telegramId||'Account')))}</b> — listening for signals from active channels.`:((tg.authenticated&&tg.hasSession)?'Session saved but not connected. Reconnect to start scraping.':'No Telegram session. Login to scrape signals.')}</span></div>
 </div></div>
 <div class="shell"><div class="core"><div class="card-h"><h3>🖥 Environment</h3></div>
     <div class="text-sm text-muted">API Key: <span class="mono">${settings.gmgn_api_key||'Not set'}</span></div>
@@ -1355,6 +1356,7 @@ window.tgLoginVerifyCode=async function(){
     if(r.error)return tgLoginError(r.error);
     if(r.token){localStorage.setItem('auth_token',r.token)}
     if(r.isAdmin) _isAdmin = true;
+    setNavUser({authenticated:true,username:r.username,firstName:r.firstName,telegramId:r.telegramId});
     if(r.twoFactor){
       $('#tg-login-2fa').style.display='block';
       $('#tg-login-btn').textContent='Submit Password';
@@ -1375,6 +1377,7 @@ window.tgLoginVerifyPassword=async function(){
     if(r.error)return tgLoginError(r.error);
     if(r.token){localStorage.setItem('auth_token',r.token)}
     if(r.isAdmin) _isAdmin = true;
+    setNavUser({authenticated:true,username:r.username,firstName:r.firstName,telegramId:r.telegramId});
     tgLoginDone();
   }catch(err){tgLoginError(err.message)}
 };
@@ -1397,6 +1400,7 @@ window.doLogout=async function(){
   }catch{}
   localStorage.removeItem('auth_token');
   _isAdmin = false;
+  setNavUser({});
   toast('Logged out','info');
   showLogin();
 };
@@ -1585,6 +1589,12 @@ async function refreshCurrentPage() {
 // ═══ INIT ───
 let _initRetries = 0;
 let _isAdmin = false;
+function setNavUser(tg){
+  const el=$('#navUser');
+  if(!el)return;
+  const name=(tg.username?'@'+tg.username:(tg.firstName||tg.telegramId||''));
+  if(name&&tg.authenticated){el.textContent='👤 '+name;el.style.display='inline-flex'}else{el.style.display='none'}
+}
 function showDashboard() {
   $('#loginOverlay').style.display='none';
   renderPage('dashboard');
@@ -1596,6 +1606,7 @@ async function initDashboard(){
   const prev=localStorage.getItem('auth_token')||'';
   const tg=await fetch('/api/telegram/status',{headers:{'x-auth-token':prev}}).then(r=>r.json()).catch(()=>({}));
   if(tg.token){localStorage.setItem('auth_token',tg.token)}
+  setNavUser(tg);
   if(tg.isAdmin){ _initRetries=0; _isAdmin=true; showDashboard(); return; }
   if(tg.connected && tg.authenticated){
     _initRetries = 0;

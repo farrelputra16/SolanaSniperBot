@@ -39,6 +39,7 @@ mock.module('../telegram.js', {
     isChannelListening: () => false,
     getJoinedChannels: async () => [],
     ensureAllClientsConnected: async () => {},
+    getAccountIdentity: async () => null,
   },
 });
 
