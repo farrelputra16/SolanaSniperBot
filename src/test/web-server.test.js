@@ -467,3 +467,19 @@ test('SSE owner routing still filters mismatched _tid for authenticated clients'
   assert.ok(!got.includes('other-sse-1'), 'signal for another owner must be dropped');
   await reader.cancel().catch(() => {});
 });
+
+test('resetAllWallets clears every wallet, group, and membership', async () => {
+  db.setTelegramId('U1');
+  await db.addWallet('W_R1', 'w1', 'k1');
+  db.setTelegramId('U2');
+  await db.addWallet('W_R2', 'w2', 'k2');
+  const gid = await db.createWalletGroup('g1', 'grp');
+  db.setTelegramId('');
+  const r = await db.resetAllWallets();
+  assert.ok(r.wallets >= 2, 'must delete all wallets: ' + JSON.stringify(r));
+  assert.ok(r.groups >= 1, 'must delete all groups: ' + JSON.stringify(r));
+  const all = await db.getAllWalletsGlobal();
+  assert.equal(all.length, 0, 'wallet list must be empty after reset');
+  const groups = await db.getWalletGroups(true);
+  assert.equal(groups.length, 0, 'wallet groups must be empty after reset');
+});

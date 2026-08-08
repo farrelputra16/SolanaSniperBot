@@ -381,6 +381,22 @@ export async function removeWallet(id) {
   sqliteDb.prepare('DELETE FROM wallet_group_members WHERE wallet_id = ?').run(Number(id));
   sqliteDb.prepare('DELETE FROM wallets WHERE id = ?' + _tidFilter()).run(Number(id), ...(_tid() ? [_tid()] : []));
 }
+
+// Forcefully delete ALL wallet data (wallets, groups, memberships) so every user can
+// re-import their own wallets fresh. Admin-only operation — call from a script.
+export async function resetAllWallets() {
+  if (!sqliteMode && mdb) {
+    const w = await collections.wallets.deleteMany({});
+    const g = await collections.wallet_groups.deleteMany({});
+    const m = await collections.wallet_group_members.deleteMany({});
+    return { wallets: w.deletedCount, groups: g.deletedCount, members: m.deletedCount };
+  }
+  const w = sqliteDb.prepare('DELETE FROM wallets').run();
+  const g = sqliteDb.prepare('DELETE FROM wallet_groups').run();
+  const m = sqliteDb.prepare('DELETE FROM wallet_group_members').run();
+  try { sqliteDb.prepare("DELETE FROM sqlite_sequence WHERE name IN ('wallets','wallet_groups')").run(); } catch {}
+  return { wallets: w.changes, groups: g.changes, members: m.changes };
+}
 export async function setActiveWallet(id) {
   if (!sqliteMode && mdb) {
     await collections.wallets.updateMany({ telegram_id: _tid() || 'NONE' }, { $set: { active: 0 } });
