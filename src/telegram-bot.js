@@ -149,6 +149,7 @@ async function showHelp(ctx, edit) {
 async function cmdDisconnect(ctx) {
   if (isTgConnected()) {
     await tg.destroyClient();
+    if (adminId) await db.deleteTelegramSession(adminId).catch(() => {});
     await db.setSetting('telegram_session', '');
     const kb = new InlineKeyboard().text('🔙 Menu', 'menu_main');
     ctx.reply('🔌 <b>Disconnected</b>\nLogin from dashboard to reconnect.', { parse_mode: 'HTML', reply_markup: kb });

@@ -14,11 +14,11 @@ liveEvents.setMaxListeners(100);
 
 const SESSION_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days — survives restarts & idle
 const SESSIONS = new Map();
-const ADMIN_PHONE = '6285779977877';
-const ADMIN_IDS = ['1721799075'];
+// Operator = the Telegram account that logs in with this API ID (not a password).
+const OPERATOR_API_ID = '20222905';
 const TOKEN_INFO_TTL = 30 * 1000; // 30s — dashboard P&L polling reuses one GMGN call per token
 const _tokenInfoCache = new Map();
-function isAdminPhone(phone) { return phone?.replace(/^\+/, '').trim() === ADMIN_PHONE; }
+function isOperator(s) { return s != null && String(s.apiId) === OPERATOR_API_ID; }
 
 function extractQuote(q) {
   const d = q?.data || q || {};
@@ -39,7 +39,7 @@ async function loadSessions() {
   const rows = await db.getAllWebSessions().catch(() => []);
   const now = Date.now();
   for (const row of rows || []) {
-    const s = { telegramId: row.telegram_id || '', phone: row.phone || '', source: row.source || 'guest', expires: Number(row.expires) || 0 };
+    const s = { telegramId: row.telegram_id || '', phone: row.phone || '', source: row.source || 'guest', apiId: row.api_id != null ? String(row.api_id) : '', expires: Number(row.expires) || 0 };
     if (s.expires > now) SESSIONS.set(row.token, s);
     else db.deleteWebSession(row.token).catch(() => {});
   }
@@ -55,7 +55,7 @@ async function resolveSession(token) {
   if (cached) return cached;
   const row = await db.getWebSession(token).catch(() => null);
   if (row && Number(row.expires) > Date.now()) {
-    const s = { telegramId: row.telegram_id || '', phone: row.phone || '', source: row.source || 'guest', expires: Number(row.expires) };
+    const s = { telegramId: row.telegram_id || '', phone: row.phone || '', source: row.source || 'guest', apiId: row.api_id != null ? String(row.api_id) : '', expires: Number(row.expires) };
     SESSIONS.set(token, s);
     return s;
   }
@@ -67,6 +67,7 @@ function setSession(token, data) {
     telegramId: data.telegramId || '',
     phone: data.phone || '',
     source: data.source || 'guest',
+    apiId: data.apiId != null ? String(data.apiId) : '',
   };
   SESSIONS.set(token, s);
   _sessionWriteTs.set(token, Date.now());
@@ -130,8 +131,8 @@ export function createWebServer() {
           touchSession(token, s);
           if (s.source === 'login') {
             req.telegramId = s.telegramId;
-            // Password login (source 'login', no telegramId) = operator/admin → sees all data.
-            if (isAdminPhone(s.phone) || ADMIN_IDS.includes(s.telegramId) || (s.source === 'login' && !s.telegramId)) req.isAdmin = true;
+            // Operator = the Telegram account logged in with the operator API ID.
+            if (isOperator(s)) req.isAdmin = true;
           }
         } else {
           invalidateSession(token, s);
@@ -155,8 +156,8 @@ export function createWebServer() {
           touchSession(token, s);
           if (s.source === 'login') {
             req.telegramId = s.telegramId;
-            // Password login (source 'login', no telegramId) = operator/admin → sees all data.
-            if (isAdminPhone(s.phone) || ADMIN_IDS.includes(s.telegramId) || (s.source === 'login' && !s.telegramId)) req.isAdmin = true;
+            // Operator = the Telegram account logged in with the operator API ID.
+            if (isOperator(s)) req.isAdmin = true;
           }
           valid = true;
         } else if (s) {
@@ -178,24 +179,27 @@ export function createWebServer() {
     db.runWithTelegramId(req.telegramId || '', () => next());
   });
 
-  app.post('/api/login', (req, res) => {
-    if (req.body.password === config.server.password) {
-      const token = crypto.randomUUID();
-      // Password login = operator/admin (computed from source==='login' && !telegramId).
-      setSession(token, { expires: Date.now() + SESSION_TTL, telegramId: '', source: 'login' });
-      return res.json({ ok: true, token });
-    }
-    res.status(401).json({ error: 'wrong password' });
-  });
-
+  // Operator login is now done via Telegram (account with apiId OPERATOR_API_ID) — the
+  // old password /api/login was removed. Guests can still skip into read-only mode.
   app.get('/api/login-check', (req, res) => {
-    res.json({ required: !!config.server.password });
+    res.json({ required: !!config.server.password, operatorApiId: OPERATOR_API_ID });
   });
 
   app.post('/api/guest-login', (req, res) => {
     const token = crypto.randomUUID();
     setSession(token, { expires: Date.now() + SESSION_TTL, telegramId: '', source: 'guest' });
     res.json({ ok: true, token });
+  });
+
+  // Real logout — invalidates the current web session so the browser token stops working.
+  app.post('/api/logout', (req, res) => {
+    try {
+      const token = req.headers['x-auth-token'];
+      if (token) invalidateSession(token, SESSIONS.get(token));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ───── Real-time Events (SSE) ─────
@@ -972,23 +976,18 @@ export function createWebServer() {
       }));
       state.sessionStr = state.client.session.save();
       state.state = 'done';
-      await db.setSetting('telegram_session', state.sessionStr);
-      await db.setSetting('telegram_api_id', String(state.apiId));
-      await db.setSetting('telegram_api_hash', state.apiHash);
-      if (state.dcId) await db.setSetting('telegram_dc', String(state.dcId));
-      await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
-      const { getClient } = await import('./telegram.js');
-      const c = getClient();
-      const me = c ? await c.getMe() : null;
-      const telegramId = String(me?.id || '');
+      const me = await state.client.getMe().catch(() => null);
+      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+      const { telegramId } = await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr, { dcId: state.dcId || 0 });
+      await state.client.destroy().catch(() => {});
       const sessionToken = crypto.randomUUID();
-      setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
+      setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login', apiId: state.apiId });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me?.username || '', firstName: me?.firstName || '' });
-      await db.setSetting('active_telegram_id', telegramId);
+      await startListeners(telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isOperator(state) });
     } catch (err) {
       if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
         state.state = 'await_password';
@@ -1017,21 +1016,18 @@ export function createWebServer() {
       await state.client.invoke(new Api.auth.CheckPassword({ password: check }));
       state.sessionStr = state.client.session.save();
       state.state = 'done';
-      await db.setSetting('telegram_session', state.sessionStr);
-      await db.setSetting('telegram_api_id', String(state.apiId));
-      await db.setSetting('telegram_api_hash', state.apiHash);
-      await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr);
-      const { getClient: gC } = await import('./telegram.js');
-      const me2 = gC() ? await gC().getMe() : null;
-      const telegramId = String(me2?.id || '');
+      const me2 = await state.client.getMe().catch(() => null);
+      const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+      const { telegramId } = await initTelegramWithSession(state.apiId, state.apiHash, state.sessionStr, { dcId: state.dcId || 0 });
+      await state.client.destroy().catch(() => {});
       const sessionToken = crypto.randomUUID();
-      setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login' });
+      setSession(sessionToken, { expires: Date.now() + SESSION_TTL, telegramId, phone: state.phone, source: 'login', apiId: state.apiId });
       db.setTelegramId(telegramId);
       await db.setSetting('telegram_id', telegramId);
       await db.saveTelegramSession(telegramId, { apiId: state.apiId, apiHash: state.apiHash, session: state.sessionStr, dc: state.dcId || 0, username: me2?.username || '', firstName: me2?.firstName || '' });
-      await db.setSetting('active_telegram_id', telegramId);
+      await startListeners(telegramId);
       PENDING_LOGIN.delete(loginToken);
-      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isAdminPhone(state.phone) || ADMIN_IDS.includes(telegramId) });
+      res.json({ ok: true, token: sessionToken, telegramId, isAdmin: isOperator(state) });
     } catch (err) {
       if (err.errorMessage === 'PASSWORD_HASH_INVALID') {
         res.status(400).json({ error: 'Wrong password' });
@@ -1043,46 +1039,63 @@ export function createWebServer() {
 
   app.get('/api/telegram/status', async (req, res) => {
     try {
-      let sessionStr = await db.getSetting('telegram_session', '');
-      let apiId = config.telegram.apiId;
-      let apiHash = config.telegram.apiHash;
-      let dc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
-      const activeTgId = await db.getSetting('active_telegram_id', '');
-      if (activeTgId) {
-        const us = await db.getTelegramSession(activeTgId);
+      const myTid = req.telegramId || '';
+      let sessionStr = '';
+      let apiId = 0;
+      let apiHash = '';
+      let tgId = myTid;
+      let connected = false;
+
+      if (myTid) {
+        // Logged-in user: report + auto-reconnect ONLY their own Telegram session/client.
+        const us = await db.getTelegramSession(myTid).catch(() => null);
         if (us && us.session) {
           sessionStr = us.session;
-          if (!apiId || !apiHash) { apiId = parseInt(us.apiId) || 0; apiHash = us.apiHash; }
-          if (us.dc) dc = parseInt(us.dc) || 0;
+          apiId = parseInt(us.apiId) || 0;
+          apiHash = us.apiHash || '';
         }
-      }
-      if (!apiId || !apiHash) {
-        apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
-        apiHash = await db.getSetting('telegram_api_hash', '');
-      }
-      let tgId = await db.getSetting('telegram_id', '');
-      let connected = false;
-      try {
-        const { getClient } = await import('./telegram.js');
-        const c = getClient();
-        connected = !!(c && c.connected);
-        if (connected && !tgId && c) {
-          const me = await c.getMe().catch(() => null);
-          if (me) { tgId = String(me.id); db.setSetting('telegram_id', tgId).catch(()=>{}); }
-        }
-      } catch {}
-      // Auto-reconnect if session exists but not connected
-      if (!connected && sessionStr) {
         try {
-          if (apiId && apiHash) {
-            if (dc > 0) config.telegram.dcId = dc;
-            await initTelegramWithSession(apiId, apiHash, sessionStr);
-            connected = true;
+          const { getClient } = await import('./telegram.js');
+          const c = getClient(myTid);
+          connected = !!(c && c.connected);
+          if (connected) {
+            const me = await c.getMe().catch(() => null);
+            if (me) tgId = String(me.id);
           }
-        } catch (e) {
-          console.warn('[Telegram] Auto-reconnect failed:', e.message);
+        } catch {}
+        if (!connected && sessionStr && apiId && apiHash) {
+          try {
+            const { initTelegramWithSession, startListeners } = await import('./telegram.js');
+            const us = await db.getTelegramSession(myTid).catch(() => null);
+            const dc = us && us.dc ? parseInt(us.dc) || 0 : 0;
+            await initTelegramWithSession(apiId, apiHash, sessionStr, { dcId: dc });
+            await startListeners(myTid);
+            connected = true;
+          } catch (e) {
+            console.warn(`[Telegram] Auto-reconnect failed (${myTid}):`, e.message);
+          }
+        }
+      } else {
+        // Guest / anonymous: report whether ANY user's client is connected (read-only).
+        try {
+          const { listClients } = await import('./telegram.js');
+          const any = listClients().find(s => s.client && s.client.connected);
+          connected = !!any;
+          if (any) {
+            tgId = any.telegramId;
+            try {
+              const me = await any.client.getMe().catch(() => null);
+              if (me) tgId = String(me.id);
+            } catch {}
+          }
+        } catch {}
+        // Legacy env-mode fallback for guests: surface a saved global session if present.
+        if (!connected) {
+          sessionStr = await db.getSetting('telegram_session', '').catch(() => '');
+          if (!sessionStr) sessionStr = '';
         }
       }
+
       let token = null;
       let guest = false;
       const h = req.headers['x-auth-token'];
@@ -1106,13 +1119,13 @@ export function createWebServer() {
   app.post('/api/telegram/disconnect', async (req, res) => {
     try {
       const { destroyClient } = await import('./telegram.js');
-      await destroyClient();
-      const activeId = await db.getSetting('active_telegram_id', '');
-      if (activeId) await db.deleteTelegramSession(activeId);
-      await db.setSetting('active_telegram_id', '');
-      await db.setSetting('telegram_session', '');
-      await db.setSetting('telegram_id', '');
-      db.setTelegramId('');
+      const myTid = req.telegramId || '';
+      await destroyClient(myTid || undefined);
+      if (myTid) await db.deleteTelegramSession(myTid);
+      if (!myTid) {
+        await db.setSetting('telegram_session', '').catch(() => {});
+        db.setTelegramId('');
+      }
       res.json({ ok: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -1129,17 +1142,6 @@ export function createWebServer() {
   return app;
 }
 
-async function initTelegramWithSession(apiId, apiHash, sessionStr) {
-  try {
-    const { initTelegramWithSession, startListeners } = await import('./telegram.js');
-    await initTelegramWithSession(apiId, apiHash, sessionStr);
-    await startListeners();
-    console.log('[Telegram] Reconnected with saved session');
-  } catch (err) {
-    console.warn('[Telegram] Reconnect failed:', err.message);
-  }
-}
-
 export function startWebServer(app) {
   const server = app.listen(config.server.port, config.server.host, () => {
     console.log(`[Web] Dashboard: http://${config.server.host}:${config.server.port}`);
@@ -1153,17 +1155,13 @@ export function startWebServer(app) {
       }
     }
   }, 60000);
-  // Telegram 24/7 reconnect loop — keeps alive even with no browser open
+  // Telegram 24/7 reconnect loop — keeps every registered client alive even with no
+  // browser open. Per-user clients already self-heal via their keep-alive timer; this
+  // is the safety net for clients dropped after a crash/restart.
   const tgKeepAlive = setInterval(async () => {
     try {
-      const { getClient } = await import('./telegram.js');
-      const c = getClient();
-      if (!c || !c.connected) {
-        const sessionStr = await db.getSetting('telegram_session', '').catch(() => '');
-        if (sessionStr && config.telegram.apiId && config.telegram.apiHash) {
-          await initTelegramWithSession(config.telegram.apiId, config.telegram.apiHash, sessionStr);
-        }
-      }
+      const { ensureAllClientsConnected } = await import('./telegram.js');
+      await ensureAllClientsConnected();
     } catch {}
   }, 30000);
   const shut = () => { clearInterval(cleanup); clearInterval(tgKeepAlive); SESSIONS.clear(); server.close(); process.exit(0); };

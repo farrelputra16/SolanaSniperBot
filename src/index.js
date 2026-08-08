@@ -42,67 +42,72 @@ async function main() {
   backfillPendingTrades().catch(() => {});
   backfillTradeMetadata().catch(() => {});
 
-  onSignal(async (sourceChannel, text, message, senderUsername) => {
-    await processSignal(sourceChannel, text, message, senderUsername);
+  onSignal(async (sourceChannel, text, message, senderUsername, ownerId) => {
+    await processSignal(sourceChannel, text, message, senderUsername, ownerId);
   });
 
   const app = createWebServer();
   startWebServer(app);
 
-  // Auto-connect Telegram from saved session or .env
+  // Auto-connect Telegram: EVERY saved per-user session, then fall back to .env.
+  // Multiple accounts can now scrape simultaneously without clobbering each other.
   try {
-    let apiId = config.telegram.apiId;
-    let apiHash = config.telegram.apiHash;
-    let savedSession = await db.getSetting('telegram_session', '');
-    let savedDc = parseInt(await db.getSetting('telegram_dc', '0')) || 0;
-    const activeTgId = await db.getSetting('active_telegram_id', '');
-    if (activeTgId) {
-      const us = await db.getTelegramSession(activeTgId);
-      if (us && us.session) {
-        savedSession = us.session;
-        if (!apiId || !apiHash) { apiId = parseInt(us.apiId) || 0; apiHash = us.apiHash; }
-        if (us.dc) savedDc = parseInt(us.dc) || 0;
+    const { initTelegramWithSession, startListeners, getClient } = await import('./telegram.js');
+    const sessions = await db.getAllTelegramSessions(true).catch(() => []);
+    let connectedAny = false;
+    let operatorId = null;
+
+    for (const us of sessions || []) {
+      const tid = String(us.telegram_id || '');
+      const apiId = parseInt(us.api_id) || 0;
+      const apiHash = us.api_hash || '';
+      const sessionStr = us.session || '';
+      if (!tid || !apiId || !apiHash || !sessionStr) continue;
+      try {
+        await initTelegramWithSession(apiId, apiHash, sessionStr, { dcId: parseInt(us.dc) || 0 });
+        await startListeners(tid);
+        connectedAny = true;
+        if (String(apiId) === '20222905') operatorId = tid;
+        console.log(`   Telegram: ✅ Connected ${tid}`);
+      } catch (err) {
+        console.warn(`   Telegram: ⏸️  (${tid}) ${err.message || ''}`);
+        if (/AUTH_KEY|expired|revoked|invalid|401/i.test(err.message || '')) {
+          try { await db.deleteTelegramSession(tid); } catch {}
+        }
       }
     }
-    if (!apiId || !apiHash) {
-      apiId = parseInt(await db.getSetting('telegram_api_id', '0')) || 0;
-      apiHash = await db.getSetting('telegram_api_hash', '');
-    }
-    if (savedDc > 0) config.telegram.dcId = savedDc;
 
-    if (savedSession && apiId && apiHash) {
-      const { initTelegramWithSession, startListeners, getClient } = await import('./telegram.js');
-      await initTelegramWithSession(apiId, apiHash, savedSession);
-      const c = getClient();
-      const me = c ? await c.getMe() : null;
-      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); setAdminId(String(me.id)); }
-      console.log('   Telegram: ✅ Connected via saved session');
-      await startListeners();
-      startBot().catch(e => console.warn('[Bot]', e.message));
-    } else if (apiId && apiHash) {
-      const { initTelegram, startListeners, getClient } = await import('./telegram.js');
-      await initTelegram();
-      const c = getClient();
-      const me = c ? await c.getMe() : null;
-      if (me) { db.setTelegramId(String(me.id)); await db.setSetting('telegram_id', String(me.id)); setAdminId(String(me.id)); }
-      console.log('   Telegram: ✅ Connected via .env');
-      await startListeners();
-      startBot().catch(e => console.warn('[Bot]', e.message));
-    } else {
-      console.warn('   Telegram: ⏸️  No session — login from dashboard');
-      startBot().catch(() => {});
+    // Legacy .env fallback — single account, no per-user session saved yet.
+    if (!connectedAny && config.telegram.apiId && config.telegram.apiHash && config.telegram.session) {
+      try {
+        const { initTelegram } = await import('./telegram.js');
+        await initTelegram();
+        const c = getClient();
+        const me = c ? await c.getMe() : null;
+        const tid = String(me?.id || '');
+        if (tid) {
+          db.setTelegramId(tid);
+          await db.setSetting('telegram_id', tid);
+          if (!operatorId) operatorId = tid;
+          await startListeners(tid);
+        }
+        connectedAny = true;
+        console.log('   Telegram: ✅ Connected via .env');
+      } catch (err) {
+        console.warn('   Telegram: ⏸️  ' + (err.message || ''));
+        if (/AUTH_KEY|expired|revoked|invalid|401/i.test(err.message || '')) {
+          try { await db.setSetting('telegram_session', ''); } catch {}
+        }
+      }
     }
+
+    if (operatorId) setAdminId(operatorId);
+    if (connectedAny) startBot().catch(e => console.warn('[Bot]', e.message));
+    else startBot().catch(() => {});
   } catch (err) {
     const msg = err?.message || '';
-    if (msg && msg !== 'dashboard-only mode') {
-      console.warn('   Telegram: ⏸️  ' + msg);
-    }
-    // Only clear corrupted session on definitive expiry/revocation errors. A
-    // transient connection failure must NOT wipe the saved session, otherwise a
-    // single bad startup permanently kills the scraper ("No session" forever).
-    if (/AUTH_KEY|expired|revoked|invalid|401/i.test(msg)) {
-      try { await db.setSetting('telegram_session', ''); } catch {}
-    }
+    if (msg) console.warn('   Telegram: ⏸️  ' + msg);
+    startBot().catch(() => {});
   }
 
   console.log(`\n✅ The Scoop Sc(rape)r running!`);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as crypto from 'node:crypto';
 
 // Isolated temp DB + fixed test config — MUST be set before importing modules
 const DATA_DIR = mkdtempSync(join(tmpdir(), 'sniperbot-test-'));
@@ -29,11 +30,15 @@ mock.module('../gmgn.js', {
 mock.module('../telegram.js', {
   namedExports: {
     getClient: () => null,
-    initTelegramWithSession: async () => {},
+    initTelegramWithSession: async () => ({ client: null, telegramId: 'mock-tid' }),
     destroyClient: async () => {},
     startListeners: async () => {},
     onSignal: () => {},
     onForward: () => {},
+    listClients: () => [],
+    isChannelListening: () => false,
+    getJoinedChannels: async () => [],
+    ensureAllClientsConnected: async () => {},
   },
 });
 
@@ -76,11 +81,12 @@ test('session survives server restart (seeded from DB)', async () => {
 });
 
 test('DB web_sessions round-trip', async () => {
-  await db.saveWebSession('roundtrip-token', { telegramId: '42', phone: '+1', source: 'login', expires: 9999999999999 });
+  await db.saveWebSession('roundtrip-token', { telegramId: '42', phone: '+1', source: 'login', apiId: '20222905', expires: 9999999999999 });
   const row = await db.getWebSession('roundtrip-token');
   assert.ok(row);
   assert.equal(row.telegram_id, '42');
   assert.equal(row.source, 'login');
+  assert.equal(row.api_id, '20222905');
   const all = await db.getAllWebSessions();
   assert.ok(all.some((s) => s.token === 'roundtrip-token'));
   await db.deleteWebSession('roundtrip-token');
@@ -108,17 +114,31 @@ test('telegram sessions are stored per user and do not clobber each other', asyn
 });
 
 // ───── Auth / login ─────
-test('wrong password rejected', async () => {
-  const { status } = await req('/login', { method: 'POST', body: { password: 'nope' } });
-  assert.equal(status, 401);
+// Operator = web session for a Telegram login with apiId '20222905'. Password /api/login
+// was removed — there is no operator password anymore.
+async function opToken() {
+  const token = crypto.randomUUID();
+  await db.saveWebSession(token, { telegramId: '1721799075', phone: '+0', source: 'login', apiId: '20222905', expires: Date.now() + 86400000 });
+  return token;
+}
+
+test('operator session (apiId 20222905) is admin', async () => {
+  const t = await opToken();
+  const { status, data } = await req('/admin/users', { token: t });
+  assert.equal(status, 200, JSON.stringify(data));
+  assert.ok(Array.isArray(data.users));
 });
 
-test('login issues a working token', async () => {
-  const login = await req('/login', { method: 'POST', body: { password: 'test-secret' } });
-  assert.equal(login.status, 200);
-  assert.ok(login.data.token);
-  const { status } = await req('/status', { token: login.data.token });
-  assert.equal(status, 200);
+test('non-operator telegram login is NOT admin', async () => {
+  const t = crypto.randomUUID();
+  await db.saveWebSession(t, { telegramId: 'OTHER-USER', phone: '+1', source: 'login', apiId: '99999999', expires: Date.now() + 86400000 });
+  const { status } = await req('/admin/users', { token: t });
+  assert.equal(status, 403);
+});
+
+test('guest token is never admin', async () => {
+  const { status } = await req('/admin/users');
+  assert.equal(status, 401);
 });
 
 test('no token is unauthorized on protected routes', async () => {
@@ -141,16 +161,28 @@ test('status issues guest token when none stored', async () => {
 });
 
 test('status keeps a valid login token (no downgrade to guest)', async () => {
-  const login = await req('/login', { method: 'POST', body: { password: 'test-secret' } });
-  const { data } = await req('/telegram/status', { token: login.data.token });
-  assert.equal(data.token, login.data.token);
+  const t = await opToken();
+  const { data } = await req('/telegram/status', { token: t });
+  assert.equal(data.token, t);
   assert.equal(data.guest, false);
+});
+
+test('status reports isAdmin for the operator login', async () => {
+  const t = await opToken();
+  const { data } = await req('/telegram/status', { token: t });
+  assert.equal(data.isAdmin, true);
+});
+
+test('status does not leak operator admin to a regular user', async () => {
+  const t = crypto.randomUUID();
+  await db.saveWebSession(t, { telegramId: 'USER-X', phone: '+1', source: 'login', apiId: '11111111', expires: Date.now() + 86400000 });
+  const { data } = await req('/telegram/status', { token: t });
+  assert.equal(data.isAdmin, false);
 });
 
 // ───── Trading endpoints: validation (no gmgn call) ─────
 async function authed() {
-  const login = await req('/login', { method: 'POST', body: { password: 'test-secret' } });
-  return login.data.token;
+  return opToken();
 }
 
 test('buy: rejects missing wallet/token', async () => {
@@ -227,7 +259,7 @@ test('limit-sell creates strategy order', async () => {
   assert.equal(status, 200, JSON.stringify(data));
   assert.equal(data.remote_order_id, 'mock-limit');
   assert.ok(data.id != null);
-  const orders = await db.getStrategyOrders();
+  const orders = await db.runWithTelegramId('1721799075', () => db.getStrategyOrders());
   assert.ok(orders.some((o) => o.id == data.id && o.order_type === 'limit_order'));
 });
 
@@ -240,14 +272,14 @@ test('buy-with-tp-sl creates a trade', async () => {
   assert.equal(status, 200, JSON.stringify(data));
   assert.equal(data.order_id, 'mock-tpsl');
   assert.ok(data.trade_id != null);
-  const trade = await db.getTrade(data.trade_id);
+  const trade = await db.runWithTelegramId('1721799075', () => db.getTrade(data.trade_id));
   assert.equal(trade.buy_order_id, 'mock-tpsl');
   assert.equal(trade.take_profit_percent, 50);
   assert.equal(trade.stop_loss_percent, 10);
 });
 
-// ───── Admin (password login) sees all; Telegram users stay isolated ─────
-test('password-login (operator) sees open trades from any owner', async () => {
+// ───── Admin (operator via apiId) sees all; Telegram users stay isolated ─────
+test('operator (apiId 20222905) sees open trades from any owner', async () => {
   db.setTelegramId('1721799075');
   await db.createTrade({
     wallet_address: 'W_OP', token_address: 'T_OP', token_symbol: 'OPX',
@@ -258,7 +290,7 @@ test('password-login (operator) sees open trades from any owner', async () => {
   const t = await authed();
   const { status, data } = await req('/positions', { token: t });
   assert.equal(status, 200, JSON.stringify(data));
-  assert.ok(data.some(x => x.token_address === 'T_OP'), 'operator (password login) must see all open trades: ' + JSON.stringify(data));
+  assert.ok(data.some(x => x.token_address === 'T_OP'), 'operator must see all open trades: ' + JSON.stringify(data));
 });
 
 test('telegram-authenticated user stays isolated to their own telegram_id', async () => {

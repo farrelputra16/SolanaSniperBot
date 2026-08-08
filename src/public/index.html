@@ -376,6 +376,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   <div class="nav-item" data-p="scraper">Scraper</div>
   <div class="nav-item" data-p="wallets">Wallets</div>
     <div class="nav-item" data-p="settings">Settings</div>
+    <div class="nav-item" style="cursor:pointer" onclick="doLogout()">Logout</div>
   </div>
   <button class="hamburger" id="hamburger" aria-label="Menu">
     <span></span><span></span>
@@ -389,6 +390,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
   <div class="nav-item" data-p="scraper">Scraper</div>
   <div class="nav-item" data-p="wallets">Wallets</div>
   <div class="nav-item" data-p="settings">Settings</div>
+  <div class="nav-item" style="cursor:pointer" onclick="doLogout()">Logout</div>
   <div class="nav-overlay-footer">The Scoop Sc(rape)r v1.0</div>
 </nav>
 
@@ -435,15 +437,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10
     <div style="text-align:center"><div style="font-weight:600;font-size:1rem">Connected</div><p class="text-sm text-muted" id="tg-login-done-msg" style="margin-top:0.15rem"></p></div>
   </div>
   <p id="loginError" class="text-sm" style="color:var(--red);display:none;text-align:center;max-width:340px"></p>
-  <div id="op-login" style="width:340px;max-width:90vw;display:none;flex-direction:column;gap:0.5rem;margin-top:0.25rem">
-    <div style="display:flex;align-items:center;gap:0.5rem"><div style="flex:1;height:1px;background:var(--border)"></div><span style="font-size:0.6rem;color:var(--text3)">OR</span><div style="flex:1;height:1px;background:var(--border)"></div></div>
-    <div class="form-group"><label>Operator Password</label><input id="op-password" type="password" placeholder="Dashboard password" style="text-align:center;font-size:0.85rem;padding:0.6rem 1rem;border-radius:var(--radius-md)" onkeydown="if(event.key==='Enter')opLogin()"><span class="hint">Operator sees ALL data (all users)</span></div>
-    <button class="btn btn-ghost" onclick="opLogin()" style="padding:0.7rem;font-size:0.9rem;width:100%">Login as Operator</button>
-  </div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:0.5rem;margin-top:0.5rem">
     <p style="font-size:0.6rem;color:var(--text3);text-align:center;max-width:320px;line-height:1.4">Credentials stored locally. Telegram session saved on server. Token data via GMGN API.</p>
     <a href="#" onclick="skipLogin()" style="font-size:0.65rem;color:var(--text3);text-decoration:underline;text-underline-offset:3px">Skip to Dashboard (read-only)</a>
-    <a href="#" onclick="opLoginToggle()" id="op-toggle" style="font-size:0.65rem;color:var(--text3);text-decoration:underline;text-underline-offset:3px">Operator password login</a>
   </div>
 </div>
 
@@ -1311,6 +1307,7 @@ window.tgDisconnect=async function(){await api('/telegram/disconnect',{method:'P
 let tgLoginToken = null;
 
 function showLogin(){
+  _isAdmin = false;
   $('#loginOverlay').style.display='flex';
   $('#loginError').style.display='none';
   $('#tg-login-step1').style.display='flex';
@@ -1394,25 +1391,17 @@ function tgLoginDone(){
 }
 
 function tgLoginError(msg){$('#loginError').textContent=msg;$('#loginError').style.display='block'}
-window.opLoginToggle=function(){
-  const el=$('#op-login'),tog=$('#op-toggle');
-  const on=el.style.display==='flex';
-  el.style.display=on?'none':'flex';
-  tog.textContent=on?'Operator password login':'Hide operator login';
-  if(!on)$('#op-password').focus();
-};
-window.opLogin=async function(){
-  const pass=$('#op-password').value;
-  if(!pass)return tgLoginError('Enter operator password');
+window.doLogout=async function(){
   try{
-    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})}).then(x=>x.json());
-    if(r.error)return tgLoginError(r.error);
-    localStorage.setItem('auth_token',r.token);
-    _isAdmin=true;
-    showDashboard();
-  }catch(err){tgLoginError(err.message)}
+    await fetch('/api/logout',{method:'POST',headers:{'x-auth-token':authToken()}}).catch(()=>{});
+  }catch{}
+  localStorage.removeItem('auth_token');
+  _isAdmin = false;
+  toast('Logged out','info');
+  showLogin();
 };
 window.skipLogin=async function(){
+  _isAdmin = false;
   const r=await fetch('/api/guest-login',{method:'POST'}).then(x=>x.json()).catch(()=>null);
   if(r?.token)localStorage.setItem('auth_token',r.token);
   $('#loginOverlay').style.display='none';

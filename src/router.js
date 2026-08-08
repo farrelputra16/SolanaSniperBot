@@ -109,31 +109,39 @@ function getCachedWallet(key, fetcher) {
 
 // Background wallet cache warmer — keeps cache hot so blind buy never waits on DB.
 // Runs immediately at startup, then every 20s. Also warms GMGN creds + rules cache.
+// Iterates EVERY registered telegram session so multi-user caches all stay hot.
 let _warmingTimer = null;
 export function startWalletWarmer() {
   const warm = async () => {
     try {
-      // Scope the warm cycle to the ACTIVE scraping session so caches land on the
-      // right user even if another user touched the dashboard recently.
-      const activeTgId = await db.getSetting('active_telegram_id', '');
-      if (activeTgId) db.setTelegramId(activeTgId);
-      const [active, groups, rules] = await Promise.all([
-        db.getActiveWallet(),
-        db.getWalletGroups(),
-        db.getAutoBuyRules().catch(() => []),
-      ]);
-      if (active) {
-        _walletCache.set(_ck('active'), { data: active, ts: Date.now() });
-        if (active.telegram_id) getUserCredentials(active.telegram_id).catch(() => {});
+      let ids = [];
+      try {
+        const sessions = await db.getAllTelegramSessions();
+        ids = sessions.map(s => String(s.telegram_id || '')).filter(Boolean);
+      } catch {}
+      const scopes = ids.length ? ids : [''];
+
+      for (const tid of scopes) {
+        await db.runWithTelegramId(tid, async () => {
+          const [active, groups, rules] = await Promise.all([
+            db.getActiveWallet(),
+            db.getWalletGroups(),
+            db.getAutoBuyRules().catch(() => []),
+          ]);
+          if (active) {
+            _walletCache.set(_ck('active'), { data: active, ts: Date.now() });
+            if (active.telegram_id) getUserCredentials(active.telegram_id).catch(() => {});
+          }
+          for (const g of (groups || [])) {
+            getCachedWallet(`group:${g.id}`, () => db.getGroupWallets(g.id));
+          }
+          for (const rule of (rules || [])) {
+            if (!resolveWalletsSync(rule)) resolveWallets(rule).catch(() => {});
+            if (rule.telegram_id) getUserCredentials(rule.telegram_id).catch(() => {});
+          }
+          getCachedRules().catch(() => {});
+        });
       }
-      for (const g of (groups || [])) {
-        getCachedWallet(`group:${g.id}`, () => db.getGroupWallets(g.id));
-      }
-      for (const rule of (rules || [])) {
-        if (!resolveWalletsSync(rule)) resolveWallets(rule).catch(() => {});
-        if (rule.telegram_id) getUserCredentials(rule.telegram_id).catch(() => {});
-      }
-      getCachedRules().catch(() => {});
     } catch {}
   };
   if (_warmingTimer) return;
@@ -141,15 +149,17 @@ export function startWalletWarmer() {
   _warmingTimer = setInterval(warm, 20000);
 }
 
-export async function processSignal(sourceChannel, text, message, senderUsername) {
+export async function processSignal(sourceChannel, text, message, senderUsername, ownerId) {
   const t0 = Date.now();
 
-  // Pin to the ACTIVE scraping session for the ENTIRE async pipeline. AsyncLocalStorage
-  // propagates the owner id to every await AND every fire-and-forget .then() created
-  // inside the callback — so web requests flipping the global _currentTgId mid-flight
-  // can never re-scope a signal, saveSignal, or trade to the wrong user.
-  const ownerId = await getActiveScraperId();
-  return db.runWithTelegramId(ownerId || db.getTelegramId(), () =>
+  // Pin to THIS signal's owner for the ENTIRE async pipeline. The message handler passes
+  // the per-user client's owner id (telegram.js globalMessageHandler); when absent (e.g.
+  // tests/legacy) fall back to the active scraper session. AsyncLocalStorage propagates
+  // the owner id to every await AND every fire-and-forget .then() created inside the
+  // callback — so web requests flipping the global _currentTgId mid-flight can never
+  // re-scope a signal, saveSignal, or trade to the wrong user.
+  const id = ownerId || await getActiveScraperId();
+  return db.runWithTelegramId(id || db.getTelegramId(), () =>
     processSignalInner(sourceChannel, text, message, senderUsername, t0)
   );
 }

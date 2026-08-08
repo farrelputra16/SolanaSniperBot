@@ -106,7 +106,7 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS strategy_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, trade_id INTEGER, wallet_address TEXT, token_address TEXT, token_symbol TEXT, chain TEXT DEFAULT 'sol', order_type TEXT, sub_order_type TEXT, check_price REAL, amount_in_percent REAL DEFAULT 100, group_tag TEXT, remote_order_id TEXT, status TEXT DEFAULT 'active', created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS scraper_log (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_username TEXT, level TEXT, message TEXT, created_at INTEGER DEFAULT (strftime('%s','now')));
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-    CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, telegram_id TEXT DEFAULT '', phone TEXT DEFAULT '', source TEXT DEFAULT 'guest', expires INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS web_sessions (token TEXT PRIMARY KEY, telegram_id TEXT DEFAULT '', phone TEXT DEFAULT '', source TEXT DEFAULT 'guest', api_id TEXT DEFAULT '', expires INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS telegram_sessions (telegram_id TEXT PRIMARY KEY, api_id TEXT DEFAULT '', api_hash TEXT DEFAULT '', session TEXT DEFAULT '', dc TEXT DEFAULT '0', updated_at INTEGER DEFAULT 0);
   `);
   // Migrations
@@ -135,6 +135,7 @@ export async function initDatabase() {
   try { sqliteDb.exec("ALTER TABLE trades ADD COLUMN reconcile_verified_at INTEGER DEFAULT 0"); } catch {}
   try { sqliteDb.exec("ALTER TABLE telegram_sessions ADD COLUMN username TEXT DEFAULT ''"); } catch {}
   try { sqliteDb.exec("ALTER TABLE telegram_sessions ADD COLUMN first_name TEXT DEFAULT ''"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE web_sessions ADD COLUMN api_id TEXT DEFAULT ''"); } catch {}
   console.log('[DB] Using SQLite');
 }
 
@@ -703,22 +704,23 @@ export async function setSetting(key, value) {
 // ───── Web Sessions (persistent — survives server restart / idle) ─────
 export async function getAllWebSessions() {
   if (!sqliteMode && mdb) return collections.web_sessions.find({}).toArray();
-  return sqliteDb.prepare('SELECT token, telegram_id, phone, source, expires FROM web_sessions').all();
+  return sqliteDb.prepare('SELECT token, telegram_id, phone, source, api_id, expires FROM web_sessions').all();
 }
 export async function getWebSession(token) {
   if (!sqliteMode && mdb) return collections.web_sessions.findOne({ token });
-  return sqliteDb.prepare('SELECT token, telegram_id, phone, source, expires FROM web_sessions WHERE token = ?').get(token) || null;
+  return sqliteDb.prepare('SELECT token, telegram_id, phone, source, api_id, expires FROM web_sessions WHERE token = ?').get(token) || null;
 }
 export async function saveWebSession(token, data) {
   const telegramId = data?.telegramId || '';
   const phone = data?.phone || '';
   const source = data?.source || 'guest';
+  const apiId = data?.apiId != null ? String(data.apiId) : '';
   const expires = Number(data?.expires) || 0;
   if (!sqliteMode && mdb) {
-    await collections.web_sessions.updateOne({ token }, { $set: { token, telegram_id: telegramId, phone, source, expires } }, { upsert: true });
+    await collections.web_sessions.updateOne({ token }, { $set: { token, telegram_id: telegramId, phone, source, api_id: apiId, expires } }, { upsert: true });
     return;
   }
-  sqliteDb.prepare('INSERT OR REPLACE INTO web_sessions (token, telegram_id, phone, source, expires) VALUES (?,?,?,?,?)').run(token, telegramId, phone, source, expires);
+  sqliteDb.prepare('INSERT OR REPLACE INTO web_sessions (token, telegram_id, phone, source, api_id, expires) VALUES (?,?,?,?,?,?)').run(token, telegramId, phone, source, apiId, expires);
 }
 export async function deleteWebSession(token) {
   if (!sqliteMode && mdb) { await collections.web_sessions.deleteOne({ token }); return; }
@@ -753,8 +755,9 @@ export async function getTelegramSession(tgId) {
   const r = sqliteDb.prepare('SELECT * FROM telegram_sessions WHERE telegram_id = ?').get(String(tgId));
   return r ? { apiId: r.api_id, apiHash: r.api_hash, session: r.session, dc: r.dc, username: r.username, firstName: r.first_name } : null;
 }
-export async function getAllTelegramSessions() {
+export async function getAllTelegramSessions(withSecrets = false) {
   if (!sqliteMode && mdb) return collections.telegram_sessions.find({}).toArray();
+  if (withSecrets) return sqliteDb.prepare('SELECT * FROM telegram_sessions ORDER BY updated_at DESC').all();
   return sqliteDb.prepare('SELECT telegram_id, username, first_name, updated_at FROM telegram_sessions ORDER BY updated_at DESC').all();
 }
 export function deleteTelegramSession(tgId) {
